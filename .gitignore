@@ -1,0 +1,34 @@
+# Конфиденциальные данные
+data/config.json
+
+# Логи
+logs/
+*.log
+
+# Результаты анализа в папке data
+data/vk_groups_analysis.json
+data/vk_adplans*.json  
+data/vk_campaigns.json
+data/vk_groups_candidates.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
