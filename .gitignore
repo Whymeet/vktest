@@ -7,6 +7,7 @@ logs/
 
 # Результаты анализа в папке data
 data/vk_groups_analysis.json
+data/vk_statistics_raw_*.json
 data/vk_adplans*.json  
 data/vk_campaigns.json
 data/vk_groups_candidates.json

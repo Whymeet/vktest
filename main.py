@@ -4,7 +4,6 @@ import time
 import logging
 import os
 from datetime import date, timedelta, datetime
-from logging.handlers import TimedRotatingFileHandler
 
 # ===================== НАСТРОЙКИ =====================
 
@@ -60,23 +59,23 @@ def setup_logging():
     
     # Handler для консоли (INFO и выше)
     console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.INFO)
+    console_handler.setLevel(logging.DEBUG)
     console_handler.setFormatter(formatter)
     logger.addHandler(console_handler)
     
-    # Handler для файла с ротацией по дням (DEBUG и выше)
-    log_file = os.path.join(log_dir, "vk_ads_manager.log")
-    file_handler = TimedRotatingFileHandler(
+    # Handler для файла с уникальным именем на каждый запуск
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_file = os.path.join(log_dir, f"vk_ads_manager_{timestamp}.log")
+    file_handler = logging.FileHandler(
         log_file, 
-        when='midnight', 
-        interval=1, 
-        backupCount=30,  # Храним логи за 30 дней
         encoding='utf-8'
     )
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(formatter)
-    file_handler.suffix = "%Y-%m-%d"
     logger.addHandler(file_handler)
+    
+    # Логируем информацию о файле лога
+    logger.info(f"📝 Логирование в файл: {log_file}")
     
     return logger
 
@@ -186,15 +185,53 @@ def get_ad_groups_active(token: str, fields: str = "id,name,status,delivery,ad_p
 
 # ===================== ЗАГРУЗКА СТАТИСТИКИ =====================
 
-def get_ad_groups_stats_day(token: str, date_from: str, date_to: str, group_ids: list = None, metrics: str = "all"):
+def save_raw_statistics_json(payload: dict, date_from: str, date_to: str, group_ids: list = None):
+    """Сохраняет сырой JSON ответ от API статистики для последующего анализа"""
+    try:
+        # Создаем папку data если её нет
+        os.makedirs("data", exist_ok=True)
+        
+        # Формируем имя файла с временной меткой
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        if group_ids:
+            ids_suffix = f"_ids_{len(group_ids)}"
+        else:
+            ids_suffix = "_all"
+            
+        filename = f"vk_statistics_raw_{date_from}_{date_to}{ids_suffix}_{timestamp}.json"
+        filepath = os.path.join("data", filename)
+        
+        # Добавляем метаданные к JSON
+        enriched_payload = {
+            "metadata": {
+                "request_timestamp": datetime.now().isoformat(),
+                "date_from": date_from,
+                "date_to": date_to,
+                "requested_group_ids": group_ids,
+                "groups_count": len(group_ids) if group_ids else "all"
+            },
+            "raw_response": payload
+        }
+        
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(enriched_payload, f, ensure_ascii=False, indent=2)
+            
+        logger.debug(f"💾 Сохранен сырой JSON статистики: {filepath}")
+        
+    except Exception as e:
+        logger.warning(f"⚠️ Не удалось сохранить сырой JSON: {e}")
+
+def get_ad_groups_stats_day(token: str, date_from: str, date_to: str, group_ids: list = None, metrics: str = "base"):
     """
-    Эндпоинт: GET /statistics/ad_groups/day.json
-    Возвращает JSON с массивом items, где по каждой группе есть rows по дням и агрегаты в total.*.
+    GET /statistics/ad_groups/day.json
+    Возвращает items с rows по дням и total.* по группе.
+    Использует правильный параметр id=123,456,789 (через запятую).
     """
     if group_ids:
         ids_str = ",".join(map(str, group_ids))
         logger.info(f"📊 Запрашиваем статистику за период {date_from} - {date_to} для {len(group_ids)} групп")
-        logger.debug(f"ID групп: {ids_str[:100]}{'...' if len(ids_str) > 100 else ''}")
+        logger.debug(f"🆔 ID групп: {ids_str}")
     else:
         logger.info(f"📊 Запрашиваем статистику за период {date_from} - {date_to} для ВСЕХ групп")
     
@@ -205,11 +242,11 @@ def get_ad_groups_stats_day(token: str, date_from: str, date_to: str, group_ids:
         "metrics": metrics,
     }
     
-    # Добавляем фильтр по ID групп если они указаны
+    # ✅ Правильный параметр: id (без s) через запятую
     if group_ids:
-        params["ids"] = ",".join(map(str, group_ids))
-        logger.debug(f"🔧 Добавлен фильтр ids: {params['ids']}")
-    
+        params["id"] = ",".join(map(str, group_ids))
+        logger.debug(f"🔧 Добавлен фильтр id: {params['id']}")
+
     try:
         logger.debug(f"🌐 Отправляем запрос к {url} с параметрами: {params}")
         r = requests.get(url, headers=_headers(token), params=params, timeout=30)
@@ -218,9 +255,18 @@ def get_ad_groups_stats_day(token: str, date_from: str, date_to: str, group_ids:
             logger.error(f"❌ Ошибка HTTP {r.status_code} при получении статистики: {r.text[:200]}")
             raise RuntimeError(f"[stats day] HTTP {r.status_code}: {r.text}")
         
-        items = r.json().get("items", [])
+        payload = r.json()
+        items = payload.get("items", [])
         logger.info(f"✅ Получена статистика по {len(items)} группам")
         
+        # 💾 Сохраняем полный JSON ответ для анализа
+        save_raw_statistics_json(payload, date_from, date_to, group_ids)
+        
+        # Проверяем, что получили именно те группы, которые запрашивали
+        if group_ids and items:
+            received_ids = [item.get("id") for item in items if item.get("id")]
+            logger.debug(f"📋 Получены ID: {received_ids}")
+            
         return items
         
     except requests.RequestException as e:
@@ -230,36 +276,36 @@ def get_ad_groups_stats_day(token: str, date_from: str, date_to: str, group_ids:
 
 def aggregate_stats_by_group(items):
     """
-    Сворачивает статистику к виду:
-    { group_id: {"spent": float, "clicks": float, "shows": float} }
+    Извлекает статистику из готовых total данных (суммированных за весь период):
+    { group_id: {"spent": float, "clicks": float, "shows": float, "vk_goals": int} }
     """
     logger.info("🔢 Агрегируем статистику по группам")
     agg = {}
 
     for item in items:
         gid = item.get("id")
-        rows = item.get("rows", []) or []
         if gid is None:
             continue
 
-        spent_sum = 0.0
-        clicks_sum = 0.0
-        shows_sum = 0.0
-
-        for row in rows:
-            day_spent = _dget(row, "total.base.spent", 0.0)
-            day_clicks = _dget(row, "total.base.clicks", 0.0)
-            day_shows = _dget(row, "total.base.shows", 0.0)
-            
-            spent_sum  += day_spent
-            clicks_sum += day_clicks
-            shows_sum  += day_shows
+        # ✅ Используем готовые total данные вместо суммирования rows
+        total = item.get("total", {}).get("base", {})
+        
+        # Основные метрики из total.base
+        spent = _dget(total, "spent", 0.0)
+        clicks = _dget(total, "clicks", 0.0)
+        shows = _dget(total, "shows", 0.0)
+        
+        # VK цели из total.base.vk.goals
+        vk_goals = _dget(total, "vk.goals", 0.0)
 
         agg[gid] = {
-            "spent": spent_sum,
-            "clicks": clicks_sum,
-            "shows": shows_sum,
+            "spent": spent,
+            "clicks": clicks,
+            "shows": shows,
+            "vk_goals": vk_goals,  # Только VK цели
         }
+        
+        logger.debug(f"📋 Группа {gid}: spent={spent}₽, vk_goals={vk_goals}")
 
     logger.info(f"✅ Агрегировано {len(agg)} групп")
     return agg
@@ -288,7 +334,7 @@ def main():
         logger.debug(f"🆔 ID активных групп: {group_ids[:5]}..." if len(group_ids) > 5 else f"🆔 ID активных групп: {group_ids}")
         
         # Загружаем статистику только для активных групп
-        items = get_ad_groups_stats_day(ACCESS_TOKEN, date_from, date_to, group_ids=group_ids, metrics="all")
+        items = get_ad_groups_stats_day(ACCESS_TOKEN, date_from, date_to, group_ids=group_ids, metrics="base")
         stats_by_gid = aggregate_stats_by_group(items)
         
         # Анализируем группы
@@ -316,41 +362,58 @@ def main():
                 delivery_status = "N/A"
 
             # Получаем статистику по группе
-            stats = stats_by_gid.get(gid, {"spent": 0.0, "clicks": 0.0, "shows": 0.0})
+            stats = stats_by_gid.get(gid, {"spent": 0.0, "clicks": 0.0, "shows": 0.0, "vk_goals": 0.0})
             spent = stats.get("spent", 0.0)
             clicks = stats.get("clicks", 0.0)
             shows = stats.get("shows", 0.0)
+            vk_goals = stats.get("vk_goals", 0.0)
             
-            # Категorizируем группы
-            if spent > SPENT_LIMIT_RUB:
+            # Категorizируем группы по новой логике
+            if spent >= SPENT_LIMIT_RUB and vk_goals == 0:
+                # Убыточная группа: потратила >= 40₽ но не дала результата
                 over_limit.append({
-                    "id": gid, "name": name, "spent": spent, "clicks": clicks, "shows": shows,
+                    "id": gid, "name": name, "spent": spent, "clicks": clicks, "shows": shows, "vk_goals": vk_goals,
                     "status": status, "delivery": delivery_status, "ad_plan_id": ad_plan_id
                 })
-                logger.info(f"🔴 ПРЕВЫШЕН ЛИМИТ: [{gid}] {name}")
-                logger.info(f"    💰 Потрачено: {spent:.2f}₽ (>{SPENT_LIMIT_RUB}₽)")
+                logger.info(f"🔴 УБЫТОЧНАЯ ГРУППА: [{gid}] {name}")
+                logger.info(f"    💰 Потрачено: {spent:.2f}₽ (>={SPENT_LIMIT_RUB}₽) без результата")
+                logger.info(f"    📊 Активность: {clicks} кликов, {shows} показов, {int(vk_goals)} VK целей")
+                logger.info(f"    🏷️ Статус: {status} | Доставка: {delivery_status} | Кампания: {ad_plan_id}")
+                logger.info("")
+                
+            elif vk_goals >= 1:
+                # Эффективная группа: дала результат (неважно сколько потратила)
+                under_limit.append({
+                    "id": gid, "name": name, "spent": spent, "clicks": clicks, "shows": shows, "vk_goals": vk_goals,
+                    "status": status, "delivery": delivery_status, "ad_plan_id": ad_plan_id
+                })
+                logger.info(f"🟢 ЭФФЕКТИВНАЯ ГРУППА: [{gid}] {name}")
+                logger.info(f"    💰 Потрачено: {spent:.2f}₽ → {int(vk_goals)} VK целей ✅")
                 logger.info(f"    📊 Активность: {clicks} кликов, {shows} показов")
                 logger.info(f"    🏷️ Статус: {status} | Доставка: {delivery_status} | Кампания: {ad_plan_id}")
                 logger.info("")
                 
             elif spent > 0:
-                under_limit.append({
-                    "id": gid, "name": name, "spent": spent, "clicks": clicks, "shows": shows,
+                # Группа с тратами но без результата (< 40₽)
+                no_activity.append({
+                    "id": gid, "name": name, "spent": spent, "clicks": clicks, "shows": shows, "vk_goals": vk_goals,
                     "status": status, "delivery": delivery_status, "ad_plan_id": ad_plan_id
                 })
-                logger.info(f"🟢 В ПРЕДЕЛАХ ЛИМИТА: [{gid}] {name}")
-                logger.info(f"    💰 Потрачено: {spent:.2f}₽ (<={SPENT_LIMIT_RUB}₽)")
-                logger.info(f"    📊 Активность: {clicks} кликов, {shows} показов")
+                logger.info(f"⚠️ ТЕСТИРУЕТСЯ: [{gid}] {name}")
+                logger.info(f"    💰 Потрачено: {spent:.2f}₽ (< {SPENT_LIMIT_RUB}₽) без результата пока")
+                logger.info(f"    📊 Активность: {clicks} кликов, {shows} показов, {int(vk_goals)} VK целей")
                 logger.info(f"    🏷️ Статус: {status} | Доставка: {delivery_status} | Кампания: {ad_plan_id}")
                 logger.info("")
                 
             else:
+                # Группы без трат
                 no_activity.append({
-                    "id": gid, "name": name, "spent": spent, "clicks": clicks, "shows": shows,
+                    "id": gid, "name": name, "spent": spent, "clicks": clicks, "shows": shows, "vk_goals": vk_goals,
                     "status": status, "delivery": delivery_status, "ad_plan_id": ad_plan_id
                 })
                 logger.info(f"⚪ БЕЗ АКТИВНОСТИ: [{gid}] {name}")
                 logger.info(f"    💰 Потрачено: 0₽")
+                logger.info(f"    📊 Активность: {clicks} кликов, {shows} показов, {int(vk_goals)} VK целей")
                 logger.info(f"    🏷️ Статус: {status} | Доставка: {delivery_status} | Кампания: {ad_plan_id}")
                 logger.info("")
 
@@ -358,18 +421,30 @@ def main():
         logger.info("="*80)
         logger.info("📈 ИТОГОВАЯ СТАТИСТИКА:")
         logger.info("="*80)
-        logger.info(f"🔴 Групп превысивших лимит ({SPENT_LIMIT_RUB}₽): {len(over_limit)}")
-        logger.info(f"🟢 Групп в пределах лимита: {len(under_limit)}")
-        logger.info(f"⚪ Групп без активности: {len(no_activity)}")
+        logger.info(f"🔴 Убыточных групп (>={SPENT_LIMIT_RUB}₽ без результата): {len(over_limit)}")
+        logger.info(f"🟢 Эффективных групп (с VK целями): {len(under_limit)}")
+        logger.info(f"⚠️ Тестируемых/неактивных групп: {len(no_activity)}")
         logger.info(f"📊 Всего активных групп: {len(groups)}")
         
-        # Считаем общие траты
+        # Считаем общие траты и VK цели
         total_spent = sum(g["spent"] for g in over_limit + under_limit)
+        total_vk_goals = sum(g["vk_goals"] for g in over_limit + under_limit)
+        
         logger.info(f"💰 Общие расходы за {LOOKBACK_DAYS} дней: {total_spent:.2f}₽")
+        logger.info(f"🎯 Общие VK цели за {LOOKBACK_DAYS} дней: {int(total_vk_goals)}")
         
         if over_limit:
-            over_limit_spent = sum(g["spent"] for g in over_limit)  
-            logger.info(f"🔴 Расходы групп над лимитом: {over_limit_spent:.2f}₽")
+            over_limit_spent = sum(g["spent"] for g in over_limit)
+            over_limit_vk_goals = sum(g["vk_goals"] for g in over_limit)
+            logger.info(f"🔴 Расходы убыточных групп: {over_limit_spent:.2f}₽ (потрачено впустую)")
+            logger.info(f"🔴 VK цели убыточных групп: {int(over_limit_vk_goals)} (должно быть 0)")
+        
+        if under_limit:
+            under_limit_spent = sum(g["spent"] for g in under_limit)
+            under_limit_vk_goals = sum(g["vk_goals"] for g in under_limit)
+            avg_cost_per_goal = under_limit_spent / under_limit_vk_goals if under_limit_vk_goals > 0 else 0
+            logger.info(f"🟢 Расходы эффективных групп: {under_limit_spent:.2f}₽ → {int(under_limit_vk_goals)} целей")
+            logger.info(f"🟢 Средняя стоимость VK цели: {avg_cost_per_goal:.2f}₽")
         
         # Сохраняем детальные результаты
         results = {
@@ -378,15 +453,16 @@ def main():
             "spent_limit_rub": SPENT_LIMIT_RUB,
             "summary": {
                 "total_groups": len(groups),
-                "over_limit": len(over_limit),
-                "under_limit": len(under_limit),
-                "no_activity": len(no_activity),
-                "total_spent": total_spent
+                "unprofitable_groups": len(over_limit),  # Убыточные группы 
+                "effective_groups": len(under_limit),     # Эффективные группы
+                "testing_inactive_groups": len(no_activity),  # Тестируемые/неактивные
+                "total_spent": total_spent,
+                "total_vk_goals": int(total_vk_goals)
             },
             "groups": {
-                "over_limit": over_limit,
-                "under_limit": under_limit,
-                "no_activity": no_activity
+                "unprofitable": over_limit,      # Убыточные группы (>=40₽ без результата)
+                "effective": under_limit,        # Эффективные группы (с VK целями)
+                "testing_inactive": no_activity  # Тестируемые/неактивные группы
             }
         }
         
@@ -397,6 +473,26 @@ def main():
         with open(analysis_file, "w", encoding="utf-8") as f:
             json.dump(results, f, ensure_ascii=False, indent=2)
         logger.info(f"💾 Анализ сохранен в {analysis_file}")
+        
+        # Сохранение убыточных групп отдельно для удобного управления
+        if over_limit:
+            unprofitable_data = {
+                "analysis_date": datetime.now().isoformat(),
+                "period": f"{date_from} to {date_to}",
+                "spent_limit_rub": SPENT_LIMIT_RUB,
+                "criteria": "spent >= limit AND vk_goals = 0",
+                "total_unprofitable_groups": len(over_limit),
+                "total_wasted_budget": sum(group.get('spent', 0) for group in over_limit),
+                "groups_to_disable": over_limit
+            }
+            
+            unprofitable_file = os.path.join("data", "vk_unprofitable_groups.json")
+            with open(unprofitable_file, "w", encoding="utf-8") as f:
+                json.dump(unprofitable_data, f, ensure_ascii=False, indent=2)
+            
+            logger.info(f"🔴 Убыточные группы сохранены в {unprofitable_file} ({len(over_limit)} шт.)")
+            logger.info(f"💸 Общий размер потерянного бюджета: {sum(group.get('spent', 0) for group in over_limit):.2f}₽")
+        
         logger.info("🎉 Анализ завершен!")
 
     except Exception as e:
