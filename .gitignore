@@ -1,5 +1,5 @@
 # Конфиденциальные данные
-config.json
+cfg/config.json
 
 # Логи
 logs/
