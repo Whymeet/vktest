@@ -33,18 +33,26 @@ def send_telegram_message(config, message):
         return False
 
 def format_telegram_statistics(unprofitable_count, effective_count, testing_count, 
-                              total_count, total_spent, total_goals, avg_cost, lookback_days):
+                              total_count, total_spent, total_goals, avg_cost, lookback_days, accounts_count=1):
     """Форматирует статистику для Telegram"""
-    message = f"""📊 <b>VK Ads - Анализ групп завершен</b>
+    
+    if accounts_count > 1:
+        header = f"📊 <b>VK Ads - Сводный анализ ({accounts_count} кабинетов)</b>"
+    else:
+        header = "📊 <b>VK Ads - Анализ групп завершен</b>"
+    
+    message = f"""{header}
 
-🔴 Убыточных групп (≥40₽ без результата): <b>{unprofitable_count}</b>
-🟢 Эффективных групп (с VK целями): <b>{effective_count}</b>
-⚠️ Тестируемых/неактивных групп: <b>{testing_count}</b>
+
+
 📈 Всего активных групп: <b>{total_count}</b>
+🔴 Убыточных групп: <b>{unprofitable_count}</b>
+🟢 Группы с резом: <b>{effective_count}</b>
+⚠️ Группы без реза: <b>{testing_count}</b>
 
 💰 Общие расходы за {lookback_days} дн.: <b>{total_spent:.2f}₽</b>
-🎯 Общие VK цели за {lookback_days} дн.: <b>{total_goals}</b>
-💡 Средняя стоимость VK цели: <b>{avg_cost:.2f}₽</b>
+🎯 Общие резы за {lookback_days} дн.: <b>{total_goals}</b>
+💡 Средняя стоимость реза: <b>{avg_cost:.2f}₽</b>
 
 ⏰ {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"""
     
@@ -85,6 +93,45 @@ def format_telegram_unprofitable_groups(unprofitable_groups):
         messages.append(message)
     
     return messages
+
+def format_telegram_account_statistics(account_name, unprofitable_count, effective_count, testing_count, 
+                                      total_count, total_spent, total_goals, avg_cost, lookback_days, disable_results=None):
+    """Форматирует статистику по отдельному кабинету для Telegram"""
+    
+    message = f"<b>VK Ads - Кабинет: {account_name}</b>\n\n"
+    
+    message += f"🔴 Убыточных групп: <b>{unprofitable_count}</b>\n"
+    message += f"🟢 Группы с резом: <b>{effective_count}</b>\n"
+    message += f"⚠️ Группы без реза: <b>{testing_count}</b>\n"
+    message += f"📈 Всего активных групп: <b>{total_count}</b>\n\n"
+    
+    message += f"💰 Расходы за {lookback_days} дн.: <b>{total_spent:.2f}₽</b>\n"
+    message += f"🎯 Резы за {lookback_days} дн.: <b>{total_goals}</b>\n"
+    
+    if total_goals > 0:
+        message += f"💡 Средняя стоимость реза: <b>{avg_cost:.2f}₽</b>\n\n"
+    else:
+        message += f"💡 Средняя стоимость реза: <b>-</b>\n\n"
+    
+    # Добавляем информацию об отключении групп
+    if disable_results and unprofitable_count > 0:
+        dry_run = disable_results.get("dry_run", True)
+        disabled = disable_results.get("disabled", 0)
+        failed = disable_results.get("failed", 0)
+        
+        if dry_run:
+            message += f"🔸 <b>Режим тестирования:</b> Было бы отключено {disabled} групп\n"
+        else:
+            message += f"🔄 <b>Отключено:</b> {disabled} групп"
+            if failed > 0:
+                message += f" (ошибок: {failed})"
+            message += "\n"
+    elif unprofitable_count == 0:
+        message += f"✅ <b>Убыточных групп не найдено!</b>\n"
+    
+    message += f"\n⏰ {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
+    
+    return message
 
 def format_telegram_disable_results(disable_results):
     """Форматирует результаты отключения групп для Telegram"""

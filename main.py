@@ -7,7 +7,7 @@ import os
 from datetime import date, timedelta, datetime
 
 # Импортируем функции Telegram
-from telegram_notify import send_telegram_message, format_telegram_statistics, format_telegram_unprofitable_groups, format_telegram_disable_results
+from telegram_notify import send_telegram_message, format_telegram_account_statistics
 
 # ===================== TELEGRAM ФУНКЦИИ =====================
 
@@ -30,8 +30,8 @@ def load_config():
 config = load_config()
 
 # VK Ads API настройки
-ACCESS_TOKEN = config["vk_ads_api"]["access_token"]
 BASE_URL = config["vk_ads_api"]["base_url"]
+ACCOUNTS = config["vk_ads_api"]["accounts"]
 
 # Настройки анализа
 LOOKBACK_DAYS = config["analysis_settings"]["lookback_days"]           # окно в днях
@@ -132,7 +132,7 @@ def _is_active_group(g: dict) -> bool:
 
 # ===================== ЗАГРУЗКА АКТИВНЫХ ГРУПП =====================
 
-def get_ad_groups_active(token: str, fields: str = "id,name,status,delivery,ad_plan_id", limit: int = 200):
+def get_ad_groups_active(token: str, base_url: str, fields: str = "id,name,status,delivery,ad_plan_id", limit: int = 200):
     """
     Грузим все группы и фильтруем по активным.
     Эндпоинт: GET /ad_groups.json?fields=...
@@ -140,7 +140,7 @@ def get_ad_groups_active(token: str, fields: str = "id,name,status,delivery,ad_p
     logger.info("🔄 Начинаем загрузку рекламных групп из VK Ads API")
     logger.debug(f"Параметры: fields={fields}, limit={limit}")
     
-    url = f"{BASE_URL}/ad_groups.json"
+    url = f"{base_url}/ad_groups.json"
     offset = 0
     items_all = []
     page_num = 1
@@ -229,7 +229,7 @@ def save_raw_statistics_json(payload: dict, date_from: str, date_to: str, group_
     except Exception as e:
         logger.warning(f"⚠️ Не удалось сохранить сырой JSON: {e}")
 
-def get_ad_groups_stats_day(token: str, date_from: str, date_to: str, group_ids: list = None, metrics: str = "base"):
+def get_ad_groups_stats_day(token: str, base_url: str, date_from: str, date_to: str, group_ids: list = None, metrics: str = "base"):
     """
     GET /statistics/ad_groups/day.json
     Возвращает items с rows по дням и total.* по группе.
@@ -242,7 +242,7 @@ def get_ad_groups_stats_day(token: str, date_from: str, date_to: str, group_ids:
     else:
         logger.info(f"📊 Запрашиваем статистику за период {date_from} - {date_to} для ВСЕХ групп")
     
-    url = f"{BASE_URL}/statistics/ad_groups/day.json"
+    url = f"{base_url}/statistics/ad_groups/day.json"
     params = {
         "date_from": date_from,
         "date_to": date_to,
@@ -320,7 +320,7 @@ def aggregate_stats_by_group(items):
 
 # ===================== ОТКЛЮЧЕНИЕ ГРУПП =====================
 
-def disable_ad_group(token: str, group_id: int, dry_run: bool = True):
+def disable_ad_group(token: str, base_url: str, group_id: int, dry_run: bool = True):
     """
     Отключает рекламную группу, изменяя статус с 'active' на 'blocked'
     POST /ad_groups/{group_id}.json с телом {"status": "blocked"}
@@ -329,7 +329,7 @@ def disable_ad_group(token: str, group_id: int, dry_run: bool = True):
         logger.info(f"🔸 [DRY RUN] Группа {group_id} была бы отключена (active → blocked)")
         return {"success": True, "dry_run": True}
     
-    url = f"{BASE_URL}/ad_groups/{group_id}.json"
+    url = f"{base_url}/ad_groups/{group_id}.json"
     data = {"status": "blocked"}
     
     try:
@@ -358,7 +358,7 @@ def disable_ad_group(token: str, group_id: int, dry_run: bool = True):
         logger.error(f"❌ Ошибка при отключении группы {group_id}: {error_msg}")
         return {"success": False, "error": error_msg}
 
-def disable_unprofitable_groups(token: str, unprofitable_groups: list, dry_run: bool = True):
+def disable_unprofitable_groups(token: str, base_url: str, unprofitable_groups: list, dry_run: bool = True):
     """
     Отключает все убыточные группы с задержкой между запросами
     """
@@ -380,7 +380,7 @@ def disable_unprofitable_groups(token: str, unprofitable_groups: list, dry_run: 
         logger.info(f"📋 [{i}/{len(unprofitable_groups)}] Группа {group_id}: {group_name} (потрачено: {spent:.2f}₽)")
         
         # Отключаем группу
-        result = disable_ad_group(token, group_id, dry_run)
+        result = disable_ad_group(token, base_url, group_id, dry_run)
         
         if result["success"]:
             disabled_count += 1
@@ -418,15 +418,12 @@ def disable_unprofitable_groups(token: str, unprofitable_groups: list, dry_run: 
 
 # ===================== ОСНОВНАЯ ЛОГИКА =====================
 
-def main():
-    logger.info("🚀 Запуск VK Ads Manager — анализ активных групп и их расходов")
+def analyze_account(account_name: str, access_token: str, config: dict):
+    """Анализирует один кабинет VK Ads"""
     
-    # Загружаем конфигурацию
-    config = load_config()
-    
-    # Отправляем уведомление о начале анализа
-    start_message = f"🚀 <b>VK Ads - Начало анализа</b>\n\n📅 Период: {LOOKBACK_DAYS} дн.\n💰 Лимит: {SPENT_LIMIT_RUB}₽\n⏰ {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
-    send_telegram_message(config, start_message)
+    logger.info("="*100)
+    logger.info(f"📊 НАЧИНАЕМ АНАЛИЗ КАБИНЕТА: {account_name}")
+    logger.info("="*100)
     
     try:
         # Определяем период анализа
@@ -434,25 +431,24 @@ def main():
         date_from = _iso(today - timedelta(days=LOOKBACK_DAYS))
         date_to = _iso(today)
         
+        logger.info(f"🏢 Кабинет: {account_name}")
         logger.info(f"📅 Анализируем период: {date_from} — {date_to} ({LOOKBACK_DAYS} дней)")
         logger.info(f"💰 Лимит расходов: {SPENT_LIMIT_RUB}₽")
         
         # Загружаем активные группы (фильтрация на сервере)
-        groups = get_ad_groups_active(ACCESS_TOKEN)
-        logger.info(f"✅ Получено активных групп с сервера: {len(groups)}")
+        groups = get_ad_groups_active(access_token, BASE_URL)
+        logger.info(f"✅ [{account_name}] Получено активных групп с сервера: {len(groups)}")
         
         # Извлекаем ID активных групп для фильтрации статистики
         group_ids = [g.get("id") for g in groups if g.get("id")]
-        logger.info(f"🎯 Будем запрашивать статистику только для {len(group_ids)} активных групп")
-        logger.debug(f"🆔 ID активных групп: {group_ids[:5]}..." if len(group_ids) > 5 else f"🆔 ID активных групп: {group_ids}")
+        logger.info(f"🎯 [{account_name}] Будем запрашивать статистику только для {len(group_ids)} активных групп")
         
         # Загружаем статистику только для активных групп
-        items = get_ad_groups_stats_day(ACCESS_TOKEN, date_from, date_to, group_ids=group_ids, metrics="base")
+        items = get_ad_groups_stats_day(access_token, BASE_URL, date_from, date_to, group_ids=group_ids, metrics="base")
         stats_by_gid = aggregate_stats_by_group(items)
         
         # Анализируем группы
-        logger.info("\n" + "="*80)
-        logger.info("📊 АНАЛИЗ РАСХОДОВ ПО АКТИВНЫМ ГРУППАМ:")
+        logger.info(f"📊 АНАЛИЗ РАСХОДОВ ПО АКТИВНЫМ ГРУППАМ КАБИНЕТА: {account_name}")
         logger.info("="*80)
         
         over_limit = []
@@ -486,53 +482,39 @@ def main():
                 # Убыточная группа: потратила >= 40₽ но не дала результата
                 over_limit.append({
                     "id": gid, "name": name, "spent": spent, "clicks": clicks, "shows": shows, "vk_goals": vk_goals,
-                    "status": status, "delivery": delivery_status, "ad_plan_id": ad_plan_id
+                    "status": status, "delivery": delivery_status, "ad_plan_id": ad_plan_id, "account": account_name
                 })
-                logger.info(f"🔴 УБЫТОЧНАЯ ГРУППА: [{gid}] {name}")
+                logger.info(f"🔴 [{account_name}] УБЫТОЧНАЯ ГРУППА: [{gid}] {name}")
                 logger.info(f"    💰 Потрачено: {spent:.2f}₽ (>={SPENT_LIMIT_RUB}₽) без результата")
-                logger.info(f"    📊 Активность: {clicks} кликов, {shows} показов, {int(vk_goals)} VK целей")
-                logger.info(f"    🏷️ Статус: {status} | Доставка: {delivery_status} | Кампания: {ad_plan_id}")
-                logger.info("")
                 
             elif vk_goals >= 1:
                 # Эффективная группа: дала результат (неважно сколько потратила)
                 under_limit.append({
                     "id": gid, "name": name, "spent": spent, "clicks": clicks, "shows": shows, "vk_goals": vk_goals,
-                    "status": status, "delivery": delivery_status, "ad_plan_id": ad_plan_id
+                    "status": status, "delivery": delivery_status, "ad_plan_id": ad_plan_id, "account": account_name
                 })
-                logger.info(f"🟢 ЭФФЕКТИВНАЯ ГРУППА: [{gid}] {name}")
+                logger.info(f"🟢 [{account_name}] ЭФФЕКТИВНАЯ ГРУППА: [{gid}] {name}")
                 logger.info(f"    💰 Потрачено: {spent:.2f}₽ → {int(vk_goals)} VK целей ✅")
-                logger.info(f"    📊 Активность: {clicks} кликов, {shows} показов")
-                logger.info(f"    🏷️ Статус: {status} | Доставка: {delivery_status} | Кампания: {ad_plan_id}")
-                logger.info("")
                 
             elif spent > 0:
                 # Группа с тратами но без результата (< 40₽)
                 no_activity.append({
                     "id": gid, "name": name, "spent": spent, "clicks": clicks, "shows": shows, "vk_goals": vk_goals,
-                    "status": status, "delivery": delivery_status, "ad_plan_id": ad_plan_id
+                    "status": status, "delivery": delivery_status, "ad_plan_id": ad_plan_id, "account": account_name
                 })
-                logger.info(f"⚠️ ТЕСТИРУЕТСЯ: [{gid}] {name}")
+                logger.info(f"⚠️ [{account_name}] ТЕСТИРУЕТСЯ: [{gid}] {name}")
                 logger.info(f"    💰 Потрачено: {spent:.2f}₽ (< {SPENT_LIMIT_RUB}₽) без результата пока")
-                logger.info(f"    📊 Активность: {clicks} кликов, {shows} показов, {int(vk_goals)} VK целей")
-                logger.info(f"    🏷️ Статус: {status} | Доставка: {delivery_status} | Кампания: {ad_plan_id}")
-                logger.info("")
                 
             else:
                 # Группы без трат
                 no_activity.append({
                     "id": gid, "name": name, "spent": spent, "clicks": clicks, "shows": shows, "vk_goals": vk_goals,
-                    "status": status, "delivery": delivery_status, "ad_plan_id": ad_plan_id
+                    "status": status, "delivery": delivery_status, "ad_plan_id": ad_plan_id, "account": account_name
                 })
-                logger.info(f"⚪ БЕЗ АКТИВНОСТИ: [{gid}] {name}")
-                logger.info(f"    💰 Потрачено: 0₽")
-                logger.info(f"    📊 Активность: {clicks} кликов, {shows} показов, {int(vk_goals)} VK целей")
-                logger.info(f"    🏷️ Статус: {status} | Доставка: {delivery_status} | Кампания: {ad_plan_id}")
-                logger.info("")
 
-        # Итоговая статистика
+        # Итоговая статистика по кабинету
         logger.info("="*80)
-        logger.info("📈 ИТОГОВАЯ СТАТИСТИКА:")
+        logger.info(f"📈 ИТОГОВАЯ СТАТИСТИКА ПО КАБИНЕТУ: {account_name}")
         logger.info("="*80)
         logger.info(f"🔴 Убыточных групп (>={SPENT_LIMIT_RUB}₽ без результата): {len(over_limit)}")
         logger.info(f"🟢 Эффективных групп (с VK целями): {len(under_limit)}")
@@ -543,131 +525,186 @@ def main():
         total_spent = sum(g["spent"] for g in over_limit + under_limit)
         total_vk_goals = sum(g["vk_goals"] for g in over_limit + under_limit)
         
-        logger.info(f"💰 Общие расходы за {LOOKBACK_DAYS} дней: {total_spent:.2f}₽")
-        logger.info(f"🎯 Общие VK цели за {LOOKBACK_DAYS} дней: {int(total_vk_goals)}")
+        logger.info(f"💰 [{account_name}] Общие расходы за {LOOKBACK_DAYS} дней: {total_spent:.2f}₽")
+        logger.info(f"🎯 [{account_name}] Общие VK цели за {LOOKBACK_DAYS} дней: {int(total_vk_goals)}")
         
         if over_limit:
             over_limit_spent = sum(g["spent"] for g in over_limit)
-            over_limit_vk_goals = sum(g["vk_goals"] for g in over_limit)
-            logger.info(f"🔴 Расходы убыточных групп: {over_limit_spent:.2f}₽ (потрачено впустую)")
-            logger.info(f"🔴 VK цели убыточных групп: {int(over_limit_vk_goals)} (должно быть 0)")
+            logger.info(f"🔴 [{account_name}] Расходы убыточных групп: {over_limit_spent:.2f}₽ (потрачено впустую)")
         
         if under_limit:
             under_limit_spent = sum(g["spent"] for g in under_limit)
             under_limit_vk_goals = sum(g["vk_goals"] for g in under_limit)
             avg_cost_per_goal = under_limit_spent / under_limit_vk_goals if under_limit_vk_goals > 0 else 0
-            logger.info(f"🟢 Расходы эффективных групп: {under_limit_spent:.2f}₽ → {int(under_limit_vk_goals)} целей")
-            logger.info(f"🟢 Средняя стоимость VK цели: {avg_cost_per_goal:.2f}₽")
+            logger.info(f"🟢 [{account_name}] Расходы эффективных групп: {under_limit_spent:.2f}₽ → {int(under_limit_vk_goals)} целей")
+            logger.info(f"🟢 [{account_name}] Средняя стоимость VK цели: {avg_cost_per_goal:.2f}₽")
+
+        # Отключаем убыточные группы
+        disable_results = None
+        if over_limit:
+            logger.info(f"🛠 ОТКЛЮЧЕНИЕ УБЫТОЧНЫХ ГРУПП КАБИНЕТА: {account_name}")
+            logger.info("="*80)
+            
+            disable_results = disable_unprofitable_groups(access_token, BASE_URL, over_limit, DRY_RUN)
         
-        # Сохраняем детальные результаты
-        results = {
-            "analysis_date": datetime.now().isoformat(),
-            "period": f"{date_from} to {date_to}",
-            "spent_limit_rub": SPENT_LIMIT_RUB,
-            "summary": {
-                "total_groups": len(groups),
-                "unprofitable_groups": len(over_limit),  # Убыточные группы 
-                "effective_groups": len(under_limit),     # Эффективные группы
-                "testing_inactive_groups": len(no_activity),  # Тестируемые/неактивные
-                "total_spent": total_spent,
-                "total_vk_goals": int(total_vk_goals)
-            },
-            "groups": {
-                "unprofitable": over_limit,      # Убыточные группы (>=40₽ без результата)
-                "effective": under_limit,        # Эффективные группы (с VK целями)
-                "testing_inactive": no_activity  # Тестируемые/неактивные группы
-            }
+        # Отправляем уведомление по этому кабинету в Telegram
+        try:
+            avg_cost_per_goal = total_spent / total_vk_goals if total_vk_goals > 0 else 0
+            account_message = format_telegram_account_statistics(
+                account_name=account_name,
+                unprofitable_count=len(over_limit),
+                effective_count=len(under_limit),
+                testing_count=len(no_activity),
+                total_count=len(groups),
+                total_spent=total_spent,
+                total_goals=int(total_vk_goals),
+                avg_cost=avg_cost_per_goal,
+                lookback_days=LOOKBACK_DAYS,
+                disable_results=disable_results
+            )
+            send_telegram_message(config, account_message)
+        except Exception as e:
+            logger.error(f"❌ Ошибка отправки уведомления по кабинету {account_name}: {e}")
+            
+        logger.info(f"✅ [{account_name}] Анализ кабинета завершен!")
+        
+        return {
+            "account_name": account_name,
+            "over_limit": over_limit,
+            "under_limit": under_limit,
+            "no_activity": no_activity,
+            "total_spent": total_spent,
+            "total_vk_goals": int(total_vk_goals),
+            "disable_results": disable_results,
+            "date_from": date_from,
+            "date_to": date_to
         }
+        
+    except Exception as e:
+        logger.error(f"💥 [{account_name}] ОШИБКА АНАЛИЗА КАБИНЕТА: {e}")
+        logger.exception("Детали ошибки:")
+        raise
+
+def main():
+    logger.info(" Запуск VK Ads Manager — анализ активных групп для нескольких кабинетов")
+    logger.info(f"📋 Найдено кабинетов для анализа: {len(ACCOUNTS)}")
+    
+    for account_name in ACCOUNTS.keys():
+        logger.info(f"  • {account_name}")
+    
+    # Загружаем конфигурацию для Telegram
+    config = load_config()
+    
+    # Отправляем уведомление о начале анализа
+    accounts_list = ", ".join(ACCOUNTS.keys())
+    start_message = f"🚀 <b>VK Ads - Начало анализа</b>\n\n🏢 Кабинеты: {accounts_list}\n📅 Период: {LOOKBACK_DAYS} дн.\n💰 Лимит: {SPENT_LIMIT_RUB}₽\n⏰ {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
+    send_telegram_message(config, start_message)
+    
+    # Результаты по всем кабинетам
+    all_results = []
+    total_unprofitable = 0
+    total_effective = 0
+    total_testing = 0
+    total_spent_all = 0
+    total_goals_all = 0
+    
+    # Загружаем конфигурацию
+    config = load_config()
+    
+    # Отправляем уведомление о начале анализа
+    start_message = f"🚀 <b>VK Ads - Начало анализа</b>\n\n📅 Период: {LOOKBACK_DAYS} дн.\n💰 Лимит: {SPENT_LIMIT_RUB}₽\n⏰ {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
+    send_telegram_message(config, start_message)
+    
+    try:
+        # Анализируем каждый кабинет
+        for account_name, access_token in ACCOUNTS.items():
+            account_results = analyze_account(account_name, access_token, config)
+            all_results.append(account_results)
+            
+            # Суммируем статистику
+            total_unprofitable += len(account_results["over_limit"])
+            total_effective += len(account_results["under_limit"])
+            total_testing += len(account_results["no_activity"])
+            total_spent_all += account_results["total_spent"]
+            total_goals_all += account_results["total_vk_goals"]
+        
+        # Сохраняем сводные результаты по всем кабинетам
+        logger.info("="*100)
+        logger.info("� СВОДНАЯ СТАТИСТИКА ПО ВСЕМ КАБИНЕТАМ:")
+        logger.info("="*100)
+        
+        logger.info(f"🏢 Проанализировано кабинетов: {len(ACCOUNTS)}")
+        logger.info(f"🔴 Всего убыточных групп: {total_unprofitable}")
+        logger.info(f"🟢 Всего эффективных групп: {total_effective}")
+        logger.info(f"⚠️ Всего тестируемых/неактивных групп: {total_testing}")
+        logger.info(f"💰 Общие расходы по всем кабинетам: {total_spent_all:.2f}₽")
+        logger.info(f"🎯 Общие VK цели по всем кабинетам: {total_goals_all}")
+        
+        if total_goals_all > 0:
+            avg_cost_all = total_spent_all / total_goals_all
+            logger.info(f"� Средняя стоимость VK цели по всем кабинетам: {avg_cost_all:.2f}₽")
+        
+        # Создаем сводный файл результатов
+        summary_results = {
+            "analysis_date": datetime.now().isoformat(),
+            "period": f"{all_results[0]['date_from']} to {all_results[0]['date_to']}",
+            "spent_limit_rub": SPENT_LIMIT_RUB,
+            "total_accounts": len(ACCOUNTS),
+            "summary": {
+                "total_unprofitable_groups": total_unprofitable,
+                "total_effective_groups": total_effective,
+                "total_testing_groups": total_testing,
+                "total_spent": total_spent_all,
+                "total_vk_goals": total_goals_all,
+                "avg_cost_per_goal": total_spent_all / total_goals_all if total_goals_all > 0 else 0
+            },
+            "accounts": {}
+        }
+        
+        # Собираем все убыточные группы
+        all_unprofitable = []
+        
+        for result in all_results:
+            account_name = result["account_name"]
+            summary_results["accounts"][account_name] = {
+                "unprofitable_groups": len(result["over_limit"]),
+                "effective_groups": len(result["under_limit"]),
+                "testing_groups": len(result["no_activity"]),
+                "spent": result["total_spent"],
+                "vk_goals": result["total_vk_goals"]
+            }
+            all_unprofitable.extend(result["over_limit"])
         
         # Создаем папку data если её нет
         os.makedirs("data", exist_ok=True)
         
-        analysis_file = os.path.join("data", "vk_groups_analysis.json")
-        with open(analysis_file, "w", encoding="utf-8") as f:
-            json.dump(results, f, ensure_ascii=False, indent=2)
-        logger.info(f"💾 Анализ сохранен в {analysis_file}")
+        # Сохраняем сводный анализ
+        summary_file = os.path.join("data", "vk_summary_analysis.json")
+        with open(summary_file, "w", encoding="utf-8") as f:
+            json.dump(summary_results, f, ensure_ascii=False, indent=2)
+        logger.info(f"💾 Сводный анализ сохранен в {summary_file}")
         
-        # Сохранение убыточных групп отдельно для удобного управления
-        if over_limit:
+        # Сохраняем все убыточные группы
+        if all_unprofitable:
             unprofitable_data = {
                 "analysis_date": datetime.now().isoformat(),
-                "period": f"{date_from} to {date_to}",
+                "period": f"{all_results[0]['date_from']} to {all_results[0]['date_to']}",
                 "spent_limit_rub": SPENT_LIMIT_RUB,
                 "criteria": "spent >= limit AND vk_goals = 0",
-                "total_unprofitable_groups": len(over_limit),
-                "total_wasted_budget": sum(group.get('spent', 0) for group in over_limit),
-                "groups_to_disable": over_limit
+                "total_accounts": len(ACCOUNTS),
+                "total_unprofitable_groups": len(all_unprofitable),
+                "total_wasted_budget": sum(group.get('spent', 0) for group in all_unprofitable),
+                "groups_to_disable": all_unprofitable
             }
             
-            unprofitable_file = os.path.join("data", "vk_unprofitable_groups.json")
+            unprofitable_file = os.path.join("data", "vk_all_unprofitable_groups.json")
             with open(unprofitable_file, "w", encoding="utf-8") as f:
                 json.dump(unprofitable_data, f, ensure_ascii=False, indent=2)
             
-            logger.info(f"🔴 Убыточные группы сохранены в {unprofitable_file} ({len(over_limit)} шт.)")
-            logger.info(f"💸 Общий размер потерянного бюджета: {sum(group.get('spent', 0) for group in over_limit):.2f}₽")
+            logger.info(f"🔴 Все убыточные группы сохранены в {unprofitable_file} ({len(all_unprofitable)} шт.)")
+            logger.info(f"💸 Общий размер потерянного бюджета: {sum(group.get('spent', 0) for group in all_unprofitable):.2f}₽")
         
-        # Отключаем убыточные группы
-        disable_results = None
-        if over_limit:
-            logger.info("\n" + "="*80)
-            logger.info("🔄 ОТКЛЮЧЕНИЕ УБЫТОЧНЫХ ГРУПП:")
-            logger.info("="*80)
-            
-            disable_results = disable_unprofitable_groups(ACCESS_TOKEN, over_limit, DRY_RUN)
-            
-            # Сохраняем результаты отключения
-            if disable_results:
-                disable_file = os.path.join("data", "vk_disable_results.json")
-                disable_data = {
-                    "disable_date": datetime.now().isoformat(),
-                    "dry_run": DRY_RUN,
-                    "summary": {
-                        "total_groups": disable_results["total"],
-                        "disabled_groups": disable_results["disabled"],
-                        "failed_groups": disable_results["failed"]
-                    },
-                    "results": disable_results["results"]
-                }
-                
-                with open(disable_file, "w", encoding="utf-8") as f:
-                    json.dump(disable_data, f, ensure_ascii=False, indent=2)
-                
-                logger.info(f"💾 Результаты отключения сохранены в {disable_file}")
-        
-        logger.info("🎉 Анализ завершен!")
-        
-        # Отправляем финальную статистику в Telegram
-        if under_limit:
-            under_limit_spent = sum(g["spent"] for g in under_limit)
-            under_limit_vk_goals = sum(g["vk_goals"] for g in under_limit)
-            avg_cost_per_goal = under_limit_spent / under_limit_vk_goals if under_limit_vk_goals > 0 else 0
-        else:
-            avg_cost_per_goal = 0
-            
-        stats_message = format_telegram_statistics(
-            unprofitable_count=len(over_limit),
-            effective_count=len(under_limit),
-            testing_count=len(no_activity),
-            total_count=len(groups),
-            total_spent=total_spent,
-            total_goals=int(total_vk_goals),
-            avg_cost=avg_cost_per_goal,
-            lookback_days=LOOKBACK_DAYS
-        )
-        send_telegram_message(config, stats_message)
-        
-        # Отправляем список убыточных групп, если они есть
-        if over_limit:
-            unprofitable_messages = format_telegram_unprofitable_groups(over_limit)
-            for message in unprofitable_messages:
-                send_telegram_message(config, message)
-                # Небольшая пауза между сообщениями чтобы не спамить
-                time.sleep(1)
-        
-        # Отправляем результаты отключения групп
-        if disable_results:
-            disable_message = format_telegram_disable_results(disable_results)
-            send_telegram_message(config, disable_message)
+        logger.info("🎉 Анализ всех кабинетов завершен!")
 
     except Exception as e:
         logger.error(f"💥 КРИТИЧЕСКАЯ ОШИБКА: {e}")
