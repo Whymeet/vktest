@@ -547,10 +547,10 @@ def analyze_account(account_name: str, access_token: str, config: dict):
             
             disable_results = disable_unprofitable_groups(access_token, BASE_URL, over_limit, DRY_RUN)
         
-        # Отправляем уведомление по этому кабинету в Telegram
+        # Отправляем уведомления по этому кабинету в Telegram
         try:
             avg_cost_per_goal = total_spent / total_vk_goals if total_vk_goals > 0 else 0
-            account_message = format_telegram_account_statistics(
+            account_messages = format_telegram_account_statistics(
                 account_name=account_name,
                 unprofitable_count=len(over_limit),
                 effective_count=len(under_limit),
@@ -560,9 +560,17 @@ def analyze_account(account_name: str, access_token: str, config: dict):
                 total_goals=int(total_vk_goals),
                 avg_cost=avg_cost_per_goal,
                 lookback_days=LOOKBACK_DAYS,
-                disable_results=disable_results
+                disable_results=disable_results,
+                unprofitable_groups=over_limit
             )
-            send_telegram_message(config, account_message)
+            
+            # Отправляем каждое сообщение отдельно
+            for i, message in enumerate(account_messages):
+                send_telegram_message(config, message)
+                # Небольшая пауза между сообщениями чтобы не флудить (кроме последнего)
+                if i < len(account_messages) - 1:
+                    time.sleep(1)
+                    
         except Exception as e:
             logger.error(f"❌ Ошибка отправки уведомления по кабинету {account_name}: {e}")
             
