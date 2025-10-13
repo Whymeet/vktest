@@ -95,19 +95,43 @@ def format_telegram_unprofitable_groups(unprofitable_groups):
     
     return messages
 
+def format_telegram_disable_results(disable_results):
+    """Форматирует результаты отключения групп для Telegram"""
+    if not disable_results:
+        return "ℹ️ <b>Отключение групп не выполнялось</b>"
+    
+    dry_run = disable_results.get("dry_run", True)
+    disabled = disable_results.get("disabled", 0)
+    failed = disable_results.get("failed", 0)
+    total = disable_results.get("total", 0)
+    
+    if dry_run:
+        message = f"🔸 <b>Режим тестирования (DRY RUN)</b>\n\n"
+        message += f"✅ Было бы отключено: <b>{disabled}</b> групп\n"
+        message += f"❌ Ошибок: <b>{failed}</b>\n"
+        message += f"📊 Всего обработано: <b>{total}</b>\n\n"
+        message += f"💡 Для реального отключения установите dry_run: false в config.json"
+    else:
+        message = f"🔄 <b>Отключение групп завершено</b>\n\n"
+        message += f"✅ Отключено: <b>{disabled}</b> групп\n"
+        message += f"❌ Ошибок: <b>{failed}</b>\n"
+        message += f"📊 Всего обработано: <b>{total}</b>"
+    
+    return message
+
 # ===================== НАСТРОЙКИ =====================
 
 def load_config():
-    """Загружает конфигурацию из config.json"""
-    config_path = "config.json"
+    """Загружает конфигурацию из cfg/config.json"""
+    config_path = os.path.join("cfg", "config.json")
     try:
         with open(config_path, "r", encoding="utf-8") as f:
             config = json.load(f)
         return config
     except FileNotFoundError:
-        raise FileNotFoundError("❌ Файл config.json не найден! Создайте файл с настройками API.")
+        raise FileNotFoundError("❌ Файл cfg/config.json не найден! Создайте файл с настройками API.")
     except json.JSONDecodeError as e:
-        raise ValueError(f"❌ Ошибка в config.json: {e}")
+        raise ValueError(f"❌ Ошибка в cfg/config.json: {e}")
 
 # Загружаем конфигурацию
 config = load_config()
@@ -401,6 +425,104 @@ def aggregate_stats_by_group(items):
     return agg
 
 
+# ===================== ОТКЛЮЧЕНИЕ ГРУПП =====================
+
+def disable_ad_group(token: str, group_id: int, dry_run: bool = True):
+    """
+    Отключает рекламную группу, изменяя статус с 'active' на 'blocked'
+    POST /ad_groups/{group_id}.json с телом {"status": "blocked"}
+    """
+    if dry_run:
+        logger.info(f"🔸 [DRY RUN] Группа {group_id} была бы отключена (active → blocked)")
+        return {"success": True, "dry_run": True}
+    
+    url = f"{BASE_URL}/ad_groups/{group_id}.json"
+    data = {"status": "blocked"}
+    
+    try:
+        logger.info(f"🔄 Отключаем группу {group_id} (active → blocked)")
+        response = requests.post(
+            url,
+            headers=_headers(token),
+            json=data,
+            timeout=20
+        )
+        # VK API возвращает 204 No Content при успешном обновлении статуса
+        if response.status_code in (200, 204):
+            logger.info(f"✅ Группа {group_id} успешно отключена (HTTP {response.status_code})")
+            # Если есть тело, возвращаем его, иначе просто success
+            try:
+                resp_json = response.json()
+            except Exception:
+                resp_json = None
+            return {"success": True, "response": resp_json}
+        else:
+            error_msg = f"HTTP {response.status_code}: {response.text}"
+            logger.error(f"❌ Ошибка при отключении группы {group_id}: {error_msg}")
+            return {"success": False, "error": error_msg}
+    except requests.RequestException as e:
+        error_msg = f"Сетевая ошибка: {str(e)}"
+        logger.error(f"❌ Ошибка при отключении группы {group_id}: {error_msg}")
+        return {"success": False, "error": error_msg}
+
+def disable_unprofitable_groups(token: str, unprofitable_groups: list, dry_run: bool = True):
+    """
+    Отключает все убыточные группы с задержкой между запросами
+    """
+    if not unprofitable_groups:
+        logger.info("✅ Нет убыточных групп для отключения")
+        return {"disabled": 0, "failed": 0, "results": []}
+    
+    logger.info(f"🎯 {'[DRY RUN] ' if dry_run else ''}Начинаем отключение {len(unprofitable_groups)} убыточных групп")
+    
+    disabled_count = 0
+    failed_count = 0
+    results = []
+    
+    for i, group in enumerate(unprofitable_groups, 1):
+        group_id = group.get("id")
+        group_name = group.get("name", "Unknown")
+        spent = group.get("spent", 0)
+        
+        logger.info(f"📋 [{i}/{len(unprofitable_groups)}] Группа {group_id}: {group_name} (потрачено: {spent:.2f}₽)")
+        
+        # Отключаем группу
+        result = disable_ad_group(token, group_id, dry_run)
+        
+        if result["success"]:
+            disabled_count += 1
+            logger.info(f"✅ Группа {group_id} {'[DRY RUN] ' if dry_run else ''}отключена")
+        else:
+            failed_count += 1
+            logger.error(f"❌ Не удалось отключить группу {group_id}: {result.get('error', 'Unknown error')}")
+        
+        results.append({
+            "group_id": group_id,
+            "group_name": group_name,
+            "spent": spent,
+            "success": result["success"],
+            "error": result.get("error") if not result["success"] else None
+        })
+        
+        # Пауза между запросами для соблюдения rate limits
+        if i < len(unprofitable_groups):  # Не делаем паузу после последней группы
+            time.sleep(SLEEP_BETWEEN_CALLS)
+    
+    logger.info("="*80)
+    logger.info(f"🎯 {'[DRY RUN] ' if dry_run else ''}Итоги отключения групп:")
+    logger.info(f"✅ {'Было бы отключено' if dry_run else 'Отключено'}: {disabled_count}")
+    logger.info(f"❌ Ошибок: {failed_count}")
+    logger.info(f"📊 Всего обработано: {len(unprofitable_groups)}")
+    logger.info("="*80)
+    
+    return {
+        "disabled": disabled_count,
+        "failed": failed_count,
+        "total": len(unprofitable_groups),
+        "results": results,
+        "dry_run": dry_run
+    }
+
 # ===================== ОСНОВНАЯ ЛОГИКА =====================
 
 def main():
@@ -591,6 +713,34 @@ def main():
             logger.info(f"🔴 Убыточные группы сохранены в {unprofitable_file} ({len(over_limit)} шт.)")
             logger.info(f"💸 Общий размер потерянного бюджета: {sum(group.get('spent', 0) for group in over_limit):.2f}₽")
         
+        # Отключаем убыточные группы
+        disable_results = None
+        if over_limit:
+            logger.info("\n" + "="*80)
+            logger.info("🔄 ОТКЛЮЧЕНИЕ УБЫТОЧНЫХ ГРУПП:")
+            logger.info("="*80)
+            
+            disable_results = disable_unprofitable_groups(ACCESS_TOKEN, over_limit, DRY_RUN)
+            
+            # Сохраняем результаты отключения
+            if disable_results:
+                disable_file = os.path.join("data", "vk_disable_results.json")
+                disable_data = {
+                    "disable_date": datetime.now().isoformat(),
+                    "dry_run": DRY_RUN,
+                    "summary": {
+                        "total_groups": disable_results["total"],
+                        "disabled_groups": disable_results["disabled"],
+                        "failed_groups": disable_results["failed"]
+                    },
+                    "results": disable_results["results"]
+                }
+                
+                with open(disable_file, "w", encoding="utf-8") as f:
+                    json.dump(disable_data, f, ensure_ascii=False, indent=2)
+                
+                logger.info(f"💾 Результаты отключения сохранены в {disable_file}")
+        
         logger.info("🎉 Анализ завершен!")
         
         # Отправляем финальную статистику в Telegram
@@ -620,6 +770,11 @@ def main():
                 send_telegram_message(config, message)
                 # Небольшая пауза между сообщениями чтобы не спамить
                 time.sleep(1)
+        
+        # Отправляем результаты отключения групп
+        if disable_results:
+            disable_message = format_telegram_disable_results(disable_results)
+            send_telegram_message(config, disable_message)
 
     except Exception as e:
         logger.error(f"💥 КРИТИЧЕСКАЯ ОШИБКА: {e}")
