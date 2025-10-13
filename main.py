@@ -60,38 +60,54 @@ def format_telegram_statistics(unprofitable_count, effective_count, testing_coun
     return message
 
 def format_telegram_unprofitable_groups(unprofitable_groups):
-    """Форматирует список убыточных групп для Telegram"""
+    """Форматирует список убыточных групп для Telegram, разбивая на сообщения по 10 групп"""
     if not unprofitable_groups:
-        return "✅ <b>Убыточных групп не найдено!</b>"
+        return ["✅ <b>Убыточных групп не найдено!</b>"]
     
-    message = f"🔴 <b>Убыточные группы ({len(unprofitable_groups)} шт.):</b>\n\n"
+    messages = []
+    groups_per_message = 10
+    total_groups = len(unprofitable_groups)
     
-    for i, group in enumerate(unprofitable_groups[:10], 1):  # Показываем максимум 10 групп
-        group_id = group.get("id", "N/A")
-        group_name = group.get("name", "Без названия")[:30]  # Ограничиваем длину
-        spent = group.get("spent", 0)
+    # Разбиваем группы на части по 10 штук
+    for batch_start in range(0, total_groups, groups_per_message):
+        batch_end = min(batch_start + groups_per_message, total_groups)
+        batch_groups = unprofitable_groups[batch_start:batch_end]
         
-        message += f"{i}. 🆔 <code>{group_id}</code> {group_name}\n"
-        message += f"   💸 Потрачено: <b>{spent:.2f}₽</b>\n\n"
+        batch_num = (batch_start // groups_per_message) + 1
+        total_batches = (total_groups + groups_per_message - 1) // groups_per_message
+        
+        # Заголовок для каждого сообщения
+        if total_batches > 1:
+            message = f"🔴 <b>Убыточные группы (часть {batch_num}/{total_batches}):</b>\n\n"
+        else:
+            message = f"🔴 <b>Убыточные группы ({total_groups} шт.):</b>\n\n"
+        
+        # Добавляем группы в сообщение
+        for i, group in enumerate(batch_groups, batch_start + 1):
+            group_id = group.get("id", "N/A")
+            group_name = group.get("name", "Без названия")[:30]  # Ограничиваем длину
+            spent = group.get("spent", 0)
+            
+            message += f"{i}. 🆔 <code>{group_id}</code> {group_name}\n"
+            message += f"   💸 Потрачено: <b>{spent:.2f}₽</b>\n\n"
+        
+        messages.append(message)
     
-    if len(unprofitable_groups) > 10:
-        message += f"... и еще {len(unprofitable_groups) - 10} групп(ы)"
-    
-    return message
+    return messages
 
 # ===================== НАСТРОЙКИ =====================
 
 def load_config():
-    """Загружает конфигурацию из data/config.json"""
-    config_path = os.path.join("data", "config.json")
+    """Загружает конфигурацию из config.json"""
+    config_path = "config.json"
     try:
         with open(config_path, "r", encoding="utf-8") as f:
             config = json.load(f)
         return config
     except FileNotFoundError:
-        raise FileNotFoundError("❌ Файл data/config.json не найден! Создайте файл с настройками API.")
+        raise FileNotFoundError("❌ Файл config.json не найден! Создайте файл с настройками API.")
     except json.JSONDecodeError as e:
-        raise ValueError(f"❌ Ошибка в data/config.json: {e}")
+        raise ValueError(f"❌ Ошибка в config.json: {e}")
 
 # Загружаем конфигурацию
 config = load_config()
@@ -599,8 +615,11 @@ def main():
         
         # Отправляем список убыточных групп, если они есть
         if over_limit:
-            unprofitable_message = format_telegram_unprofitable_groups(over_limit)
-            send_telegram_message(config, unprofitable_message)
+            unprofitable_messages = format_telegram_unprofitable_groups(over_limit)
+            for message in unprofitable_messages:
+                send_telegram_message(config, message)
+                # Небольшая пауза между сообщениями чтобы не спамить
+                time.sleep(1)
 
     except Exception as e:
         logger.error(f"💥 КРИТИЧЕСКАЯ ОШИБКА: {e}")
