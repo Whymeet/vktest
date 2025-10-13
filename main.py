@@ -5,6 +5,80 @@ import logging
 import os
 from datetime import date, timedelta, datetime
 
+# ===================== TELEGRAM ФУНКЦИИ =====================
+
+def send_telegram_message(config, message):
+    """Отправляет сообщение в Telegram"""
+    telegram_config = config.get("telegram", {})
+    
+    if not telegram_config.get("enabled", False):
+        logging.info("📱 Telegram уведомления отключены")
+        return False
+        
+    bot_token = telegram_config.get("bot_token")
+    chat_id = telegram_config.get("chat_id")
+    
+    if not bot_token or not chat_id:
+        logging.warning("⚠️ Telegram не настроен: отсутствует bot_token или chat_id")
+        return False
+    
+    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    data = {
+        "chat_id": chat_id,
+        "text": message,
+        "parse_mode": "HTML"
+    }
+    
+    try:
+        response = requests.post(url, json=data, timeout=10)
+        if response.status_code == 200:
+            logging.info("📱 Сообщение отправлено в Telegram")
+            return True
+        else:
+            logging.error(f"❌ Ошибка отправки в Telegram: {response.status_code} - {response.text}")
+            return False
+    except Exception as e:
+        logging.error(f"❌ Исключение при отправке в Telegram: {str(e)}")
+        return False
+
+def format_telegram_statistics(unprofitable_count, effective_count, testing_count, 
+                              total_count, total_spent, total_goals, avg_cost, lookback_days):
+    """Форматирует статистику для Telegram"""
+    message = f"""📊 <b>VK Ads - Анализ групп завершен</b>
+
+🔴 Убыточных групп (≥40₽ без результата): <b>{unprofitable_count}</b>
+🟢 Эффективных групп (с VK целями): <b>{effective_count}</b>
+⚠️ Тестируемых/неактивных групп: <b>{testing_count}</b>
+📈 Всего активных групп: <b>{total_count}</b>
+
+💰 Общие расходы за {lookback_days} дн.: <b>{total_spent:.2f}₽</b>
+🎯 Общие VK цели за {lookback_days} дн.: <b>{total_goals}</b>
+💡 Средняя стоимость VK цели: <b>{avg_cost:.2f}₽</b>
+
+⏰ {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"""
+    
+    return message
+
+def format_telegram_unprofitable_groups(unprofitable_groups):
+    """Форматирует список убыточных групп для Telegram"""
+    if not unprofitable_groups:
+        return "✅ <b>Убыточных групп не найдено!</b>"
+    
+    message = f"🔴 <b>Убыточные группы ({len(unprofitable_groups)} шт.):</b>\n\n"
+    
+    for i, group in enumerate(unprofitable_groups[:10], 1):  # Показываем максимум 10 групп
+        group_id = group.get("id", "N/A")
+        group_name = group.get("name", "Без названия")[:30]  # Ограничиваем длину
+        spent = group.get("spent", 0)
+        
+        message += f"{i}. 🆔 <code>{group_id}</code> {group_name}\n"
+        message += f"   💸 Потрачено: <b>{spent:.2f}₽</b>\n\n"
+    
+    if len(unprofitable_groups) > 10:
+        message += f"... и еще {len(unprofitable_groups) - 10} групп(ы)"
+    
+    return message
+
 # ===================== НАСТРОЙКИ =====================
 
 def load_config():
@@ -315,6 +389,14 @@ def aggregate_stats_by_group(items):
 
 def main():
     logger.info("🚀 Запуск VK Ads Manager — анализ активных групп и их расходов")
+    
+    # Загружаем конфигурацию
+    config = load_config()
+    
+    # Отправляем уведомление о начале анализа
+    start_message = f"🚀 <b>VK Ads - Начало анализа</b>\n\n📅 Период: {LOOKBACK_DAYS} дн.\n💰 Лимит: {SPENT_LIMIT_RUB}₽\n⏰ {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
+    send_telegram_message(config, start_message)
+    
     try:
         # Определяем период анализа
         today = date.today()
@@ -494,10 +576,44 @@ def main():
             logger.info(f"💸 Общий размер потерянного бюджета: {sum(group.get('spent', 0) for group in over_limit):.2f}₽")
         
         logger.info("🎉 Анализ завершен!")
+        
+        # Отправляем финальную статистику в Telegram
+        if under_limit:
+            under_limit_spent = sum(g["spent"] for g in under_limit)
+            under_limit_vk_goals = sum(g["vk_goals"] for g in under_limit)
+            avg_cost_per_goal = under_limit_spent / under_limit_vk_goals if under_limit_vk_goals > 0 else 0
+        else:
+            avg_cost_per_goal = 0
+            
+        stats_message = format_telegram_statistics(
+            unprofitable_count=len(over_limit),
+            effective_count=len(under_limit),
+            testing_count=len(no_activity),
+            total_count=len(groups),
+            total_spent=total_spent,
+            total_goals=int(total_vk_goals),
+            avg_cost=avg_cost_per_goal,
+            lookback_days=LOOKBACK_DAYS
+        )
+        send_telegram_message(config, stats_message)
+        
+        # Отправляем список убыточных групп, если они есть
+        if over_limit:
+            unprofitable_message = format_telegram_unprofitable_groups(over_limit)
+            send_telegram_message(config, unprofitable_message)
 
     except Exception as e:
         logger.error(f"💥 КРИТИЧЕСКАЯ ОШИБКА: {e}")
         logger.exception("Детали ошибки:")
+        
+        # Отправляем уведомление об ошибке в Telegram
+        try:
+            config = load_config()
+            error_message = f"❌ <b>VK Ads - ОШИБКА</b>\n\n💥 {str(e)}\n⏰ {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
+            send_telegram_message(config, error_message)
+        except:
+            pass  # Игнорируем ошибки отправки уведомлений об ошибках
+        
         raise
 
 

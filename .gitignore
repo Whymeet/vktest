@@ -31,5 +31,6 @@ venv/
 *~
 
 # OS
+data/
 .DS_Store
 Thumbs.db
