@@ -9,6 +9,7 @@ import time
 import json
 import subprocess
 import logging
+import random
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -159,38 +160,74 @@ class VKAdsScheduler:
         
         return next_time
     
-    def run_main_script(self):
-        """Запуск основного скрипта анализа"""
+    def run_main_script(self, extra_days=0, run_type="основной"):
+        """Запуск основного скрипта анализа с возможностью добавить дни"""
         if not self.main_script_path.exists():
             self.logger.error(f"❌ Основной скрипт не найден: {self.main_script_path}")
             return False
             
-        self.logger.info("🚀 Запуск анализа VK Ads Manager...")
+        self.logger.info(f"🚀 Запуск {run_type} анализа VK Ads Manager" + 
+                        (f" (+{extra_days} дней)" if extra_days > 0 else "..."))
         
         try:
+            # Подготовка переменных окружения
+            env = os.environ.copy()
+            if extra_days > 0:
+                env['VK_EXTRA_LOOKBACK_DAYS'] = str(extra_days)
+            
             # Запускаем основной скрипт
             result = subprocess.run(
                 [sys.executable, str(self.main_script_path)],
                 cwd=str(self.main_script_path.parent),
                 capture_output=True,
                 text=True,
-                timeout=1800  # 30 минут таймаут
+                timeout=1800,  # 30 минут таймаут
+                env=env
             )
             
             if result.returncode == 0:
-                self.logger.info("✅ Анализ завершен успешно")
+                self.logger.info(f"✅ {run_type.capitalize()} анализ завершен успешно")
                 self.logger.debug(f"Вывод: {result.stdout}")
                 return True
             else:
-                self.logger.error(f"❌ Анализ завершился с ошибкой (код {result.returncode})")
+                self.logger.error(f"❌ {run_type.capitalize()} анализ завершился с ошибкой (код {result.returncode})")
                 self.logger.error(f"Ошибка: {result.stderr}")
                 return False
                 
         except subprocess.TimeoutExpired:
-            self.logger.error("❌ Анализ превысил таймаут (30 минут)")
+            self.logger.error(f"❌ {run_type.capitalize()} анализ превысил таймаут (30 минут)")
             return False
         except Exception as e:
-            self.logger.error(f"❌ Ошибка запуска анализа: {e}")
+            self.logger.error(f"❌ Ошибка запуска {run_type} анализа: {e}")
+            return False
+    
+    def run_double_analysis(self):
+        """Запуск двойного анализа: основной + со случайной прибавкой дней"""
+        # 1-й проход: обычный анализ
+        self.logger.info("🎯 ПРОХОД 1/2: Стандартный анализ")
+        success1 = self.run_main_script(extra_days=0, run_type="основной")
+        
+        if not success1:
+            self.logger.warning("⚠️ Первый проход неудачен, пропускаем второй проход")
+            return False
+        
+        # Пауза между проходами
+        self.logger.info("⏳ Пауза 1 минута между проходами...")
+        time.sleep(60)
+        
+        # 2-й проход: с случайной прибавкой дней
+        extra_days = random.randint(5, 30)
+        self.logger.info(f"🎯 ПРОХОД 2/2: Расширенный анализ (+{extra_days} дней)")
+        success2 = self.run_main_script(extra_days=extra_days, run_type="расширенный")
+        
+        if success1 and success2:
+            self.logger.info("✅ Оба прохода завершены успешно!")
+            return True
+        elif success1:
+            self.logger.warning("⚠️ Основной анализ успешен, расширенный неудачен")
+            return True  # Считаем успехом если хотя бы основной прошел
+        else:
+            self.logger.error("❌ Оба прохода неудачны")
             return False
     
     def run_with_retries(self):
@@ -208,7 +245,7 @@ class VKAdsScheduler:
                 self.logger.info(f"🔄 Попытка {attempt + 1}/{max_retries + 1} через {retry_delay} минут...")
                 time.sleep(retry_delay * 60)
             
-            success = self.run_main_script()
+            success = self.run_double_analysis()
             if success:
                 if attempt > 0:
                     self.logger.info(f"✅ Анализ успешен с попытки {attempt + 1}")

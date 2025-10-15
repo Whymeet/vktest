@@ -4,6 +4,7 @@ import json
 import time
 import logging
 import os
+import traceback
 from datetime import date, timedelta, datetime
 
 # Импортируем функции Telegram
@@ -11,6 +12,13 @@ from telegram_notify import send_telegram_message, format_telegram_account_stati
 
 # ===================== TELEGRAM ФУНКЦИИ =====================
 
+def send_telegram_error(error_message):
+    """Отправляет сообщение об ошибке в Telegram"""
+    try:
+        config = load_config()
+        send_telegram_message(config, f"🚨 <b>VK Ads - Ошибка</b>\n\n{error_message}")
+    except Exception as e:
+        print(f"Не удалось отправить ошибку в Telegram: {e}")
 
 # ===================== НАСТРОЙКИ =====================
 
@@ -35,6 +43,11 @@ ACCOUNTS = config["vk_ads_api"]["accounts"]
 
 # Настройки анализа
 LOOKBACK_DAYS = config["analysis_settings"]["lookback_days"]           # окно в днях
+# Проверяем переменную окружения для дополнительных дней (используется планировщиком)
+extra_days = int(os.environ.get('VK_EXTRA_LOOKBACK_DAYS', '0'))
+if extra_days > 0:
+    LOOKBACK_DAYS += extra_days
+    
 SPENT_LIMIT_RUB = config["analysis_settings"]["spent_limit_rub"]       # порог расходов в рублях
 DRY_RUN = config["analysis_settings"]["dry_run"]                       # True — только вывод без фактического отключения
 SLEEP_BETWEEN_CALLS = config["analysis_settings"]["sleep_between_calls"] # Анти-RateLimit
@@ -358,6 +371,82 @@ def disable_ad_group(token: str, base_url: str, group_id: int, dry_run: bool = T
         logger.error(f"❌ Ошибка при отключении группы {group_id}: {error_msg}")
         return {"success": False, "error": error_msg}
 
+def trigger_statistics_refresh(token: str, base_url: str, trigger_config: dict):
+    """
+    Запускает триггер для обновления статистики VK Ads:
+    1. Включает специальную группу
+    2. Ждет указанное время
+    3. Отключает группу обратно
+    
+    Это заставляет VK пересчитать статистику для всех групп в кабинете
+    """
+    if not trigger_config.get("enabled", False):
+        logger.debug("🔧 Триггер обновления статистики отключен")
+        return {"success": True, "skipped": True}
+    
+    group_id = trigger_config.get("group_id")
+    wait_seconds = trigger_config.get("wait_seconds", 20)
+    
+    if not group_id:
+        logger.warning("⚠️ ID группы для триггера не настроен - пропускаем обновление статистики")
+        return {"success": False, "error": "Не настроен group_id"}
+    
+    logger.info(f"🎯 ЗАПУСК ТРИГГЕРА ОБНОВЛЕНИЯ СТАТИСТИКИ VK (группа {group_id})")
+    
+    # Включаем группу
+    result1 = toggle_ad_group_status(token, base_url, group_id, "active")
+    if not result1.get("success"):
+        logger.error(f"❌ Не удалось включить триггер группу {group_id}: {result1.get('error')}")
+        return {"success": False, "error": f"Ошибка включения: {result1.get('error')}"}
+    
+    # Ждем
+    logger.info(f"⏳ Ожидание {wait_seconds} сек. для обновления статистики VK...")
+    time.sleep(wait_seconds)
+    
+    # Отключаем группу обратно
+    result2 = toggle_ad_group_status(token, base_url, group_id, "blocked")
+    if not result2.get("success"):
+        logger.error(f"❌ Не удалось отключить триггер группу {group_id}: {result2.get('error')}")
+        return {"success": False, "error": f"Ошибка отключения: {result2.get('error')}"}
+    
+    logger.info(f"✅ Триггер обновления статистики завершен (группа {group_id})")
+    return {"success": True, "group_id": group_id, "wait_seconds": wait_seconds}
+
+def toggle_ad_group_status(token: str, base_url: str, group_id: int, status: str):
+    """
+    Изменяет статус рекламной группы
+    """
+    if status not in ["active", "blocked"]:
+        error_msg = f"Неверный статус '{status}'. Допустимые значения: 'active', 'blocked'"
+        logger.error(f"❌ {error_msg}")
+        return {"success": False, "error": error_msg}
+    
+    url = f"{base_url}/ad_groups/{group_id}.json"
+    data = {"status": status}
+    
+    try:
+        status_emoji = "▶️" if status == "active" else "⏸️"
+        action = "включаем" if status == "active" else "блокируем"
+        logger.info(f"{status_emoji} {action.capitalize()} триггер группу {group_id} (→ {status})")
+        
+        response = requests.post(url, headers=_headers(token), json=data, timeout=20)
+        
+        if response.status_code in (200, 204):
+            logger.info(f"✅ Группа {group_id} успешно изменена на '{status}' (HTTP {response.status_code})")
+            try:
+                resp_json = response.json()
+            except Exception:
+                resp_json = None
+            return {"success": True, "response": resp_json}
+        else:
+            error_msg = f"HTTP {response.status_code}: {response.text}"
+            logger.error(f"❌ Ошибка при изменении статуса группы {group_id}: {error_msg}")
+            return {"success": False, "error": error_msg}
+    except requests.RequestException as e:
+        error_msg = f"Сетевая ошибка: {str(e)}"
+        logger.error(f"❌ Ошибка при изменении статуса группы {group_id}: {error_msg}")
+        return {"success": False, "error": error_msg}
+
 def disable_unprofitable_groups(token: str, base_url: str, unprofitable_groups: list, dry_run: bool = True):
     """
     Отключает все убыточные группы с задержкой между запросами
@@ -426,6 +515,22 @@ def analyze_account(account_name: str, access_token: str, config: dict):
     logger.info("="*100)
     
     try:
+        # Запускаем триггер обновления статистики перед анализом
+        trigger_config = config.get("statistics_trigger", {}).copy()
+        account_trigger_id = config.get("account_trigger_id")
+        
+        if account_trigger_id:
+            trigger_config["group_id"] = account_trigger_id
+            logger.info(f"🎯 Используем индивидуальный триггер для кабинета {account_name}: группа {account_trigger_id}")
+        else:
+            trigger_config["enabled"] = False
+            logger.info(f"⚠️ Для кабинета {account_name} триггер не настроен - пропускаем обновление статистики")
+            
+        trigger_result = trigger_statistics_refresh(access_token, BASE_URL, trigger_config)
+        if not trigger_result.get("success") and not trigger_result.get("skipped"):
+            logger.warning(f"⚠️ Триггер обновления статистики не сработал: {trigger_result.get('error')}")
+            logger.info("🔄 Продолжаем анализ без триггера...")
+        
         # Определяем период анализа
         today = date.today()
         date_from = _iso(today - timedelta(days=LOOKBACK_DAYS))
@@ -594,11 +699,29 @@ def analyze_account(account_name: str, access_token: str, config: dict):
         raise
 
 def main():
+    # Загружаем конфигурацию
+    config = load_config()
+    
+    # Определяем тип анализа
+    extra_days = int(os.environ.get('VK_EXTRA_LOOKBACK_DAYS', '0'))
+    base_lookback = config["analysis_settings"]["lookback_days"]
+    
+    if extra_days > 0:
+        analysis_type = f"🔍 РАСШИРЕННЫЙ АНАЛИЗ (+{extra_days} дней к базовым {base_lookback})"
+        logger.info(analysis_type)
+    else:
+        analysis_type = "📊 СТАНДАРТНЫЙ АНАЛИЗ"
+        logger.info(analysis_type)
+    
     logger.info(" Запуск VK Ads Manager — анализ активных групп для нескольких кабинетов")
     logger.info(f"📋 Найдено кабинетов для анализа: {len(ACCOUNTS)}")
     
-    for account_name in ACCOUNTS.keys():
-        logger.info(f"  • {account_name}")
+    for account_name, account_config in ACCOUNTS.items():
+        if isinstance(account_config, dict):
+            trigger_info = f" (триггер: {account_config.get('trigger', 'не настроен')})" if account_config.get('trigger') else " (без триггера)"
+            logger.info(f"  • {account_name}{trigger_info}")
+        else:
+            logger.info(f"  • {account_name} (старый формат конфига)")
     
     # Загружаем конфигурацию для Telegram
     config = load_config()
@@ -620,21 +743,41 @@ def main():
     config = load_config()
     
     # Отправляем уведомление о начале анализа
-    start_message = f"🚀 <b>VK Ads - Начало анализа</b>\n\n📅 Период: {LOOKBACK_DAYS} дн.\n💰 Лимит: {SPENT_LIMIT_RUB}₽\n⏰ {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
+    analysis_emoji = "🔍" if extra_days > 0 else "📊"
+    analysis_text = f"Расширенный (+{extra_days}д)" if extra_days > 0 else "Стандартный"
+    start_message = f"{analysis_emoji} <b>VK Ads - {analysis_text} анализ</b>\n\n📅 Период: {LOOKBACK_DAYS} дн.\n💰 Лимит: {SPENT_LIMIT_RUB}₽\n⏰ {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
     send_telegram_message(config, start_message)
     
     try:
         # Анализируем каждый кабинет
-        for account_name, access_token in ACCOUNTS.items():
-            account_results = analyze_account(account_name, access_token, config)
-            all_results.append(account_results)
-            
-            # Суммируем статистику
-            total_unprofitable += len(account_results["over_limit"])
-            total_effective += len(account_results["under_limit"])
-            total_testing += len(account_results["no_activity"])
-            total_spent_all += account_results["total_spent"]
-            total_goals_all += account_results["total_vk_goals"]
+        for account_name, account_config in ACCOUNTS.items():
+            try:
+                # Извлекаем API токен из новой структуры
+                access_token = account_config.get("api") if isinstance(account_config, dict) else account_config
+                
+                # Добавляем информацию о триггере в общий конфиг для конкретного кабинета
+                account_full_config = config.copy()
+                if isinstance(account_config, dict) and account_config.get("trigger"):
+                    account_full_config["account_trigger_id"] = account_config["trigger"]
+                else:
+                    account_full_config["account_trigger_id"] = None
+                    
+                account_results = analyze_account(account_name, access_token, account_full_config)
+                all_results.append(account_results)
+                logger.info(f"✅ [{account_name}] Анализ кабинета завершен!")
+                
+                # Суммируем статистику
+                total_unprofitable += len(account_results["over_limit"])
+                total_effective += len(account_results["under_limit"])
+                total_testing += len(account_results["no_activity"])
+                total_spent_all += account_results["total_spent"]
+                total_goals_all += account_results["total_vk_goals"]
+            except Exception as e:
+                logger.error(f"💥 ОШИБКА В КАБИНЕТЕ [{account_name}]: {e}")
+                logger.error("Детали ошибки:")
+                logger.error(traceback.format_exc())
+                send_telegram_error(f"⚠️ Ошибка в кабинете '{account_name}': {e}\n\n📋 Продолжаем анализ остальных кабинетов...")
+                # Не останавливаем выполнение, продолжаем с другими кабинетами
         
         # Сохраняем сводные результаты по всем кабинетам
         logger.info("="*100)
