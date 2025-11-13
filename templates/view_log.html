@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+
+{% block title %}{{ filename }} - Логи{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
+    <h2 style="color: #667eea;">📄 {{ filename }}</h2>
+    <a href="{{ url_for('logs') }}" class="btn btn-secondary">← Назад к списку</a>
+</div>
+
+<div class="card">
+    <pre>{{ content }}</pre>
+</div>
+{% endblock %}
