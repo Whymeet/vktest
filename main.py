@@ -48,7 +48,7 @@ extra_days = int(os.environ.get('VK_EXTRA_LOOKBACK_DAYS', '0'))
 if extra_days > 0:
     LOOKBACK_DAYS += extra_days
     
-SPENT_LIMIT_RUB = config["analysis_settings"]["spent_limit_rub"]       # порог расходов в рублях
+SPENT_LIMIT_RUB = config["analysis_settings"]["spent_limit_rub"]       # порог расходов по умолчанию (если не указан для кабинета)
 DRY_RUN = config["analysis_settings"]["dry_run"]                       # True — только вывод без фактического отключения
 SLEEP_BETWEEN_CALLS = config["analysis_settings"]["sleep_between_calls"] # Анти-RateLimit
 
@@ -531,6 +531,9 @@ def analyze_account(account_name: str, access_token: str, config: dict):
             logger.warning(f"⚠️ Триггер обновления статистики не сработал: {trigger_result.get('error')}")
             logger.info("🔄 Продолжаем анализ без триггера...")
         
+        # Получаем индивидуальный лимит для кабинета или используем глобальный
+        spent_limit = config.get("account_spent_limit", SPENT_LIMIT_RUB)
+        
         # Определяем период анализа
         today = date.today()
         date_from = _iso(today - timedelta(days=LOOKBACK_DAYS))
@@ -538,7 +541,7 @@ def analyze_account(account_name: str, access_token: str, config: dict):
         
         logger.info(f"🏢 Кабинет: {account_name}")
         logger.info(f"📅 Анализируем период: {date_from} — {date_to} ({LOOKBACK_DAYS} дней)")
-        logger.info(f"💰 Лимит расходов: {SPENT_LIMIT_RUB}₽")
+        logger.info(f"💰 Лимит расходов: {spent_limit}₽")
         
         # Загружаем активные группы (фильтрация на сервере)
         groups = get_ad_groups_active(access_token, BASE_URL)
@@ -583,14 +586,14 @@ def analyze_account(account_name: str, access_token: str, config: dict):
             vk_goals = stats.get("vk_goals", 0.0)
             
             # Категorizируем группы по новой логике
-            if spent >= SPENT_LIMIT_RUB and vk_goals == 0:
-                # Убыточная группа: потратила >= 40₽ но не дала результата
+            if spent >= spent_limit and vk_goals == 0:
+                # Убыточная группа: потратила >= лимита но не дала результата
                 over_limit.append({
                     "id": gid, "name": name, "spent": spent, "clicks": clicks, "shows": shows, "vk_goals": vk_goals,
                     "status": status, "delivery": delivery_status, "ad_plan_id": ad_plan_id, "account": account_name
                 })
                 logger.info(f"🔴 [{account_name}] УБЫТОЧНАЯ ГРУППА: [{gid}] {name}")
-                logger.info(f"    💰 Потрачено: {spent:.2f}₽ (>={SPENT_LIMIT_RUB}₽) без результата")
+                logger.info(f"    💰 Потрачено: {spent:.2f}₽ (>={spent_limit}₽) без результата")
                 
             elif vk_goals >= 1:
                 # Эффективная группа: дала результат (неважно сколько потратила)
@@ -602,13 +605,13 @@ def analyze_account(account_name: str, access_token: str, config: dict):
                 logger.info(f"    💰 Потрачено: {spent:.2f}₽ → {int(vk_goals)} VK целей ✅")
                 
             elif spent > 0:
-                # Группа с тратами но без результата (< 40₽)
+                # Группа с тратами но без результата (< лимита)
                 no_activity.append({
                     "id": gid, "name": name, "spent": spent, "clicks": clicks, "shows": shows, "vk_goals": vk_goals,
                     "status": status, "delivery": delivery_status, "ad_plan_id": ad_plan_id, "account": account_name
                 })
                 logger.info(f"⚠️ [{account_name}] ТЕСТИРУЕТСЯ: [{gid}] {name}")
-                logger.info(f"    💰 Потрачено: {spent:.2f}₽ (< {SPENT_LIMIT_RUB}₽) без результата пока")
+                logger.info(f"    💰 Потрачено: {spent:.2f}₽ (< {spent_limit}₽) без результата пока")
                 
             else:
                 # Группы без трат
@@ -621,7 +624,7 @@ def analyze_account(account_name: str, access_token: str, config: dict):
         logger.info("="*80)
         logger.info(f"📈 ИТОГОВАЯ СТАТИСТИКА ПО КАБИНЕТУ: {account_name}")
         logger.info("="*80)
-        logger.info(f"🔴 Убыточных групп (>={SPENT_LIMIT_RUB}₽ без результата): {len(over_limit)}")
+        logger.info(f"🔴 Убыточных групп (>={spent_limit}₽ без результата): {len(over_limit)}")
         logger.info(f"🟢 Эффективных групп (с VK целями): {len(under_limit)}")
         logger.info(f"⚠️ Тестируемых/неактивных групп: {len(no_activity)}")
         logger.info(f"📊 Всего активных групп: {len(groups)}")
@@ -688,6 +691,7 @@ def analyze_account(account_name: str, access_token: str, config: dict):
             "no_activity": no_activity,
             "total_spent": total_spent,
             "total_vk_goals": int(total_vk_goals),
+            "spent_limit": spent_limit,
             "disable_results": disable_results,
             "date_from": date_from,
             "date_to": date_to
@@ -728,7 +732,14 @@ def main():
     
     # Отправляем уведомление о начале анализа
     accounts_list = ", ".join(ACCOUNTS.keys())
-    start_message = f"🚀 <b>VK Ads - Начало анализа</b>\n\n🏢 Кабинеты: {accounts_list}\n📅 Период: {LOOKBACK_DAYS} дн.\n💰 Лимит: {SPENT_LIMIT_RUB}₽\n⏰ {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
+    # Формируем информацию о лимитах для Telegram
+    limits_info = []
+    for acc_name, acc_cfg in ACCOUNTS.items():
+        if isinstance(acc_cfg, dict) and "spent_limit_rub" in acc_cfg:
+            limits_info.append(f"{acc_name}: {acc_cfg['spent_limit_rub']}₽")
+    limits_text = "\n".join(limits_info) if limits_info else f"{SPENT_LIMIT_RUB}₽ (общий)"
+    
+    start_message = f"🚀 <b>VK Ads - Начало анализа</b>\n\n🏢 Кабинеты: {accounts_list}\n📅 Период: {LOOKBACK_DAYS} дн.\n💰 Лимиты:\n{limits_text}\n⏰ {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
     send_telegram_message(config, start_message)
     
     # Результаты по всем кабинетам
@@ -745,7 +756,15 @@ def main():
     # Отправляем уведомление о начале анализа
     analysis_emoji = "🔍" if extra_days > 0 else "📊"
     analysis_text = f"Расширенный (+{extra_days}д)" if extra_days > 0 else "Стандартный"
-    start_message = f"{analysis_emoji} <b>VK Ads - {analysis_text} анализ</b>\n\n📅 Период: {LOOKBACK_DAYS} дн.\n💰 Лимит: {SPENT_LIMIT_RUB}₽\n⏰ {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
+    
+    # Формируем информацию о лимитах для Telegram
+    limits_info = []
+    for acc_name, acc_cfg in ACCOUNTS.items():
+        if isinstance(acc_cfg, dict) and "spent_limit_rub" in acc_cfg:
+            limits_info.append(f"{acc_name}: {acc_cfg['spent_limit_rub']}₽")
+    limits_text = "\n".join(limits_info) if limits_info else f"{SPENT_LIMIT_RUB}₽ (общий)"
+    
+    start_message = f"{analysis_emoji} <b>VK Ads - {analysis_text} анализ</b>\n\n📅 Период: {LOOKBACK_DAYS} дн.\n💰 Лимиты:\n{limits_text}\n⏰ {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
     send_telegram_message(config, start_message)
     
     try:
@@ -755,10 +774,17 @@ def main():
                 # Извлекаем API токен из новой структуры
                 access_token = account_config.get("api") if isinstance(account_config, dict) else account_config
                 
-                # Добавляем информацию о триггере в общий конфиг для конкретного кабинета
+                # Добавляем информацию о триггере и лимите в общий конфиг для конкретного кабинета
                 account_full_config = config.copy()
-                if isinstance(account_config, dict) and account_config.get("trigger"):
-                    account_full_config["account_trigger_id"] = account_config["trigger"]
+                if isinstance(account_config, dict):
+                    if account_config.get("trigger"):
+                        account_full_config["account_trigger_id"] = account_config["trigger"]
+                    else:
+                        account_full_config["account_trigger_id"] = None
+                    
+                    # Добавляем индивидуальный лимит для кабинета, если указан
+                    if "spent_limit_rub" in account_config:
+                        account_full_config["account_spent_limit"] = account_config["spent_limit_rub"]
                 else:
                     account_full_config["account_trigger_id"] = None
                     
@@ -799,7 +825,7 @@ def main():
         summary_results = {
             "analysis_date": datetime.now().isoformat(),
             "period": f"{all_results[0]['date_from']} to {all_results[0]['date_to']}",
-            "spent_limit_rub": SPENT_LIMIT_RUB,
+            "spent_limit_rub_default": SPENT_LIMIT_RUB,
             "total_accounts": len(ACCOUNTS),
             "summary": {
                 "total_unprofitable_groups": total_unprofitable,
@@ -822,7 +848,8 @@ def main():
                 "effective_groups": len(result["under_limit"]),
                 "testing_groups": len(result["no_activity"]),
                 "spent": result["total_spent"],
-                "vk_goals": result["total_vk_goals"]
+                "vk_goals": result["total_vk_goals"],
+                "spent_limit_rub": result.get("spent_limit", SPENT_LIMIT_RUB)
             }
             all_unprofitable.extend(result["over_limit"])
         
@@ -837,10 +864,19 @@ def main():
         
         # Сохраняем все убыточные группы
         if all_unprofitable:
+            # Собираем информацию о лимитах для каждого кабинета
+            account_limits = {}
+            for acc_name, acc_cfg in ACCOUNTS.items():
+                if isinstance(acc_cfg, dict) and "spent_limit_rub" in acc_cfg:
+                    account_limits[acc_name] = acc_cfg["spent_limit_rub"]
+                else:
+                    account_limits[acc_name] = SPENT_LIMIT_RUB
+            
             unprofitable_data = {
                 "analysis_date": datetime.now().isoformat(),
                 "period": f"{all_results[0]['date_from']} to {all_results[0]['date_to']}",
-                "spent_limit_rub": SPENT_LIMIT_RUB,
+                "spent_limits_by_account": account_limits,
+                "spent_limit_rub_default": SPENT_LIMIT_RUB,
                 "criteria": "spent >= limit AND vk_goals = 0",
                 "total_accounts": len(ACCOUNTS),
                 "total_unprofitable_groups": len(all_unprofitable),
