@@ -265,6 +265,7 @@
                 <a href="{{ url_for('accounts') }}" {% if request.endpoint in ['accounts', 'edit_account'] %}class="active"{% endif %}>🏢 Кабинеты</a>
                 <a href="{{ url_for('settings') }}" {% if request.endpoint == 'settings' %}class="active"{% endif %}>⚙️ Настройки</a>
                 <a href="{{ url_for('control') }}" {% if request.endpoint == 'control' %}class="active"{% endif %}>🎮 Управление</a>
+                <a href="{{ url_for('analytics') }}" {% if request.endpoint == 'analytics' %}class="active"{% endif %}>📈 Аналитика</a>
                 <a href="{{ url_for('logs') }}" {% if request.endpoint in ['logs', 'view_log'] %}class="active"{% endif %}>📝 Логи</a>
             </nav>
         </div>

@@ -1,0 +1,283 @@
+{% extends "base.html" %}
+
+{% block title %}Аналитика - VK Ads Manager{% endblock %}
+
+{% block content %}
+<h2 style="color: #667eea; margin-bottom: 30px;">📈 Аналитика последнего анализа</h2>
+
+{% if not stats %}
+    <div class="card">
+        <p style="text-align: center; color: #666; padding: 40px;">
+            📭 Логи анализа не найдены. Запустите анализ для получения статистики.
+        </p>
+        <div style="text-align: center;">
+            <a href="{{ url_for('control') }}" class="btn btn-primary">🚀 Перейти к управлению</a>
+        </div>
+    </div>
+{% else %}
+    <!-- Информация об источнике данных -->
+    <div class="alert alert-success" style="margin-bottom: 20px;">
+        📄 Данные из лога: <code>{{ log_filename }}</code>
+    </div>
+
+    <!-- Общая статистика -->
+    <div class="grid">
+        <div class="stat-card" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+            <h2>{{ stats.total_unprofitable }}</h2>
+            <p>Убыточных групп</p>
+        </div>
+        <div class="stat-card" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+            <h2>{{ stats.total_effective }}</h2>
+            <p>Эффективных групп</p>
+        </div>
+        <div class="stat-card" style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);">
+            <h2>{{ stats.total_testing }}</h2>
+            <p>Тестируемых групп</p>
+        </div>
+        <div class="stat-card" style="background: linear-gradient(135deg, #30cfd0 0%, #330867 100%);">
+            <h2>{{ "%.2f"|format(stats.total_spent) }}₽</h2>
+            <p>Общие расходы</p>
+        </div>
+    </div>
+
+    <!-- Отключенные группы -->
+    <div class="card">
+        <h3>🔴 Отключенные убыточные группы ({{ stats.disabled_groups|length }})</h3>
+        {% if stats.disabled_groups %}
+            <p style="margin-bottom: 15px;">
+                <strong>Всего потрачено впустую:</strong> 
+                {{ "%.2f"|format(stats.disabled_groups|sum(attribute='spent')) }}₽
+            </p>
+            
+            <!-- Группируем по кабинетам -->
+            {% set disabled_by_account = {} %}
+            {% for group in stats.disabled_groups %}
+                {% if group.account not in disabled_by_account %}
+                    {% set _ = disabled_by_account.update({group.account: []}) %}
+                {% endif %}
+                {% set _ = disabled_by_account[group.account].append(group) %}
+            {% endfor %}
+            
+            {% for account_name, groups in disabled_by_account.items() %}
+                <div style="background: #fff5f5; padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #dc3545;">
+                    <h4 style="color: #dc3545; margin-bottom: 10px;">
+                        🏢 {{ account_name }} 
+                        <span style="font-weight: normal; font-size: 14px;">({{ groups|length }} групп, {{ "%.2f"|format(groups|sum(attribute='spent')) }}₽ впустую)</span>
+                    </h4>
+                    <table style="margin: 0;">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Название группы</th>
+                                <th>Потрачено (₽)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for group in groups|sort(attribute='spent', reverse=True) %}
+                            <tr>
+                                <td><code>{{ group.id }}</code></td>
+                                <td>{{ group.name }}</td>
+                                <td><strong style="color: #dc3545;">{{ "%.2f"|format(group.spent) }}₽</strong></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% endfor %}
+        {% else %}
+            <p style="text-align: center; color: #666; padding: 20px;">
+                ✅ Нет отключенных групп (возможно, включен режим DRY RUN)
+            </p>
+        {% endif %}
+    </div>
+
+    <!-- Эффективные группы (с результатами) -->
+    <div class="card">
+        <h3>🟢 Эффективные группы с результатами ({{ stats.effective_groups|length }})</h3>
+        {% if stats.effective_groups %}
+            <p style="margin-bottom: 15px;">
+                <strong>Всего потрачено:</strong> {{ "%.2f"|format(stats.effective_groups|sum(attribute='spent')) }}₽<br>
+                <strong>Всего целей:</strong> {{ stats.effective_groups|sum(attribute='goals') }}<br>
+                <strong>Средняя цена цели:</strong> 
+                {% set total_spent = stats.effective_groups|sum(attribute='spent') %}
+                {% set total_goals = stats.effective_groups|sum(attribute='goals') %}
+                {% if total_goals > 0 %}
+                    {{ "%.2f"|format(total_spent / total_goals) }}₽
+                {% else %}
+                    N/A
+                {% endif %}
+            </p>
+            
+            <!-- Группируем по кабинетам -->
+            {% set effective_by_account = {} %}
+            {% for group in stats.effective_groups %}
+                {% if group.account not in effective_by_account %}
+                    {% set _ = effective_by_account.update({group.account: []}) %}
+                {% endif %}
+                {% set _ = effective_by_account[group.account].append(group) %}
+            {% endfor %}
+            
+            {% for account_name, groups in effective_by_account.items() %}
+                {% set account_spent = groups|sum(attribute='spent') %}
+                {% set account_goals = groups|sum(attribute='goals') %}
+                <div style="background: #f0fdf4; padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #28a745;">
+                    <h4 style="color: #28a745; margin-bottom: 10px;">
+                        🏢 {{ account_name }} 
+                        <span style="font-weight: normal; font-size: 14px;">
+                            ({{ groups|length }} групп, {{ "%.2f"|format(account_spent) }}₽ → {{ account_goals }} целей, 
+                            средняя цена: {{ "%.2f"|format(account_spent / account_goals) if account_goals > 0 else 'N/A' }}₽)
+                        </span>
+                    </h4>
+                    <table style="margin: 0;">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Название группы</th>
+                                <th>Потрачено (₽)</th>
+                                <th>Целей</th>
+                                <th>Цена цели (₽)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for group in groups|sort(attribute='goals', reverse=True) %}
+                            <tr>
+                                <td><code>{{ group.id }}</code></td>
+                                <td>{{ group.name }}</td>
+                                <td>{{ "%.2f"|format(group.spent) }}₽</td>
+                                <td><strong style="color: #28a745;">{{ group.goals }}</strong></td>
+                                <td>
+                                    {% if group.goals > 0 %}
+                                        {{ "%.2f"|format(group.spent / group.goals) }}₽
+                                    {% else %}
+                                        N/A
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% endfor %}
+        {% else %}
+            <p style="text-align: center; color: #666; padding: 20px;">
+                📭 Нет эффективных групп
+            </p>
+        {% endif %}
+    </div>
+
+    <!-- Тестируемые группы (без результата, но в рамках лимита) -->
+    <div class="card">
+        <h3>⚠️ Тестируемые группы (без результата) ({{ stats.testing_groups|length }})</h3>
+        {% if stats.testing_groups %}
+            <p style="margin-bottom: 15px;">
+                <strong>Всего потрачено:</strong> {{ "%.2f"|format(stats.testing_groups|sum(attribute='spent')) }}₽
+            </p>
+            
+            <!-- Группируем по кабинетам -->
+            {% set testing_by_account = {} %}
+            {% for group in stats.testing_groups %}
+                {% if group.account not in testing_by_account %}
+                    {% set _ = testing_by_account.update({group.account: []}) %}
+                {% endif %}
+                {% set _ = testing_by_account[group.account].append(group) %}
+            {% endfor %}
+            
+            {% for account_name, groups in testing_by_account.items() %}
+                <div style="background: #fffbeb; padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #ffc107;">
+                    <h4 style="color: #f59e0b; margin-bottom: 10px;">
+                        🏢 {{ account_name }} 
+                        <span style="font-weight: normal; font-size: 14px;">({{ groups|length }} групп, {{ "%.2f"|format(groups|sum(attribute='spent')) }}₽)</span>
+                    </h4>
+                    <table style="margin: 0;">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Название группы</th>
+                                <th>Потрачено (₽)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for group in groups|sort(attribute='spent', reverse=True) %}
+                            <tr>
+                                <td><code>{{ group.id }}</code></td>
+                                <td>{{ group.name }}</td>
+                                <td>{{ "%.2f"|format(group.spent) }}₽</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% endfor %}
+        {% else %}
+            <p style="text-align: center; color: #666; padding: 20px;">
+                📭 Нет тестируемых групп
+            </p>
+        {% endif %}
+    </div>
+
+    <!-- Статистика по кабинетам -->
+    <div class="card">
+        <h3>🏢 Статистика по кабинетам</h3>
+        {% for account_name, account_data in stats.accounts.items() %}
+            <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #667eea;">
+                <h4 style="color: #667eea; margin-bottom: 15px;">{{ account_name }}</h4>
+                
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 15px;">
+                    <div>
+                        <strong>Лимит расходов:</strong><br>
+                        <span style="font-size: 18px; color: #667eea;">{{ "%.2f"|format(account_data.limit) }}₽</span>
+                    </div>
+                    <div>
+                        <strong>Всего групп:</strong><br>
+                        <span style="font-size: 18px;">{{ account_data.total_groups }}</span>
+                    </div>
+                    <div>
+                        <strong>Убыточных:</strong><br>
+                        <span style="font-size: 18px; color: #dc3545;">{{ account_data.unprofitable }}</span>
+                    </div>
+                    <div>
+                        <strong>Эффективных:</strong><br>
+                        <span style="font-size: 18px; color: #28a745;">{{ account_data.effective }}</span>
+                    </div>
+                    <div>
+                        <strong>Тестируемых:</strong><br>
+                        <span style="font-size: 18px; color: #ffc107;">{{ account_data.testing }}</span>
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                    <div>
+                        <strong>Расходы:</strong><br>
+                        <span style="font-size: 18px;">{{ "%.2f"|format(account_data.spent) }}₽</span>
+                    </div>
+                    <div>
+                        <strong>VK цели:</strong><br>
+                        <span style="font-size: 18px;">{{ account_data.goals }}</span>
+                    </div>
+                    <div>
+                        <strong>Средняя цена цели:</strong><br>
+                        <span style="font-size: 18px;">
+                            {% if account_data.goals > 0 %}
+                                {{ "%.2f"|format(account_data.spent / account_data.goals) }}₽
+                            {% else %}
+                                N/A
+                            {% endif %}
+                        </span>
+                    </div>
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+
+    <!-- Дополнительная информация -->
+    <div class="card">
+        <h3>ℹ️ Дополнительная информация</h3>
+        <ul style="line-height: 1.8;">
+            <li><strong>Убыточные группы</strong> — потратили больше лимита без результата (VK целей = 0)</li>
+            <li><strong>Эффективные группы</strong> — принесли хотя бы одну VK цель (независимо от расходов)</li>
+            <li><strong>Тестируемые группы</strong> — потратили меньше лимита без результата пока</li>
+            <li><strong>Отключенные группы</strong> — фактически отключенные убыточные группы (если не DRY RUN режим)</li>
+        </ul>
+    </div>
+{% endif %}
+{% endblock %}

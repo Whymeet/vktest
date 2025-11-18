@@ -103,13 +103,23 @@
         </table>
     </div>
     
-    <form action="{{ url_for('start_analysis') }}" method="POST" style="display: inline;">
-        <button type="submit" class="btn btn-primary" {% if analysis_running %}disabled{% endif %}>
-            🎯 Запустить анализ сейчас
-        </button>
-    </form>
-    
-    <a href="{{ url_for('logs') }}" class="btn btn-secondary">📝 Посмотреть логи</a>
+    <div style="display: flex; gap: 10px;">
+        {% if not analysis_running %}
+            <form action="{{ url_for('start_analysis') }}" method="POST" style="display: inline;">
+                <button type="submit" class="btn btn-primary">
+                    🎯 Запустить анализ сейчас
+                </button>
+            </form>
+        {% else %}
+            <form action="{{ url_for('stop_analysis') }}" method="POST" style="display: inline;" onsubmit="return confirm('Вы уверены, что хотите остановить анализ?')">
+                <button type="submit" class="btn btn-danger">
+                    ⏹️ Остановить анализ
+                </button>
+            </form>
+        {% endif %}
+        
+        <a href="{{ url_for('logs') }}" class="btn btn-secondary">📝 Посмотреть логи</a>
+    </div>
     
     <div style="margin-top: 20px; padding: 15px; background: #fff3cd; border-radius: 5px; border-left: 4px solid #ffc107;">
         <p style="margin: 0; font-size: 14px;">
@@ -130,6 +140,29 @@
     {% if scheduler_log_dir %}
         <a href="{{ url_for('logs') }}" class="btn btn-secondary">📂 Открыть папку с логами</a>
     {% endif %}
+</div>
+
+<!-- Экстренная остановка ВСЕХ процессов -->
+<div class="card" style="border: 2px solid #dc3545; background: #fff5f5;">
+    <h3 style="color: #dc3545;">🚨 Экстренная остановка</h3>
+    <p style="margin-bottom: 20px;">
+        Используйте эту кнопку, если процессы запущены вручную (вне админ панели) или "зависли".
+        <br><strong>Останавливает ВСЕ процессы:</strong> <code>scheduler_main.py</code> и <code>main.py</code>
+    </p>
+    
+    <form action="{{ url_for('kill_all') }}" method="POST" style="display: inline;" onsubmit="return confirm('⚠️ ВНИМАНИЕ!\n\nЭто принудительно завершит ВСЕ процессы scheduler_main.py и main.py, даже те, что запущены вручную через терминал!\n\nПродолжить?')">
+        <button type="submit" class="btn btn-danger" style="background: #dc3545;">
+            🔥 УБИТЬ ВСЕ ПРОЦЕССЫ
+        </button>
+    </form>
+    
+    <div style="margin-top: 15px; padding: 10px; background: #fff3cd; border-radius: 5px; border-left: 4px solid #ffc107;">
+        <p style="margin: 0; font-size: 13px;">
+            <strong>⚠️ Используйте только в крайнем случае!</strong><br>
+            Эта кнопка найдет и остановит все Python процессы с <code>scheduler_main.py</code> и <code>main.py</code>, 
+            независимо от того, как они были запущены (через админ панель или вручную).
+        </p>
+    </div>
 </div>
 
 <script>
