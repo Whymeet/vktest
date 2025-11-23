@@ -16,7 +16,7 @@ def send_telegram_error(error_message):
     """Отправляет сообщение об ошибке в Telegram"""
     try:
         config = load_config()
-        send_telegram_message(config, f"🚨 <b>VK Ads - Ошибка</b>\n\n{error_message}")
+        send_telegram_message(config, f"<b>Ошибка</b>\n\n{error_message}")
     except Exception as e:
         print(f"Не удалось отправить ошибку в Telegram: {e}")
 
@@ -747,7 +747,7 @@ def main():
             limits_info.append(f"{acc_name}: {acc_cfg['spent_limit_rub']}₽")
     limits_text = "\n".join(limits_info) if limits_info else f"{SPENT_LIMIT_RUB}₽ (общий)"
     
-    start_message = f"🚀 <b>VK Ads - Начало анализа</b>\n\n🏢 Кабинеты: {accounts_list}\n📅 Период: {LOOKBACK_DAYS} дн.\n💰 Лимиты:\n{limits_text}\n⏰ {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
+    start_message = f"<b>Начало анализа</b>\n\nКабинеты: {accounts_list}\nПериод: {LOOKBACK_DAYS} дн.\nЛимиты:\n{limits_text}\n{datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
     send_telegram_message(config, start_message)
     
     # Результаты по всем кабинетам
@@ -761,19 +761,8 @@ def main():
     # Загружаем конфигурацию
     config = load_config()
     
-    # Отправляем уведомление о начале анализа
-    analysis_emoji = "🔍" if extra_days > 0 else "📊"
-    analysis_text = f"Расширенный (+{extra_days}д)" if extra_days > 0 else "Стандартный"
-    
-    # Формируем информацию о лимитах для Telegram
-    limits_info = []
-    for acc_name, acc_cfg in ACCOUNTS.items():
-        if isinstance(acc_cfg, dict) and "spent_limit_rub" in acc_cfg:
-            limits_info.append(f"{acc_name}: {acc_cfg['spent_limit_rub']}₽")
-    limits_text = "\n".join(limits_info) if limits_info else f"{SPENT_LIMIT_RUB}₽ (общий)"
-    
-    start_message = f"{analysis_emoji} <b>VK Ads - {analysis_text} анализ</b>\n\n📅 Период: {LOOKBACK_DAYS} дн.\n💰 Лимиты:\n{limits_text}\n⏰ {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
-    send_telegram_message(config, start_message)
+    # Отправляем уведомление о начале анализа (только одно сообщение)
+    # Не отправляем дополнительное сообщение о стандартном анализе
     
     try:
         # Анализируем каждый кабинет
@@ -810,7 +799,7 @@ def main():
                 logger.error(f"💥 ОШИБКА В КАБИНЕТЕ [{account_name}]: {e}")
                 logger.error("Детали ошибки:")
                 logger.error(traceback.format_exc())
-                send_telegram_error(f"⚠️ Ошибка в кабинете '{account_name}': {e}\n\n📋 Продолжаем анализ остальных кабинетов...")
+                send_telegram_error(f"Ошибка в кабинете '{account_name}': {e}\n\nПродолжаем анализ остальных кабинетов...")
                 # Не останавливаем выполнение, продолжаем с другими кабинетами
         
         # Сохраняем сводные результаты по всем кабинетам
@@ -908,7 +897,7 @@ def main():
         # Отправляем уведомление об ошибке в Telegram
         try:
             config = load_config()
-            error_message = f"❌ <b>VK Ads - ОШИБКА</b>\n\n💥 {str(e)}\n⏰ {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
+            error_message = f"<b>ОШИБКА</b>\n\n{str(e)}\n{datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
             send_telegram_message(config, error_message)
         except:
             pass  # Игнорируем ошибки отправки уведомлений об ошибках

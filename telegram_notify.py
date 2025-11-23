@@ -37,31 +37,29 @@ def format_telegram_statistics(unprofitable_count, effective_count, testing_coun
     """Форматирует статистику для Telegram"""
     
     if accounts_count > 1:
-        header = f"📊 <b>VK Ads - Сводный анализ ({accounts_count} кабинетов)</b>"
+        header = f"<b>Сводный анализ ({accounts_count} кабинетов)</b>"
     else:
-        header = "📊 <b>VK Ads - Анализ объявлений завершен</b>"
+        header = "<b>Анализ объявлений завершен</b>"
     
     message = f"""{header}
 
+Всего активных объявлений: <b>{total_count}</b>
+Убыточных объявлений: <b>{unprofitable_count}</b>
+Объявления с резом: <b>{effective_count}</b>
+Объявления без реза: <b>{testing_count}</b>
 
+Общие расходы за {lookback_days} дн.: <b>{total_spent:.2f}₽</b>
+Общие резы за {lookback_days} дн.: <b>{total_goals}</b>
+Средняя стоимость реза: <b>{avg_cost:.2f}₽</b>
 
-📈 Всего активных объявлений: <b>{total_count}</b>
-🔴 Убыточных объявлений: <b>{unprofitable_count}</b>
-🟢 Объявления с резом: <b>{effective_count}</b>
-⚠️ Объявления без реза: <b>{testing_count}</b>
-
-💰 Общие расходы за {lookback_days} дн.: <b>{total_spent:.2f}₽</b>
-🎯 Общие резы за {lookback_days} дн.: <b>{total_goals}</b>
-💡 Средняя стоимость реза: <b>{avg_cost:.2f}₽</b>
-
-⏰ {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"""
+{datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"""
     
     return message
 
 def format_telegram_unprofitable_groups(unprofitable_groups):
     """Форматирует список убыточных объявлений для Telegram, разбивая на сообщения по 10 объявлений"""
     if not unprofitable_groups:
-        return ["✅ <b>Убыточных объявлений не найдено!</b>"]
+        return ["<b>Убыточных объявлений не найдено!</b>"]
     
     messages = []
     groups_per_message = 10
@@ -87,8 +85,8 @@ def format_telegram_unprofitable_groups(unprofitable_groups):
             group_name = group.get("name", "Без названия")[:30]  # Ограничиваем длину
             spent = group.get("spent", 0)
             
-            message += f"{i}. 🆔 <code>{group_id}</code> {group_name}\n"
-            message += f"   💸 Потрачено: <b>{spent:.2f}₽</b>\n\n"
+            message += f"{i}. <code>{group_id}</code> {group_name}\n"
+            message += f"   Потрачено: <b>{spent:.2f}₽</b>\n\n"
         
         messages.append(message)
     
@@ -101,20 +99,21 @@ def format_telegram_account_statistics(account_name, unprofitable_count, effecti
     messages = []
     
     # Основная статистика
-    main_message = f"<b>VK Ads - Кабинет: {account_name}</b>\n\n"
+    clean_account_name = account_name.replace(" ", "_").replace("-", "_")
+    main_message = f"<b>#{clean_account_name}</b>\n\n"
     
-    main_message += f"🔴 Убыточных объявлений: <b>{unprofitable_count}</b>\n"
-    main_message += f"🟢 Объявления с резом: <b>{effective_count}</b>\n"
-    main_message += f"⚠️ Объявления без реза: <b>{testing_count}</b>\n"
-    main_message += f"📈 Всего активных объявлений: <b>{total_count}</b>\n\n"
+    main_message += f"Убыточных объявлений: <b>{unprofitable_count}</b>\n"
+    main_message += f"Объявления с резом: <b>{effective_count}</b>\n"
+    main_message += f"Объявления без реза: <b>{testing_count}</b>\n"
+    main_message += f"Всего активных объявлений: <b>{total_count}</b>\n\n"
     
-    main_message += f"💰 Расходы за {lookback_days} дн.: <b>{total_spent:.2f}₽</b>\n"
-    main_message += f"🎯 Резы за {lookback_days} дн.: <b>{total_goals}</b>\n"
+    main_message += f"Расходы за {lookback_days} дн.: <b>{total_spent:.2f}₽</b>\n"
+    main_message += f"Резы за {lookback_days} дн.: <b>{total_goals}</b>\n"
     
     if total_goals > 0:
-        main_message += f"💡 Средняя стоимость реза: <b>{avg_cost:.2f}₽</b>\n\n"
+        main_message += f"Средняя стоимость реза: <b>{avg_cost:.2f}₽</b>\n\n"
     else:
-        main_message += f"💡 Средняя стоимость реза: <b>-</b>\n\n"
+        main_message += f"Средняя стоимость реза: <b>-</b>\n\n"
     
     # Добавляем информацию об отключении объявлений
     if disable_results and unprofitable_count > 0:
@@ -123,16 +122,16 @@ def format_telegram_account_statistics(account_name, unprofitable_count, effecti
         failed = disable_results.get("failed", 0)
         
         if dry_run:
-            main_message += f"🔸 <b>Режим тестирования:</b> Было бы отключено {disabled} объявлений\n"
+            main_message += f"<b>Режим тестирования:</b> Было бы отключено {disabled} объявлений\n"
         else:
-            main_message += f"🔄 <b>Отключено:</b> {disabled} объявлений"
+            main_message += f"<b>Отключено:</b> {disabled} объявлений"
             if failed > 0:
                 main_message += f" (ошибок: {failed})"
             main_message += "\n"
     elif unprofitable_count == 0:
-        main_message += f"✅ <b>Убыточных объявлений не найдено!</b>\n"
+        main_message += f"<b>Убыточных объявлений не найдено!</b>\n"
     
-    main_message += f"\n⏰ {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
+    main_message += f"\n{datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
     
     messages.append(main_message)
     
@@ -150,10 +149,12 @@ def format_telegram_account_statistics(account_name, unprofitable_count, effecti
             total_batches = (total_groups + groups_per_message - 1) // groups_per_message
             
             # Заголовок для каждого сообщения с убыточными объявлениями
+            # Заменяем пробелы и спецсимволы в названии кабинета для тега
+            clean_account_name = account_name.replace(" ", "_").replace("-", "_")
             if total_batches > 1:
-                groups_message = f"🔴 <b>Убыточные объявления {account_name} (часть {batch_num}/{total_batches}):</b>\n\n"
+                groups_message = f"<b>#отключение_{clean_account_name}</b>\n\n🔴 <b>Убыточные объявления (часть {batch_num}/{total_batches}):</b>\n\n"
             else:
-                groups_message = f"🔴 <b>Убыточные объявления {account_name} ({total_groups} шт.):</b>\n\n"
+                groups_message = f"<b>#отключение_{clean_account_name}</b>\n\n🔴 <b>Убыточные объявления ({total_groups} шт.):</b>\n\n"
             
             # Добавляем объявления в сообщение
             for i, group in enumerate(batch_groups, batch_start + 1):
@@ -161,8 +162,8 @@ def format_telegram_account_statistics(account_name, unprofitable_count, effecti
                 group_name = group.get("name", "Без названия")[:25]  # Ограничиваем длину
                 spent = group.get("spent", 0)
                 
-                groups_message += f"{i}. 🆔 <code>{group_id}</code> {group_name}\n"
-                groups_message += f"   💸 Потрачено: <b>{spent:.2f}₽</b> (без результата)\n\n"
+                groups_message += f"{i}. <code>{group_id}</code> {group_name}\n"
+                groups_message += f"   Потрачено: <b>{spent:.2f}₽</b> (без результата)\n\n"
             
             messages.append(groups_message)
     
@@ -171,7 +172,7 @@ def format_telegram_account_statistics(account_name, unprofitable_count, effecti
 def format_telegram_disable_results(disable_results):
     """Форматирует результаты отключения объявлений для Telegram"""
     if not disable_results:
-        return "ℹ️ <b>Отключение объявлений не выполнялось</b>"
+        return "<b>Отключение объявлений не выполнялось</b>"
     
     dry_run = disable_results.get("dry_run", True)
     disabled = disable_results.get("disabled", 0)
@@ -179,15 +180,15 @@ def format_telegram_disable_results(disable_results):
     total = disable_results.get("total", 0)
     
     if dry_run:
-        message = f"🔸 <b>Режим тестирования (DRY RUN)</b>\n\n"
-        message += f"✅ Было бы отключено: <b>{disabled}</b> объявлений\n"
-        message += f"❌ Ошибок: <b>{failed}</b>\n"
-        message += f"📊 Всего обработано: <b>{total}</b>\n\n"
-        message += f"💡 Для реального отключения установите dry_run: false в config.json"
+        message = f"<b>Режим тестирования (DRY RUN)</b>\n\n"
+        message += f"Было бы отключено: <b>{disabled}</b> объявлений\n"
+        message += f"Ошибок: <b>{failed}</b>\n"
+        message += f"Всего обработано: <b>{total}</b>\n\n"
+        message += f"Для реального отключения установите dry_run: false в config.json"
     else:
-        message = f"🔄 <b>Отключение объявлений завершено</b>\n\n"
-        message += f"✅ Отключено: <b>{disabled}</b> объявлений\n"
-        message += f"❌ Ошибок: <b>{failed}</b>\n"
-        message += f"📊 Всего обработано: <b>{total}</b>"
+        message = f"<b>Отключение объявлений завершено</b>\n\n"
+        message += f"Отключено: <b>{disabled}</b> объявлений\n"
+        message += f"Ошибок: <b>{failed}</b>\n"
+        message += f"Всего обработано: <b>{total}</b>"
     
     return message
