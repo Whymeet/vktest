@@ -455,40 +455,64 @@ def disable_unprofitable_banners(token: str, base_url: str, unprofitable_banners
     if not unprofitable_banners:
         logger.info("✅ Нет убыточных объявлений для отключения")
         return {"disabled": 0, "failed": 0, "results": []}
-    
+
     logger.info(f"🎯 {'[DRY RUN] ' if dry_run else ''}Начинаем отключение {len(unprofitable_banners)} убыточных объявлений")
-    
+
+    # Загружаем белый список из конфигурации (список ID объявлений, которые не трогаем)
+    whitelist_raw = config.get("banners_whitelist", []) if isinstance(globals().get('config', None), dict) else []
+    whitelist_set = set()
+    for v in whitelist_raw:
+        try:
+            whitelist_set.add(int(v))
+        except Exception:
+            # Игнорируем нечисловые значения
+            continue
+
     disabled_count = 0
     failed_count = 0
     results = []
-    
+
     for i, banner in enumerate(unprofitable_banners, 1):
         banner_id = banner.get("id")
         banner_name = banner.get("name", "Unknown")
         spent = banner.get("spent", 0)
         ad_group_id = banner.get("ad_group_id", "N/A")
-        
+
         logger.info(f"📋 [{i}/{len(unprofitable_banners)}] Объявление {banner_id}: {banner_name} (группа {ad_group_id}, потрачено: {spent:.2f}₽)")
-        
-        # Отключаем объявление
-        result = disable_banner(token, base_url, banner_id, dry_run)
-        
-        if result["success"]:
-            disabled_count += 1
-            logger.info(f"✅ Объявление {banner_id} {'[DRY RUN] ' if dry_run else ''}отключено")
+
+        # Проверяем белый список
+        if banner_id in whitelist_set:
+            logger.info(f"⏳ Пропускаем объявление {banner_id} — находится в белом списке (не трогаем)")
+            results.append({
+                "banner_id": banner_id,
+                "banner_name": banner_name,
+                "ad_group_id": ad_group_id,
+                "spent": spent,
+                "success": False,
+                "skipped": True,
+                "error": "skipped (whitelisted)"
+            })
         else:
-            failed_count += 1
-            logger.error(f"❌ Не удалось отключить объявление {banner_id}: {result.get('error', 'Unknown error')}")
-        
-        results.append({
-            "banner_id": banner_id,
-            "banner_name": banner_name,
-            "ad_group_id": ad_group_id,
-            "spent": spent,
-            "success": result["success"],
-            "error": result.get("error") if not result["success"] else None
-        })
-        
+            # Отключаем объявление
+            result = disable_banner(token, base_url, banner_id, dry_run)
+
+            if result.get("success"):
+                disabled_count += 1
+                logger.info(f"✅ Объявление {banner_id} {'[DRY RUN] ' if dry_run else ''}отключено")
+            else:
+                failed_count += 1
+                logger.error(f"❌ Не удалось отключить объявление {banner_id}: {result.get('error', 'Unknown error')}")
+
+            results.append({
+                "banner_id": banner_id,
+                "banner_name": banner_name,
+                "ad_group_id": ad_group_id,
+                "spent": spent,
+                "success": result.get("success", False),
+                "skipped": False,
+                "error": result.get("error") if not result.get("success") else None
+            })
+
         # Пауза между запросами для соблюдения rate limits
         if i < len(unprofitable_banners):  # Не делаем паузу после последнего объявления
             time.sleep(SLEEP_BETWEEN_CALLS)
@@ -558,13 +582,25 @@ def analyze_account(account_name: str, access_token: str, config: dict):
         items = get_banners_stats_day(access_token, BASE_URL, date_from, date_to, banner_ids=banner_ids, metrics="base")
         stats_by_bid = aggregate_stats_by_banner(items)
         
+        # Подготовка белого списка (глобального и по кабинету)
+        whitelist_raw = config.get("banners_whitelist", []) if isinstance(config, dict) else []
+        by_account = config.get("banners_whitelist_by_account", {}) if isinstance(config, dict) else {}
+        account_whitelist_raw = by_account.get(account_name, []) if isinstance(by_account, dict) else []
+        whitelist_set = set()
+        for v in (whitelist_raw or []) + (account_whitelist_raw or []):
+            try:
+                whitelist_set.add(int(v))
+            except Exception:
+                continue
+
         # Анализируем объявления
         logger.info(f"📊 АНАЛИЗ РАСХОДОВ ПО АКТИВНЫМ ОБЪЯВЛЕНИЯМ КАБИНЕТА: {account_name}")
         logger.info("="*80)
-        
+
         over_limit = []
         under_limit = []
         no_activity = []
+        whitelisted = []
         
         for b in banners:
             bid = b.get("id")
@@ -581,6 +617,18 @@ def analyze_account(account_name: str, access_token: str, config: dict):
                 delivery_status = delivery
             else:
                 delivery_status = "N/A"
+
+            # Проверяем белый список: если ID в whitelist — пропускаем анализ и не считаем убыточным
+            if bid in whitelist_set:
+                whitelisted.append({
+                    "id": bid, "name": name, "spent":  stats_by_bid.get(bid, {}).get('spent', 0.0),
+                    "clicks": stats_by_bid.get(bid, {}).get('clicks', 0.0), "shows": stats_by_bid.get(bid, {}).get('shows', 0.0),
+                    "vk_goals": stats_by_bid.get(bid, {}).get('vk_goals', 0.0),
+                    "status": status, "delivery": delivery_status, "ad_group_id": ad_group_id,
+                    "moderation_status": moderation_status, "account": account_name
+                })
+                logger.info(f"🔔 [{account_name}] Пропускаем объявление {bid} — в белом списке")
+                continue
 
             # Получаем статистику по объявлению
             stats = stats_by_bid.get(bid, {"spent": 0.0, "clicks": 0.0, "shows": 0.0, "vk_goals": 0.0})
