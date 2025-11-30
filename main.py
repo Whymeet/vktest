@@ -34,6 +34,30 @@ def load_config():
     except json.JSONDecodeError as e:
         raise ValueError(f"❌ Ошибка в cfg/config.json: {e}")
 
+
+def load_whitelist():
+    """Загружает белый список из отдельного файла cfg/whitelist.json.
+    Формат ожидается:
+    {
+      "banners_whitelist": [123, 456]
+    }
+    Если файл не найден — пытаемся взять из `config` (ключ `banners_whitelist`) для совместимости.
+    """
+    wl_path = os.path.join("cfg", "whitelist.json")
+    try:
+        with open(wl_path, "r", encoding="utf-8") as f:
+            wl = json.load(f)
+            return wl if isinstance(wl, dict) else {}
+    except FileNotFoundError:
+        # Файл whitelist.json отсутствует — попробуем взять из основного конфига
+        try:
+            cfg = globals().get('config')
+            if isinstance(cfg, dict):
+                return {"banners_whitelist": cfg.get("banners_whitelist", [])}
+        except Exception:
+            pass
+        return {"banners_whitelist": []}
+
 # Загружаем конфигурацию
 config = load_config()
 
@@ -101,6 +125,9 @@ def setup_logging():
 
 # Инициализируем логгер
 logger = setup_logging()
+# Загружаем белый список (отдельный файл cfg/whitelist.json). Фоллбек к конфигу для совместимости.
+WHITELIST = load_whitelist()
+logger.info(f"🔒 Загружен whitelist: {len(WHITELIST.get('banners_whitelist', []) if isinstance(WHITELIST, dict) else 0)} глобальных ID")
 
 
 # ===================== ВСПОМОГАТЕЛЬНОЕ =====================
@@ -458,8 +485,8 @@ def disable_unprofitable_banners(token: str, base_url: str, unprofitable_banners
 
     logger.info(f"🎯 {'[DRY RUN] ' if dry_run else ''}Начинаем отключение {len(unprofitable_banners)} убыточных объявлений")
 
-    # Загружаем белый список из конфигурации (список ID объявлений, которые не трогаем)
-    whitelist_raw = config.get("banners_whitelist", []) if isinstance(globals().get('config', None), dict) else []
+    # Загружаем белый список из отдельного файла (cfg/whitelist.json)
+    whitelist_raw = WHITELIST.get("banners_whitelist", []) if isinstance(WHITELIST, dict) else []
     whitelist_set = set()
     for v in whitelist_raw:
         try:
@@ -582,12 +609,10 @@ def analyze_account(account_name: str, access_token: str, config: dict):
         items = get_banners_stats_day(access_token, BASE_URL, date_from, date_to, banner_ids=banner_ids, metrics="base")
         stats_by_bid = aggregate_stats_by_banner(items)
         
-        # Подготовка белого списка (глобального и по кабинету)
-        whitelist_raw = config.get("banners_whitelist", []) if isinstance(config, dict) else []
-        by_account = config.get("banners_whitelist_by_account", {}) if isinstance(config, dict) else {}
-        account_whitelist_raw = by_account.get(account_name, []) if isinstance(by_account, dict) else []
+        # Подготовка белого списка (глобальный) — берем из отдельного файла
+        whitelist_raw = WHITELIST.get("banners_whitelist", []) if isinstance(WHITELIST, dict) else []
         whitelist_set = set()
-        for v in (whitelist_raw or []) + (account_whitelist_raw or []):
+        for v in (whitelist_raw or []):
             try:
                 whitelist_set.add(int(v))
             except Exception:
