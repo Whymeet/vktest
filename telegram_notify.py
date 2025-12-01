@@ -94,48 +94,11 @@ def format_telegram_unprofitable_groups(unprofitable_groups):
 
 def format_telegram_account_statistics(account_name, unprofitable_count, effective_count, testing_count, 
                                       total_count, total_spent, total_goals, avg_cost, lookback_days, disable_results=None, unprofitable_groups=None):
-    """Форматирует статистику по отдельному кабинету для Telegram"""
+    """Форматирует статистику по отдельному кабинету для Telegram - ТОЛЬКО сообщения об отключении"""
     
     messages = []
     
-    # Основная статистика
-    clean_account_name = account_name.replace(" ", "_").replace("-", "_")
-    main_message = f"<b>#{clean_account_name}</b>\n\n"
-    
-    main_message += f"Убыточных объявлений: <b>{unprofitable_count}</b>\n"
-    main_message += f"Объявления с резом: <b>{effective_count}</b>\n"
-    main_message += f"Объявления без реза: <b>{testing_count}</b>\n"
-    main_message += f"Всего активных объявлений: <b>{total_count}</b>\n\n"
-    
-    main_message += f"Расходы за {lookback_days} дн.: <b>{total_spent:.2f}₽</b>\n"
-    main_message += f"Резы за {lookback_days} дн.: <b>{total_goals}</b>\n"
-    
-    if total_goals > 0:
-        main_message += f"Средняя стоимость реза: <b>{avg_cost:.2f}₽</b>\n\n"
-    else:
-        main_message += f"Средняя стоимость реза: <b>-</b>\n\n"
-    
-    # Добавляем информацию об отключении объявлений
-    if disable_results and unprofitable_count > 0:
-        dry_run = disable_results.get("dry_run", True)
-        disabled = disable_results.get("disabled", 0)
-        failed = disable_results.get("failed", 0)
-        
-        if dry_run:
-            main_message += f"<b>Режим тестирования:</b> Было бы отключено {disabled} объявлений\n"
-        else:
-            main_message += f"<b>Отключено:</b> {disabled} объявлений"
-            if failed > 0:
-                main_message += f" (ошибок: {failed})"
-            main_message += "\n"
-    elif unprofitable_count == 0:
-        main_message += f"<b>Убыточных объявлений не найдено!</b>\n"
-    
-    main_message += f"\n{datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
-    
-    messages.append(main_message)
-    
-    # Добавляем списки убыточных объявлений отдельными сообщениями (по 10 объявлений)
+    # ✅ ОТПРАВЛЯЕМ ТОЛЬКО если есть убыточные объявления для отключения
     if unprofitable_groups and len(unprofitable_groups) > 0:
         groups_per_message = 10
         total_groups = len(unprofitable_groups)

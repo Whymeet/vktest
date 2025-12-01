@@ -8,6 +8,7 @@ Telegram бот для управления VK Ads кабинетами
 
 import json
 import logging
+from datetime import datetime
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 from vk_api import get_ad_groups_active, disable_ad_group
@@ -34,6 +35,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🤖 <b>VK Ads Manager Bot</b>\n\n"
         "Доступные команды:\n"
         "📋 /accounts - Список кабинетов\n"
+        "ℹ️ /info - Информация о кабинетах и параметрах\n"
         "🛑 /stop_cab [Name_Cab] - Отключить все группы в кабинете\n\n"
         "Пример: /stop_cab Кокос 1"
     )
@@ -59,6 +61,53 @@ async def accounts_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     message += "\n💡 Для отключения групп используйте:\n"
     message += "<code>/stop_cab Название_Кабинета</code>"
+    
+    await update.message.reply_text(message, parse_mode="HTML")
+
+
+async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда /info - показывает информацию о кабинетах и параметрах очистки"""
+    config = load_config()
+    if not config:
+        await update.message.reply_text("❌ Ошибка загрузки конфигурации")
+        return
+
+    accounts = config.get("vk_ads_api", {}).get("accounts", {})
+    analysis_settings = config.get("analysis_settings", {})
+    
+    if not accounts:
+        await update.message.reply_text("❌ Кабинеты не настроены")
+        return
+
+    # Формируем список кабинетов
+    accounts_list = []
+    limits_info = []
+    
+    default_limit = analysis_settings.get("spent_limit_rub", 100.0)
+    
+    for account_name, account_config in accounts.items():
+        accounts_list.append(account_name)
+        
+        # Получаем индивидуальный лимит если есть
+        if isinstance(account_config, dict):
+            limit = account_config.get("spent_limit_rub", default_limit)
+        else:
+            limit = default_limit
+        
+        limits_info.append(f"{account_name}: {limit}₽")
+    
+    # Получаем параметры анализа
+    lookback_days = analysis_settings.get("lookback_days", 10)
+    dry_run = analysis_settings.get("dry_run", True)
+    
+    # Формируем сообщение
+    message = "<b>📊 Начало анализа</b>\n\n"
+    message += f"<b>Кабинеты:</b> {', '.join(accounts_list)}\n"
+    message += f"<b>Период:</b> {lookback_days} дн.\n\n"
+    message += "<b>Лимиты:</b>\n"
+    message += "\n".join(limits_info) + "\n\n"
+    message += f"<b>Режим:</b> {'🔸 Тестовый (DRY RUN)' if dry_run else '🔴 Реальное отключение'}\n\n"
+    message += f"{datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
     
     await update.message.reply_text(message, parse_mode="HTML")
 
@@ -222,10 +271,11 @@ def main():
     # Регистрируем обработчики команд
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("accounts", accounts_command))
+    application.add_handler(CommandHandler("info", info_command))
     application.add_handler(CommandHandler("stop_cab", stop_cab_command))
     
     logger.info("🤖 Telegram бот запущен и готов к работе!")
-    logger.info("📋 Доступные команды: /start, /accounts, /stop_cab")
+    logger.info("📋 Доступные команды: /start, /accounts, /info, /stop_cab")
     
     # Запускаем бота
     application.run_polling(allowed_updates=Update.ALL_TYPES)

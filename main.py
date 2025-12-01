@@ -736,29 +736,32 @@ def analyze_account(account_name: str, access_token: str, config: dict):
             
             disable_results = disable_unprofitable_banners(access_token, BASE_URL, over_limit, DRY_RUN)
         
-        # Отправляем уведомления по этому кабинету в Telegram
+        # Отправляем уведомления об отключении в Telegram (ТОЛЬКО если есть убыточные объявления)
         try:
-            avg_cost_per_goal = total_spent / total_vk_goals if total_vk_goals > 0 else 0
-            account_messages = format_telegram_account_statistics(
-                account_name=account_name,
-                unprofitable_count=len(over_limit),
-                effective_count=len(under_limit),
-                testing_count=len(no_activity),
-                total_count=len(banners),
-                total_spent=total_spent,
-                total_goals=int(total_vk_goals),
-                avg_cost=avg_cost_per_goal,
-                lookback_days=LOOKBACK_DAYS,
-                disable_results=disable_results,
-                unprofitable_groups=over_limit  # Оставляем имя параметра для совместимости с telegram_notify
-            )
-            
-            # Отправляем каждое сообщение отдельно
-            for i, message in enumerate(account_messages):
-                send_telegram_message(config, message)
-                # Небольшая пауза между сообщениями чтобы не флудить (кроме последнего)
-                if i < len(account_messages) - 1:
-                    time.sleep(1)
+            if over_limit:  # ✅ ОТПРАВЛЯЕМ ТОЛЬКО если есть убыточные объявления
+                avg_cost_per_goal = total_spent / total_vk_goals if total_vk_goals > 0 else 0
+                account_messages = format_telegram_account_statistics(
+                    account_name=account_name,
+                    unprofitable_count=len(over_limit),
+                    effective_count=len(under_limit),
+                    testing_count=len(no_activity),
+                    total_count=len(banners),
+                    total_spent=total_spent,
+                    total_goals=int(total_vk_goals),
+                    avg_cost=avg_cost_per_goal,
+                    lookback_days=LOOKBACK_DAYS,
+                    disable_results=disable_results,
+                    unprofitable_groups=over_limit  # Оставляем имя параметра для совместимости с telegram_notify
+                )
+                
+                # Отправляем каждое сообщение отдельно
+                for i, message in enumerate(account_messages):
+                    send_telegram_message(config, message)
+                    # Небольшая пауза между сообщениями чтобы не флудить (кроме последнего)
+                    if i < len(account_messages) - 1:
+                        time.sleep(1)
+            else:
+                logger.info(f"✅ [{account_name}] Убыточных объявлений нет - уведомления не отправляются")
                     
         except Exception as e:
             logger.error(f"❌ Ошибка отправки уведомления по кабинету {account_name}: {e}")
@@ -811,17 +814,8 @@ def main():
     # Загружаем конфигурацию для Telegram
     config = load_config()
     
-    # Отправляем уведомление о начале анализа
-    accounts_list = ", ".join(ACCOUNTS.keys())
-    # Формируем информацию о лимитах для Telegram
-    limits_info = []
-    for acc_name, acc_cfg in ACCOUNTS.items():
-        if isinstance(acc_cfg, dict) and "spent_limit_rub" in acc_cfg:
-            limits_info.append(f"{acc_name}: {acc_cfg['spent_limit_rub']}₽")
-    limits_text = "\n".join(limits_info) if limits_info else f"{SPENT_LIMIT_RUB}₽ (общий)"
-    
-    start_message = f"<b>Начало анализа</b>\n\nКабинеты: {accounts_list}\nПериод: {LOOKBACK_DAYS} дн.\nЛимиты:\n{limits_text}\n{datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
-    send_telegram_message(config, start_message)
+    # ❌ УБРАЛИ: Не отправляем уведомление о начале анализа
+    # Оставляем только оповещения об отключении компаний
     
     # Результаты по всем кабинетам
     all_results = []
