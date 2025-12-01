@@ -8,6 +8,9 @@ Telegram бот для управления VK Ads кабинетами
 
 import json
 import logging
+import subprocess
+import sys
+from pathlib import Path
 from datetime import datetime
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
@@ -66,50 +69,112 @@ async def accounts_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Команда /info - показывает информацию о кабинетах и параметрах очистки"""
+    """Команда /info - запускает анализ и показывает полную статистику по всем кабинетам"""
     config = load_config()
     if not config:
         await update.message.reply_text("❌ Ошибка загрузки конфигурации")
         return
 
-    accounts = config.get("vk_ads_api", {}).get("accounts", {})
-    analysis_settings = config.get("analysis_settings", {})
+    # Отправляем сообщение о начале анализа
+    status_message = await update.message.reply_text(
+        "⏳ Запускаю анализ кабинетов...\nЭто может занять 1-2 минуты",
+        parse_mode="HTML"
+    )
     
-    if not accounts:
-        await update.message.reply_text("❌ Кабинеты не настроены")
-        return
-
-    # Формируем список кабинетов
-    accounts_list = []
-    limits_info = []
-    
-    default_limit = analysis_settings.get("spent_limit_rub", 100.0)
-    
-    for account_name, account_config in accounts.items():
-        accounts_list.append(account_name)
+    try:
+        # Запускаем main.py для получения актуальной статистики
+        main_script = Path(__file__).parent / "main.py"
         
-        # Получаем индивидуальный лимит если есть
-        if isinstance(account_config, dict):
-            limit = account_config.get("spent_limit_rub", default_limit)
-        else:
-            limit = default_limit
+        logger.info("Запуск анализа по команде /info")
         
-        limits_info.append(f"{account_name}: {limit}₽")
-    
-    # Получаем параметры анализа
-    lookback_days = analysis_settings.get("lookback_days", 10)
-    dry_run = analysis_settings.get("dry_run", True)
-    
-    # Формируем сообщение
-    message = "<b>📊 Начало анализа</b>\n\n"
-    message += f"<b>Кабинеты:</b> {', '.join(accounts_list)}\n"
-    message += f"<b>Период:</b> {lookback_days} дн.\n\n"
-    message += "<b>Лимиты:</b>\n"
-    message += "\n".join(limits_info) + "\n\n"
-    message += f"<b>Режим:</b> {'🔸 Тестовый (DRY RUN)' if dry_run else '🔴 Реальное отключение'}\n\n"
-    message += f"{datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
-    
-    await update.message.reply_text(message, parse_mode="HTML")
+        result = subprocess.run(
+            [sys.executable, str(main_script)],
+            cwd=str(main_script.parent),
+            capture_output=True,
+            text=True,
+            timeout=300  # 5 минут таймаут
+        )
+        
+        if result.returncode != 0:
+            await status_message.edit_text(
+                "❌ Ошибка при выполнении анализа\n\n"
+                f"<code>{result.stderr[:500]}</code>",
+                parse_mode="HTML"
+            )
+            return
+        
+        # Читаем результаты анализа из JSON файла
+        summary_file = Path(__file__).parent / "data" / "vk_summary_analysis.json"
+        
+        if not summary_file.exists():
+            await status_message.edit_text(
+                "❌ Файл с результатами анализа не найден",
+                parse_mode="HTML"
+            )
+            return
+        
+        with open(summary_file, 'r', encoding='utf-8') as f:
+            summary = json.load(f)
+        
+        # Формируем сообщение со статистикой
+        accounts = config.get("vk_ads_api", {}).get("accounts", {})
+        analysis_settings = config.get("analysis_settings", {})
+        lookback_days = analysis_settings.get("lookback_days", 10)
+        
+        # Заголовок
+        message = "<b>📊 Начало анализа</b>\n\n"
+        message += f"<b>Кабинеты:</b> {', '.join(accounts.keys())}\n"
+        message += f"<b>Период:</b> {lookback_days} дн.\n\n"
+        
+        # Лимиты по кабинетам
+        message += "<b>Лимиты:</b>\n"
+        for acc_name, acc_data in summary.get("accounts", {}).items():
+            limit = acc_data.get("spent_limit_rub", 100.0)
+            message += f"{acc_name}: {limit}₽\n"
+        
+        message += f"\n{datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
+        
+        await status_message.edit_text(message, parse_mode="HTML")
+        
+        # Отправляем статистику по каждому кабинету отдельными сообщениями
+        for acc_name, acc_data in summary.get("accounts", {}).items():
+            clean_name = acc_name.replace(" ", "_").replace("-", "_")
+            
+            acc_message = f"<b>#{clean_name}</b>\n\n"
+            acc_message += f"Убыточных объявлений: <b>{acc_data.get('unprofitable_banners', 0)}</b>\n"
+            acc_message += f"Объявления с резом: <b>{acc_data.get('effective_banners', 0)}</b>\n"
+            acc_message += f"Объявления без реза: <b>{acc_data.get('testing_banners', 0)}</b>\n"
+            acc_message += f"Всего активных объявлений: <b>{acc_data.get('unprofitable_banners', 0) + acc_data.get('effective_banners', 0) + acc_data.get('testing_banners', 0)}</b>\n\n"
+            
+            acc_message += f"Расходы за {lookback_days} дн.: <b>{acc_data.get('spent', 0):.2f}₽</b>\n"
+            acc_message += f"Резы за {lookback_days} дн.: <b>{acc_data.get('vk_goals', 0)}</b>\n"
+            
+            if acc_data.get('vk_goals', 0) > 0:
+                avg_cost = acc_data.get('spent', 0) / acc_data.get('vk_goals', 1)
+                acc_message += f"Средняя стоимость реза: <b>{avg_cost:.2f}₽</b>\n\n"
+            else:
+                acc_message += f"Средняя стоимость реза: <b>-</b>\n\n"
+            
+            if acc_data.get('unprofitable_banners', 0) == 0:
+                acc_message += "<b>Убыточных объявлений не найдено!</b>\n"
+            
+            acc_message += f"\n{datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
+            
+            await update.message.reply_text(acc_message, parse_mode="HTML")
+        
+        logger.info("Команда /info выполнена успешно")
+        
+    except subprocess.TimeoutExpired:
+        await status_message.edit_text(
+            "❌ Анализ превысил таймаут (5 минут)",
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        logger.error(f"Ошибка выполнения команды /info: {e}", exc_info=True)
+        await status_message.edit_text(
+            f"❌ Ошибка при выполнении анализа:\n\n<code>{str(e)}</code>",
+            parse_mode="HTML"
+        )
 
 
 async def stop_cab_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
