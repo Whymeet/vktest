@@ -270,56 +270,90 @@ def save_raw_statistics_json(payload: dict, date_from: str, date_to: str, group_
     except Exception as e:
         logger.warning(f"⚠️ Не удалось сохранить сырой JSON: {e}")
 
-def get_banners_stats_day(token: str, base_url: str, date_from: str, date_to: str, banner_ids: list = None, metrics: str = "base"):
+def get_banners_stats_day(token: str, base_url: str, date_from: str, date_to: str, banner_ids: list = None, metrics: str = "base", batch_size: int = 50):
     """
     GET /statistics/banners/day.json
     Возвращает items с rows по дням и total.* по объявлению.
     Использует правильный параметр id=123,456,789 (через запятую).
+    
+    Если banner_ids слишком много (>batch_size), разбивает на батчи, чтобы избежать HTTP 414 (URI Too Large).
     """
     if banner_ids:
-        ids_str = ",".join(map(str, banner_ids))
         logger.info(f"📊 Запрашиваем статистику за период {date_from} - {date_to} для {len(banner_ids)} объявлений")
-        logger.debug(f"🆔 ID объявлений: {ids_str}")
     else:
         logger.info(f"📊 Запрашиваем статистику за период {date_from} - {date_to} для ВСЕХ объявлений")
     
     url = f"{base_url}/statistics/banners/day.json"
-    params = {
-        "date_from": date_from,
-        "date_to": date_to,
-        "metrics": metrics,
-    }
     
-    # ✅ Правильный параметр: id (без s) через запятую
-    if banner_ids:
-        params["id"] = ",".join(map(str, banner_ids))
-        logger.debug(f"🔧 Добавлен фильтр id: {params['id']}")
+    # Если banner_ids не указаны или их мало, делаем один запрос
+    if not banner_ids or len(banner_ids) <= batch_size:
+        params = {
+            "date_from": date_from,
+            "date_to": date_to,
+            "metrics": metrics,
+        }
+        
+        if banner_ids:
+            params["id"] = ",".join(map(str, banner_ids))
+            logger.debug(f"🔧 Добавлен фильтр id для {len(banner_ids)} объявлений")
 
-    try:
-        logger.debug(f"🌐 Отправляем запрос к {url} с параметрами: {params}")
-        r = requests.get(url, headers=_headers(token), params=params, timeout=30)
-        
-        if r.status_code != 200:
-            logger.error(f"❌ Ошибка HTTP {r.status_code} при получении статистики: {r.text[:200]}")
-            raise RuntimeError(f"[stats day] HTTP {r.status_code}: {r.text}")
-        
-        payload = r.json()
-        items = payload.get("items", [])
-        logger.info(f"✅ Получена статистика по {len(items)} объявлениям")
-        
-        # 💾 Сохраняем полный JSON ответ для анализа
-        save_raw_statistics_json(payload, date_from, date_to, banner_ids)
-        
-        # Проверяем, что получили именно те объявления, которые запрашивали
-        if banner_ids and items:
-            received_ids = [item.get("id") for item in items if item.get("id")]
-            logger.debug(f"📋 Получены ID: {received_ids}")
+        try:
+            logger.debug(f"🌐 Отправляем запрос к {url}")
+            r = requests.get(url, headers=_headers(token), params=params, timeout=30)
             
-        return items
+            if r.status_code != 200:
+                logger.error(f"❌ Ошибка HTTP {r.status_code} при получении статистики: {r.text[:200]}")
+                raise RuntimeError(f"[stats day] HTTP {r.status_code}: {r.text}")
+            
+            payload = r.json()
+            items = payload.get("items", [])
+            logger.info(f"✅ Получена статистика по {len(items)} объявлениям")
+            return items
+        except Exception as e:
+            logger.error(f"❌ Ошибка при получении статистики: {e}")
+            raise
+    
+    # Если banner_ids слишком много, разбиваем на батчи
+    logger.info(f"⚠️ Найдено {len(banner_ids)} объявлений, разбиваем на батчи по {batch_size} для избежания HTTP 414")
+    all_items = []
+    total_batches = (len(banner_ids) + batch_size - 1) // batch_size
+    
+    for batch_num in range(total_batches):
+        start_idx = batch_num * batch_size
+        end_idx = min(start_idx + batch_size, len(banner_ids))
+        batch_ids = banner_ids[start_idx:end_idx]
         
-    except requests.RequestException as e:
-        logger.error(f"❌ Ошибка сети при получении статистики: {e}")
-        raise
+        logger.info(f"📦 Батч {batch_num + 1}/{total_batches}: запрашиваем статистику для {len(batch_ids)} объявлений")
+        
+        params = {
+            "date_from": date_from,
+            "date_to": date_to,
+            "metrics": metrics,
+            "id": ",".join(map(str, batch_ids))
+        }
+
+        try:
+            r = requests.get(url, headers=_headers(token), params=params, timeout=30)
+            
+            if r.status_code != 200:
+                logger.error(f"❌ Ошибка HTTP {r.status_code} в батче {batch_num + 1}: {r.text[:200]}")
+                raise RuntimeError(f"[stats day] HTTP {r.status_code}: {r.text}")
+            
+            payload = r.json()
+            items = payload.get("items", [])
+            all_items.extend(items)
+            logger.info(f"✅ Батч {batch_num + 1}/{total_batches}: получена статистика по {len(items)} объявлениям")
+            
+            # Небольшая пауза между батчами
+            if batch_num < total_batches - 1:
+                time.sleep(SLEEP_BETWEEN_CALLS)
+                
+        except Exception as e:
+            logger.error(f"❌ Ошибка в батче {batch_num + 1}: {e}")
+            raise
+    
+    logger.info(f"✅ Всего получена статистика по {len(all_items)} объявлениям из {len(banner_ids)} запрошенных")
+    return all_items
 
 
 def aggregate_stats_by_banner(items):
@@ -600,6 +634,13 @@ def analyze_account(account_name: str, access_token: str, config: dict):
         # Загружаем активные объявления (фильтрация на сервере)
         banners = get_banners_active(access_token, BASE_URL)
         logger.info(f"✅ [{account_name}] Получено активных объявлений с сервера: {len(banners)}")
+        
+        if len(banners) == 0:
+            logger.warning(f"⚠️ [{account_name}] Не найдено активных объявлений! Возможные причины:")
+            logger.warning(f"   • Проверьте правильность API токена")
+            logger.warning(f"   • Убедитесь что в кабинете есть активные объявления")
+            logger.warning(f"   • Проверьте права доступа токена")
+            # Продолжаем выполнение даже если нет объявлений
         
         # Извлекаем ID активных объявлений для фильтрации статистики
         banner_ids = [b.get("id") for b in banners if b.get("id")]
@@ -884,6 +925,12 @@ def main():
         if total_goals_all > 0:
             avg_cost_all = total_spent_all / total_goals_all
             logger.info(f"💎 Средняя стоимость VK цели по всем кабинетам: {avg_cost_all:.2f}₽")
+        
+        # Проверяем, есть ли результаты для создания отчета
+        if not all_results:
+            logger.error("❌ Нет данных для создания сводного отчета - все кабинеты вернули ошибки")
+            send_telegram_error("❌ Анализ не выполнен: все кабинеты вернули ошибки")
+            return
         
         # Создаем сводный файл результатов
         summary_results = {
