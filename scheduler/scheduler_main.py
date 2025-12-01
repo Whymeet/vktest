@@ -186,7 +186,15 @@ class VKAdsScheduler:
             )
             
             if result.returncode == 0:
-                self.logger.info(f"✅ {run_type.capitalize()} анализ завершен успешно")
+                # Проверяем вывод на наличие отключенных объявлений
+                output_lines = result.stdout.lower()
+                if "убыточных объявлений не найдено" in output_lines or "убыточных объявлений: 0" in output_lines:
+                    self.logger.info(f"✅ {run_type.capitalize()} анализ завершен - убыточных объявлений не найдено")
+                elif "отключено:" in output_lines or "убыточных объявлений:" in output_lines:
+                    self.logger.info(f"✅ {run_type.capitalize()} анализ завершен - найдены и отключены убыточные объявления")
+                else:
+                    self.logger.info(f"✅ {run_type.capitalize()} анализ завершен успешно")
+                
                 self.logger.debug(f"Вывод: {result.stdout}")
                 return True
             else:
