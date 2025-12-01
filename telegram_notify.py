@@ -9,27 +9,45 @@ def send_telegram_message(config, message):
     if not telegram_config.get("enabled", False):
         logger.info("📱 Telegram уведомления отключены")
         return False
+    
     bot_token = telegram_config.get("bot_token")
-    chat_id = telegram_config.get("chat_id")
-    if not bot_token or not chat_id:
+    chat_ids = telegram_config.get("chat_id")
+    
+    if not bot_token or not chat_ids:
         logger.warning("⚠️ Telegram не настроен: отсутствует bot_token или chat_id")
         return False
+    
+    # Поддержка как одного chat_id (строка), так и нескольких (список)
+    if isinstance(chat_ids, str):
+        chat_ids = [chat_ids]
+    elif not isinstance(chat_ids, list):
+        logger.error("❌ chat_id должен быть строкой или списком строк")
+        return False
+    
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-    data = {
-        "chat_id": chat_id,
-        "text": message,
-        "parse_mode": "HTML"
-    }
-    try:
-        response = requests.post(url, json=data, timeout=10)
-        if response.status_code == 200:
-            logger.info("📱 Сообщение отправлено в Telegram")
-            return True
-        else:
-            logger.error(f"❌ Ошибка отправки в Telegram: {response.status_code} - {response.text}")
-            return False
-    except Exception as e:
-        logger.error(f"❌ Исключение при отправке в Telegram: {str(e)}")
+    success_count = 0
+    
+    for chat_id in chat_ids:
+        data = {
+            "chat_id": chat_id,
+            "text": message,
+            "parse_mode": "HTML"
+        }
+        try:
+            response = requests.post(url, json=data, timeout=10)
+            if response.status_code == 200:
+                logger.info(f"📱 Сообщение отправлено в Telegram (chat_id: {chat_id})")
+                success_count += 1
+            else:
+                logger.error(f"❌ Ошибка отправки в Telegram для {chat_id}: {response.status_code} - {response.text}")
+        except Exception as e:
+            logger.error(f"❌ Исключение при отправке в Telegram для {chat_id}: {str(e)}")
+    
+    if success_count > 0:
+        logger.info(f"📱 Сообщения отправлены в {success_count} из {len(chat_ids)} чатов")
+        return True
+    else:
+        logger.error("❌ Не удалось отправить сообщения ни в один чат")
         return False
 
 def format_telegram_statistics(unprofitable_count, effective_count, testing_count, 
