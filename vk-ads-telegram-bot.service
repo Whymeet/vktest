@@ -4,7 +4,6 @@ After=network.target
 
 [Service]
 Type=simple
-User=trouble
 WorkingDirectory=/home/trouble/dev/vktest
 Environment="PATH=/home/trouble/dev/vktest/.venv/bin:/usr/local/bin:/usr/bin:/bin"
 ExecStart=/home/trouble/dev/vktest/.venv/bin/python /home/trouble/dev/vktest/telegram_bot.py
