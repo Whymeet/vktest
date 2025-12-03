@@ -56,7 +56,7 @@ class VKAdsScheduler:
         self.logger.addHandler(file_handler)
         
         # Путь к основному скрипту
-        self.main_script_path = Path(__file__).parent.parent / "main.py"
+        self.main_script_path = Path(__file__).parent.parent / "src" / "main.py"
         
         # Состояние планировщика
         self.is_running = False

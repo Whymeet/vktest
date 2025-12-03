@@ -22,7 +22,7 @@ app.secret_key = 'vk-ads-manager-secret-key-2024'  # Измените на св�
 
 CONFIG_PATH = os.path.join("cfg", "config.json")
 SCHEDULER_SCRIPT = os.path.join("scheduler", "scheduler_main.py")
-MAIN_SCRIPT = "main.py"
+MAIN_SCRIPT = os.path.join("src", "main.py")
 
 # Глобальная переменная для отслеживания запущенных процессов
 running_processes = {

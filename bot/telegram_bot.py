@@ -86,13 +86,13 @@ async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     try:
         # Запускаем main.py для получения актуальной статистики
-        main_script = Path(__file__).parent / "main.py"
+        main_script = Path(__file__).parent.parent / "src" / "main.py"
         
         logger.info("Запуск анализа по команде /info")
         
         result = subprocess.run(
             [sys.executable, str(main_script)],
-            cwd=str(main_script.parent),
+            cwd=str(main_script.parent.parent),
             capture_output=True,
             text=True,
             timeout=300  # 5 минут таймаут
