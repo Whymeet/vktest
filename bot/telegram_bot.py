@@ -28,7 +28,8 @@ logger = logging.getLogger("telegram_bot")
 def load_config():
     """Загрузка конфигурации"""
     try:
-        with open("cfg/config.json", "r", encoding="utf-8") as f:
+        config_path = Path(__file__).parent.parent / "cfg" / "config.json"
+        with open(config_path, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception as e:
         logger.error(f"Ошибка загрузки конфигурации: {e}")
@@ -107,7 +108,7 @@ async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         
         # Читаем результаты анализа из JSON файла
-        summary_file = Path(__file__).parent / "data" / "vk_summary_analysis.json"
+        summary_file = Path(__file__).parent.parent / "data" / "vk_summary_analysis.json"
         
         if not summary_file.exists():
             await status_message.edit_text(

@@ -94,7 +94,8 @@ def setup_logging():
     """Настройка логирования в консоль и файл с ротацией по дням"""
     
     # Создаем папку logs если её нет
-    log_dir = "logs"
+    project_root = Path(__file__).parent.parent
+    log_dir = project_root / "logs"
     os.makedirs(log_dir, exist_ok=True)
     
     # Настройка логгера
@@ -118,7 +119,7 @@ def setup_logging():
     
     # Handler для файла с уникальным именем на каждый запуск
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_file = os.path.join(log_dir, f"vk_ads_manager_{timestamp}.log")
+    log_file = log_dir / f"vk_ads_manager_{timestamp}.log"
     file_handler = logging.FileHandler(
         log_file, 
         encoding='utf-8'
