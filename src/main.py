@@ -4,11 +4,16 @@ import json
 import time
 import logging
 import os
+import sys
 import traceback
 from datetime import date, timedelta, datetime
+from pathlib import Path
+
+# Добавляем родительскую директорию в путь для импорта модулей
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # Импортируем функции Telegram
-from telegram_notify import send_telegram_message, format_telegram_account_statistics
+from bot.telegram_notify import send_telegram_message, format_telegram_account_statistics
 
 # ===================== TELEGRAM ФУНКЦИИ =====================
 
@@ -24,7 +29,9 @@ def send_telegram_error(error_message):
 
 def load_config():
     """Загружает конфигурацию из cfg/config.json"""
-    config_path = os.path.join("cfg", "config.json")
+    # Путь относительно корня проекта
+    project_root = Path(__file__).parent.parent
+    config_path = project_root / "cfg" / "config.json"
     try:
         with open(config_path, "r", encoding="utf-8") as f:
             config = json.load(f)
@@ -43,7 +50,9 @@ def load_whitelist():
     }
     Если файл не найден — пытаемся взять из `config` (ключ `banners_whitelist`) для совместимости.
     """
-    wl_path = os.path.join("cfg", "whitelist.json")
+    # Путь относительно корня проекта
+    project_root = Path(__file__).parent.parent
+    wl_path = project_root / "cfg" / "whitelist.json"
     try:
         with open(wl_path, "r", encoding="utf-8") as f:
             wl = json.load(f)
@@ -85,7 +94,8 @@ def setup_logging():
     """Настройка логирования в консоль и файл с ротацией по дням"""
     
     # Создаем папку logs если её нет
-    log_dir = "logs"
+    project_root = Path(__file__).parent.parent
+    log_dir = project_root / "logs"
     os.makedirs(log_dir, exist_ok=True)
     
     # Настройка логгера
@@ -109,7 +119,7 @@ def setup_logging():
     
     # Handler для файла с уникальным именем на каждый запуск
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_file = os.path.join(log_dir, f"vk_ads_manager_{timestamp}.log")
+    log_file = log_dir / f"vk_ads_manager_{timestamp}.log"
     file_handler = logging.FileHandler(
         log_file, 
         encoding='utf-8'
@@ -236,8 +246,11 @@ def get_banners_active(token: str, base_url: str, fields: str = "id,name,status,
 def save_raw_statistics_json(payload: dict, date_from: str, date_to: str, group_ids: list = None):
     """Сохраняет сырой JSON ответ от API статистики для последующего анализа"""
     try:
+        # Путь относительно корня проекта
+        project_root = Path(__file__).parent.parent
+        data_dir = project_root / "data"
         # Создаем папку data если её нет
-        os.makedirs("data", exist_ok=True)
+        os.makedirs(data_dir, exist_ok=True)
         
         # Формируем имя файла с временной меткой
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -248,7 +261,7 @@ def save_raw_statistics_json(payload: dict, date_from: str, date_to: str, group_
             ids_suffix = "_all"
             
         filename = f"vk_statistics_raw_{date_from}_{date_to}{ids_suffix}_{timestamp}.json"
-        filepath = os.path.join("data", filename)
+        filepath = data_dir / filename
         
         # Добавляем метаданные к JSON
         enriched_payload = {
@@ -270,56 +283,90 @@ def save_raw_statistics_json(payload: dict, date_from: str, date_to: str, group_
     except Exception as e:
         logger.warning(f"⚠️ Не удалось сохранить сырой JSON: {e}")
 
-def get_banners_stats_day(token: str, base_url: str, date_from: str, date_to: str, banner_ids: list = None, metrics: str = "base"):
+def get_banners_stats_day(token: str, base_url: str, date_from: str, date_to: str, banner_ids: list = None, metrics: str = "base", batch_size: int = 50):
     """
     GET /statistics/banners/day.json
     Возвращает items с rows по дням и total.* по объявлению.
     Использует правильный параметр id=123,456,789 (через запятую).
+    
+    Если banner_ids слишком много (>batch_size), разбивает на батчи, чтобы избежать HTTP 414 (URI Too Large).
     """
     if banner_ids:
-        ids_str = ",".join(map(str, banner_ids))
         logger.info(f"📊 Запрашиваем статистику за период {date_from} - {date_to} для {len(banner_ids)} объявлений")
-        logger.debug(f"🆔 ID объявлений: {ids_str}")
     else:
         logger.info(f"📊 Запрашиваем статистику за период {date_from} - {date_to} для ВСЕХ объявлений")
     
     url = f"{base_url}/statistics/banners/day.json"
-    params = {
-        "date_from": date_from,
-        "date_to": date_to,
-        "metrics": metrics,
-    }
     
-    # ✅ Правильный параметр: id (без s) через запятую
-    if banner_ids:
-        params["id"] = ",".join(map(str, banner_ids))
-        logger.debug(f"🔧 Добавлен фильтр id: {params['id']}")
+    # Если banner_ids не указаны или их мало, делаем один запрос
+    if not banner_ids or len(banner_ids) <= batch_size:
+        params = {
+            "date_from": date_from,
+            "date_to": date_to,
+            "metrics": metrics,
+        }
+        
+        if banner_ids:
+            params["id"] = ",".join(map(str, banner_ids))
+            logger.debug(f"🔧 Добавлен фильтр id для {len(banner_ids)} объявлений")
 
-    try:
-        logger.debug(f"🌐 Отправляем запрос к {url} с параметрами: {params}")
-        r = requests.get(url, headers=_headers(token), params=params, timeout=30)
-        
-        if r.status_code != 200:
-            logger.error(f"❌ Ошибка HTTP {r.status_code} при получении статистики: {r.text[:200]}")
-            raise RuntimeError(f"[stats day] HTTP {r.status_code}: {r.text}")
-        
-        payload = r.json()
-        items = payload.get("items", [])
-        logger.info(f"✅ Получена статистика по {len(items)} объявлениям")
-        
-        # 💾 Сохраняем полный JSON ответ для анализа
-        save_raw_statistics_json(payload, date_from, date_to, banner_ids)
-        
-        # Проверяем, что получили именно те объявления, которые запрашивали
-        if banner_ids and items:
-            received_ids = [item.get("id") for item in items if item.get("id")]
-            logger.debug(f"📋 Получены ID: {received_ids}")
+        try:
+            logger.debug(f"🌐 Отправляем запрос к {url}")
+            r = requests.get(url, headers=_headers(token), params=params, timeout=30)
             
-        return items
+            if r.status_code != 200:
+                logger.error(f"❌ Ошибка HTTP {r.status_code} при получении статистики: {r.text[:200]}")
+                raise RuntimeError(f"[stats day] HTTP {r.status_code}: {r.text}")
+            
+            payload = r.json()
+            items = payload.get("items", [])
+            logger.info(f"✅ Получена статистика по {len(items)} объявлениям")
+            return items
+        except Exception as e:
+            logger.error(f"❌ Ошибка при получении статистики: {e}")
+            raise
+    
+    # Если banner_ids слишком много, разбиваем на батчи
+    logger.info(f"⚠️ Найдено {len(banner_ids)} объявлений, разбиваем на батчи по {batch_size} для избежания HTTP 414")
+    all_items = []
+    total_batches = (len(banner_ids) + batch_size - 1) // batch_size
+    
+    for batch_num in range(total_batches):
+        start_idx = batch_num * batch_size
+        end_idx = min(start_idx + batch_size, len(banner_ids))
+        batch_ids = banner_ids[start_idx:end_idx]
         
-    except requests.RequestException as e:
-        logger.error(f"❌ Ошибка сети при получении статистики: {e}")
-        raise
+        logger.info(f"📦 Батч {batch_num + 1}/{total_batches}: запрашиваем статистику для {len(batch_ids)} объявлений")
+        
+        params = {
+            "date_from": date_from,
+            "date_to": date_to,
+            "metrics": metrics,
+            "id": ",".join(map(str, batch_ids))
+        }
+
+        try:
+            r = requests.get(url, headers=_headers(token), params=params, timeout=30)
+            
+            if r.status_code != 200:
+                logger.error(f"❌ Ошибка HTTP {r.status_code} в батче {batch_num + 1}: {r.text[:200]}")
+                raise RuntimeError(f"[stats day] HTTP {r.status_code}: {r.text}")
+            
+            payload = r.json()
+            items = payload.get("items", [])
+            all_items.extend(items)
+            logger.info(f"✅ Батч {batch_num + 1}/{total_batches}: получена статистика по {len(items)} объявлениям")
+            
+            # Небольшая пауза между батчами
+            if batch_num < total_batches - 1:
+                time.sleep(SLEEP_BETWEEN_CALLS)
+                
+        except Exception as e:
+            logger.error(f"❌ Ошибка в батче {batch_num + 1}: {e}")
+            raise
+    
+    logger.info(f"✅ Всего получена статистика по {len(all_items)} объявлениям из {len(banner_ids)} запрошенных")
+    return all_items
 
 
 def aggregate_stats_by_banner(items):
@@ -601,6 +648,13 @@ def analyze_account(account_name: str, access_token: str, config: dict):
         banners = get_banners_active(access_token, BASE_URL)
         logger.info(f"✅ [{account_name}] Получено активных объявлений с сервера: {len(banners)}")
         
+        if len(banners) == 0:
+            logger.warning(f"⚠️ [{account_name}] Не найдено активных объявлений! Возможные причины:")
+            logger.warning(f"   • Проверьте правильность API токена")
+            logger.warning(f"   • Убедитесь что в кабинете есть активные объявления")
+            logger.warning(f"   • Проверьте права доступа токена")
+            # Продолжаем выполнение даже если нет объявлений
+        
         # Извлекаем ID активных объявлений для фильтрации статистики
         banner_ids = [b.get("id") for b in banners if b.get("id")]
         logger.info(f"🎯 [{account_name}] Будем запрашивать статистику только для {len(banner_ids)} активных объявлений")
@@ -736,29 +790,32 @@ def analyze_account(account_name: str, access_token: str, config: dict):
             
             disable_results = disable_unprofitable_banners(access_token, BASE_URL, over_limit, DRY_RUN)
         
-        # Отправляем уведомления по этому кабинету в Telegram
+        # Отправляем уведомления об отключении в Telegram (ТОЛЬКО если есть убыточные объявления)
         try:
-            avg_cost_per_goal = total_spent / total_vk_goals if total_vk_goals > 0 else 0
-            account_messages = format_telegram_account_statistics(
-                account_name=account_name,
-                unprofitable_count=len(over_limit),
-                effective_count=len(under_limit),
-                testing_count=len(no_activity),
-                total_count=len(banners),
-                total_spent=total_spent,
-                total_goals=int(total_vk_goals),
-                avg_cost=avg_cost_per_goal,
-                lookback_days=LOOKBACK_DAYS,
-                disable_results=disable_results,
-                unprofitable_groups=over_limit  # Оставляем имя параметра для совместимости с telegram_notify
-            )
-            
-            # Отправляем каждое сообщение отдельно
-            for i, message in enumerate(account_messages):
-                send_telegram_message(config, message)
-                # Небольшая пауза между сообщениями чтобы не флудить (кроме последнего)
-                if i < len(account_messages) - 1:
-                    time.sleep(1)
+            if over_limit:  # ✅ ОТПРАВЛЯЕМ ТОЛЬКО если есть убыточные объявления
+                avg_cost_per_goal = total_spent / total_vk_goals if total_vk_goals > 0 else 0
+                account_messages = format_telegram_account_statistics(
+                    account_name=account_name,
+                    unprofitable_count=len(over_limit),
+                    effective_count=len(under_limit),
+                    testing_count=len(no_activity),
+                    total_count=len(banners),
+                    total_spent=total_spent,
+                    total_goals=int(total_vk_goals),
+                    avg_cost=avg_cost_per_goal,
+                    lookback_days=LOOKBACK_DAYS,
+                    disable_results=disable_results,
+                    unprofitable_groups=over_limit  # Оставляем имя параметра для совместимости с telegram_notify
+                )
+                
+                # Отправляем каждое сообщение отдельно
+                for i, message in enumerate(account_messages):
+                    send_telegram_message(config, message)
+                    # Небольшая пауза между сообщениями чтобы не флудить (кроме последнего)
+                    if i < len(account_messages) - 1:
+                        time.sleep(1)
+            else:
+                logger.info(f"✅ [{account_name}] Убыточных объявлений нет - уведомления не отправляются")
                     
         except Exception as e:
             logger.error(f"❌ Ошибка отправки уведомления по кабинету {account_name}: {e}")
@@ -811,17 +868,8 @@ def main():
     # Загружаем конфигурацию для Telegram
     config = load_config()
     
-    # Отправляем уведомление о начале анализа
-    accounts_list = ", ".join(ACCOUNTS.keys())
-    # Формируем информацию о лимитах для Telegram
-    limits_info = []
-    for acc_name, acc_cfg in ACCOUNTS.items():
-        if isinstance(acc_cfg, dict) and "spent_limit_rub" in acc_cfg:
-            limits_info.append(f"{acc_name}: {acc_cfg['spent_limit_rub']}₽")
-    limits_text = "\n".join(limits_info) if limits_info else f"{SPENT_LIMIT_RUB}₽ (общий)"
-    
-    start_message = f"<b>Начало анализа</b>\n\nКабинеты: {accounts_list}\nПериод: {LOOKBACK_DAYS} дн.\nЛимиты:\n{limits_text}\n{datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
-    send_telegram_message(config, start_message)
+    # ❌ УБРАЛИ: Не отправляем уведомление о начале анализа
+    # Оставляем только оповещения об отключении компаний
     
     # Результаты по всем кабинетам
     all_results = []
@@ -891,6 +939,12 @@ def main():
             avg_cost_all = total_spent_all / total_goals_all
             logger.info(f"💎 Средняя стоимость VK цели по всем кабинетам: {avg_cost_all:.2f}₽")
         
+        # Проверяем, есть ли результаты для создания отчета
+        if not all_results:
+            logger.error("❌ Нет данных для создания сводного отчета - все кабинеты вернули ошибки")
+            send_telegram_error("❌ Анализ не выполнен: все кабинеты вернули ошибки")
+            return
+        
         # Создаем сводный файл результатов
         summary_results = {
             "analysis_date": datetime.now().isoformat(),
@@ -924,10 +978,13 @@ def main():
             all_unprofitable.extend(result["over_limit"])
         
         # Создаем папку data если её нет
-        os.makedirs("data", exist_ok=True)
+        # Путь относительно корня проекта
+        project_root = Path(__file__).parent.parent
+        data_dir = project_root / "data"
+        os.makedirs(data_dir, exist_ok=True)
         
         # Сохраняем сводный анализ
-        summary_file = os.path.join("data", "vk_summary_analysis.json")
+        summary_file = data_dir / "vk_summary_analysis.json"
         with open(summary_file, "w", encoding="utf-8") as f:
             json.dump(summary_results, f, ensure_ascii=False, indent=2)
         logger.info(f"💾 Сводный анализ сохранен в {summary_file}")
@@ -954,7 +1011,7 @@ def main():
                 "banners_to_disable": all_unprofitable
             }
             
-            unprofitable_file = os.path.join("data", "vk_all_unprofitable_banners.json")
+            unprofitable_file = data_dir / "vk_all_unprofitable_banners.json"
             with open(unprofitable_file, "w", encoding="utf-8") as f:
                 json.dump(unprofitable_data, f, ensure_ascii=False, indent=2)
             

@@ -1,8 +1,11 @@
 import json
 import os
+from pathlib import Path
 
 def load_config():
-    config_path = os.path.join("cfg", "config.json")
+    # Путь относительно корня проекта
+    project_root = Path(__file__).parent.parent
+    config_path = project_root / "cfg" / "config.json"
     try:
         with open(config_path, "r", encoding="utf-8") as f:
             config = json.load(f)

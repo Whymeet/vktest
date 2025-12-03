@@ -9,27 +9,45 @@ def send_telegram_message(config, message):
     if not telegram_config.get("enabled", False):
         logger.info("📱 Telegram уведомления отключены")
         return False
+    
     bot_token = telegram_config.get("bot_token")
-    chat_id = telegram_config.get("chat_id")
-    if not bot_token or not chat_id:
+    chat_ids = telegram_config.get("chat_id")
+    
+    if not bot_token or not chat_ids:
         logger.warning("⚠️ Telegram не настроен: отсутствует bot_token или chat_id")
         return False
+    
+    # Поддержка как одного chat_id (строка), так и нескольких (список)
+    if isinstance(chat_ids, str):
+        chat_ids = [chat_ids]
+    elif not isinstance(chat_ids, list):
+        logger.error("❌ chat_id должен быть строкой или списком строк")
+        return False
+    
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-    data = {
-        "chat_id": chat_id,
-        "text": message,
-        "parse_mode": "HTML"
-    }
-    try:
-        response = requests.post(url, json=data, timeout=10)
-        if response.status_code == 200:
-            logger.info("📱 Сообщение отправлено в Telegram")
-            return True
-        else:
-            logger.error(f"❌ Ошибка отправки в Telegram: {response.status_code} - {response.text}")
-            return False
-    except Exception as e:
-        logger.error(f"❌ Исключение при отправке в Telegram: {str(e)}")
+    success_count = 0
+    
+    for chat_id in chat_ids:
+        data = {
+            "chat_id": chat_id,
+            "text": message,
+            "parse_mode": "HTML"
+        }
+        try:
+            response = requests.post(url, json=data, timeout=10)
+            if response.status_code == 200:
+                logger.info(f"📱 Сообщение отправлено в Telegram (chat_id: {chat_id})")
+                success_count += 1
+            else:
+                logger.error(f"❌ Ошибка отправки в Telegram для {chat_id}: {response.status_code} - {response.text}")
+        except Exception as e:
+            logger.error(f"❌ Исключение при отправке в Telegram для {chat_id}: {str(e)}")
+    
+    if success_count > 0:
+        logger.info(f"📱 Сообщения отправлены в {success_count} из {len(chat_ids)} чатов")
+        return True
+    else:
+        logger.error("❌ Не удалось отправить сообщения ни в один чат")
         return False
 
 def format_telegram_statistics(unprofitable_count, effective_count, testing_count, 
@@ -94,48 +112,11 @@ def format_telegram_unprofitable_groups(unprofitable_groups):
 
 def format_telegram_account_statistics(account_name, unprofitable_count, effective_count, testing_count, 
                                       total_count, total_spent, total_goals, avg_cost, lookback_days, disable_results=None, unprofitable_groups=None):
-    """Форматирует статистику по отдельному кабинету для Telegram"""
+    """Форматирует статистику по отдельному кабинету для Telegram - ТОЛЬКО сообщения об отключении"""
     
     messages = []
     
-    # Основная статистика
-    clean_account_name = account_name.replace(" ", "_").replace("-", "_")
-    main_message = f"<b>#{clean_account_name}</b>\n\n"
-    
-    main_message += f"Убыточных объявлений: <b>{unprofitable_count}</b>\n"
-    main_message += f"Объявления с резом: <b>{effective_count}</b>\n"
-    main_message += f"Объявления без реза: <b>{testing_count}</b>\n"
-    main_message += f"Всего активных объявлений: <b>{total_count}</b>\n\n"
-    
-    main_message += f"Расходы за {lookback_days} дн.: <b>{total_spent:.2f}₽</b>\n"
-    main_message += f"Резы за {lookback_days} дн.: <b>{total_goals}</b>\n"
-    
-    if total_goals > 0:
-        main_message += f"Средняя стоимость реза: <b>{avg_cost:.2f}₽</b>\n\n"
-    else:
-        main_message += f"Средняя стоимость реза: <b>-</b>\n\n"
-    
-    # Добавляем информацию об отключении объявлений
-    if disable_results and unprofitable_count > 0:
-        dry_run = disable_results.get("dry_run", True)
-        disabled = disable_results.get("disabled", 0)
-        failed = disable_results.get("failed", 0)
-        
-        if dry_run:
-            main_message += f"<b>Режим тестирования:</b> Было бы отключено {disabled} объявлений\n"
-        else:
-            main_message += f"<b>Отключено:</b> {disabled} объявлений"
-            if failed > 0:
-                main_message += f" (ошибок: {failed})"
-            main_message += "\n"
-    elif unprofitable_count == 0:
-        main_message += f"<b>Убыточных объявлений не найдено!</b>\n"
-    
-    main_message += f"\n{datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
-    
-    messages.append(main_message)
-    
-    # Добавляем списки убыточных объявлений отдельными сообщениями (по 10 объявлений)
+    # ✅ ОТПРАВЛЯЕМ ТОЛЬКО если есть убыточные объявления для отключения
     if unprofitable_groups and len(unprofitable_groups) > 0:
         groups_per_message = 10
         total_groups = len(unprofitable_groups)

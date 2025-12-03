@@ -14,12 +14,15 @@ import atexit
 from datetime import datetime
 from pathlib import Path
 
+# Добавляем родительскую директорию в путь для импорта модулей
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 app = Flask(__name__)
 app.secret_key = 'vk-ads-manager-secret-key-2024'  # Измените на свой секретный ключ
 
 CONFIG_PATH = os.path.join("cfg", "config.json")
 SCHEDULER_SCRIPT = os.path.join("scheduler", "scheduler_main.py")
-MAIN_SCRIPT = "main.py"
+MAIN_SCRIPT = os.path.join("src", "main.py")
 
 # Глобальная переменная для отслеживания запущенных процессов
 running_processes = {
@@ -345,13 +348,15 @@ def api_config():
 @app.route('/logs')
 def logs():
     """Страница просмотра логов"""
-    log_dir = "logs"
+    # Путь относительно корня проекта
+    project_root = Path(__file__).parent.parent
+    log_dir = project_root / "logs"
     log_files = []
     
-    if os.path.exists(log_dir):
+    if log_dir.exists():
         files = sorted(os.listdir(log_dir), reverse=True)
         for filename in files[:10]:  # Показываем последние 10 файлов
-            filepath = os.path.join(log_dir, filename)
+            filepath = log_dir / filename
             if os.path.isfile(filepath):
                 stat = os.stat(filepath)
                 log_files.append({
@@ -725,7 +730,9 @@ def parse_log_file(log_path):
 @app.route('/analytics')
 def analytics():
     """Страница аналитики логов"""
-    log_dir = Path("logs")
+    # Путь относительно корня проекта
+    project_root = Path(__file__).parent.parent
+    log_dir = project_root / "logs"
     
     # Находим последний лог-файл
     latest_log = None
