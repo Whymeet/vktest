@@ -1,7 +1,10 @@
 #!/bin/bash
 # Запуск планировщика и Telegram бота в фоне
 
-cd /home/trouble/dev/vktest
+# Получаем директорию скрипта и переходим в корень проекта
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+cd "$PROJECT_DIR"
 
 # Активируем виртуальное окружение
 source .venv/bin/activate
@@ -21,7 +24,7 @@ echo "⏰ Планировщик запущен (PID: $SCHEDULER_PID)"
 sleep 2
 
 # Запускаем Telegram бота в фоне
-nohup python telegram_bot.py > telegram_bot.log 2>&1 &
+nohup python bot/telegram_bot.py > telegram_bot.log 2>&1 &
 BOT_PID=$!
 echo "🤖 Telegram бот запущен (PID: $BOT_PID)"
 

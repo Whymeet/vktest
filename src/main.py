@@ -4,11 +4,16 @@ import json
 import time
 import logging
 import os
+import sys
 import traceback
 from datetime import date, timedelta, datetime
+from pathlib import Path
+
+# Добавляем родительскую директорию в путь для импорта модулей
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # Импортируем функции Telegram
-from telegram_notify import send_telegram_message, format_telegram_account_statistics
+from bot.telegram_notify import send_telegram_message, format_telegram_account_statistics
 
 # ===================== TELEGRAM ФУНКЦИИ =====================
 

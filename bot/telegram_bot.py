@@ -12,10 +12,13 @@ import subprocess
 import sys
 from pathlib import Path
 from datetime import datetime
+
+# Добавляем родительскую директорию в путь для импорта модулей
+sys.path.insert(0, str(Path(__file__).parent.parent))
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
-from vk_api import get_ad_groups_active, disable_ad_group
-from logging_setup import setup_logging
+from utils.vk_api import get_ad_groups_active, disable_ad_group
+from utils.logging_setup import setup_logging
 
 # Настройка логирования
 setup_logging()

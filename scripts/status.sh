@@ -1,7 +1,10 @@
 #!/bin/bash
 # Проверка статуса процессов VK Ads Manager
 
-cd /home/trouble/dev/vktest
+# Получаем директорию скрипта и переходим в корень проекта
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+cd "$PROJECT_DIR"
 
 echo "📊 Статус процессов VK Ads Manager"
 echo "=================================="

@@ -14,6 +14,9 @@ import atexit
 from datetime import datetime
 from pathlib import Path
 
+# Добавляем родительскую директорию в путь для импорта модулей
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 app = Flask(__name__)
 app.secret_key = 'vk-ads-manager-secret-key-2024'  # Измените на свой секретный ключ
 
