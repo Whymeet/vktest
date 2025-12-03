@@ -29,7 +29,9 @@ def send_telegram_error(error_message):
 
 def load_config():
     """Загружает конфигурацию из cfg/config.json"""
-    config_path = os.path.join("cfg", "config.json")
+    # Путь относительно корня проекта
+    project_root = Path(__file__).parent.parent
+    config_path = project_root / "cfg" / "config.json"
     try:
         with open(config_path, "r", encoding="utf-8") as f:
             config = json.load(f)
@@ -48,7 +50,9 @@ def load_whitelist():
     }
     Если файл не найден — пытаемся взять из `config` (ключ `banners_whitelist`) для совместимости.
     """
-    wl_path = os.path.join("cfg", "whitelist.json")
+    # Путь относительно корня проекта
+    project_root = Path(__file__).parent.parent
+    wl_path = project_root / "cfg" / "whitelist.json"
     try:
         with open(wl_path, "r", encoding="utf-8") as f:
             wl = json.load(f)
@@ -241,8 +245,11 @@ def get_banners_active(token: str, base_url: str, fields: str = "id,name,status,
 def save_raw_statistics_json(payload: dict, date_from: str, date_to: str, group_ids: list = None):
     """Сохраняет сырой JSON ответ от API статистики для последующего анализа"""
     try:
+        # Путь относительно корня проекта
+        project_root = Path(__file__).parent.parent
+        data_dir = project_root / "data"
         # Создаем папку data если её нет
-        os.makedirs("data", exist_ok=True)
+        os.makedirs(data_dir, exist_ok=True)
         
         # Формируем имя файла с временной меткой
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -253,7 +260,7 @@ def save_raw_statistics_json(payload: dict, date_from: str, date_to: str, group_
             ids_suffix = "_all"
             
         filename = f"vk_statistics_raw_{date_from}_{date_to}{ids_suffix}_{timestamp}.json"
-        filepath = os.path.join("data", filename)
+        filepath = data_dir / filename
         
         # Добавляем метаданные к JSON
         enriched_payload = {
@@ -970,10 +977,13 @@ def main():
             all_unprofitable.extend(result["over_limit"])
         
         # Создаем папку data если её нет
-        os.makedirs("data", exist_ok=True)
+        # Путь относительно корня проекта
+        project_root = Path(__file__).parent.parent
+        data_dir = project_root / "data"
+        os.makedirs(data_dir, exist_ok=True)
         
         # Сохраняем сводный анализ
-        summary_file = os.path.join("data", "vk_summary_analysis.json")
+        summary_file = data_dir / "vk_summary_analysis.json"
         with open(summary_file, "w", encoding="utf-8") as f:
             json.dump(summary_results, f, ensure_ascii=False, indent=2)
         logger.info(f"💾 Сводный анализ сохранен в {summary_file}")
@@ -1000,7 +1010,7 @@ def main():
                 "banners_to_disable": all_unprofitable
             }
             
-            unprofitable_file = os.path.join("data", "vk_all_unprofitable_banners.json")
+            unprofitable_file = data_dir / "vk_all_unprofitable_banners.json"
             with open(unprofitable_file, "w", encoding="utf-8") as f:
                 json.dump(unprofitable_data, f, ensure_ascii=False, indent=2)
             
