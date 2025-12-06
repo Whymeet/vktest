@@ -1,0 +1,464 @@
+"""
+Асинхронная версия VK Ads API клиента.
+Использует aiohttp для параллельных HTTP запросов.
+
+Кабинеты обрабатываются полностью параллельно.
+Внутри каждого кабинета батчи обрабатываются последовательно.
+"""
+import asyncio
+import aiohttp
+from logging import getLogger
+
+logger = getLogger("vk_ads_manager")
+
+# Константы для ретраев
+API_MAX_RETRIES = 3
+API_RETRY_DELAY_SECONDS = 30
+API_RETRY_STATUS_CODES = {429, 500, 502, 503, 504}
+
+
+def _headers(token: str) -> dict:
+    return {"Authorization": f"Bearer {token}"}
+
+
+async def _request_with_retries(
+    session: aiohttp.ClientSession,
+    method: str,
+    url: str,
+    *,
+    max_retries: int = API_MAX_RETRIES,
+    retry_delay: int = API_RETRY_DELAY_SECONDS,
+    **kwargs,
+) -> aiohttp.ClientResponse:
+    """
+    Асинхронная обёртка с ретраями по временным ошибкам:
+    429, 500, 502, 503, 504 + сетевые ошибки.
+    """
+    attempt = 0
+
+    while True:
+        attempt += 1
+        try:
+            resp = await session.request(method, url, **kwargs)
+        except aiohttp.ClientError as e:
+            if attempt > max_retries:
+                logger.error(
+                    f"❌ {method} {url} — сетевая ошибка после {attempt} попыток: {e}"
+                )
+                raise
+
+            wait = min(5 + attempt * 3, 15)
+            logger.warning(
+                f"⚠️ {method} {url} — сетевая ошибка: {e}. "
+                f"Пауза {wait} сек перед повтором ({attempt}/{max_retries})"
+            )
+            await asyncio.sleep(wait)
+            continue
+
+        # Временные/лимитные статусы — ждём и ретраим
+        if resp.status in API_RETRY_STATUS_CODES:
+            response_text = await resp.text()
+
+            if attempt > max_retries:
+                logger.error(
+                    f"❌ {method} {url} — HTTP {resp.status} после {attempt} попыток.\n"
+                    f"   Тело ответа: {response_text[:200]}"
+                )
+                raise RuntimeError(
+                    f"HTTP {resp.status} после {attempt} попыток: {response_text[:200]}"
+                )
+
+            # 429 Too Many Requests
+            if resp.status == 429:
+                wait = 60
+                retry_after = resp.headers.get("Retry-After")
+                if retry_after:
+                    try:
+                        wait = max(wait, int(retry_after))
+                    except ValueError:
+                        pass
+
+                logger.warning(
+                    f"⚠️ {method} {url} — лимит запросов (429). "
+                    f"Ждём {wait} сек и повторяем ({attempt}/{max_retries})"
+                )
+                await asyncio.sleep(wait)
+            else:
+                wait = min(10 + attempt * 5, retry_delay)
+                logger.warning(
+                    f"⚠️ {method} {url} — временная ошибка HTTP {resp.status}. "
+                    f"Ждём {wait} сек и повторяем ({attempt}/{max_retries})"
+                )
+                await asyncio.sleep(wait)
+
+            continue
+
+        if attempt > 1:
+            logger.info(f"✅ {method} {url} — успешно восстановлено после {attempt-1} попыток")
+        return resp
+
+
+async def get_banners_active(
+    session: aiohttp.ClientSession,
+    token: str,
+    base_url: str,
+    fields: str = "id,name,status,delivery,ad_group_id,moderation_status",
+    limit: int = 200,
+    sleep_between_calls: float = 0.25,
+) -> list[dict]:
+    """
+    Загружаем все активные объявления (banners) асинхронно.
+    """
+    logger.info("🔄 Начинаем загрузку рекламных объявлений (banners) из VK Ads API")
+
+    url = f"{base_url}/banners.json"
+    offset = 0
+    items_all: list[dict] = []
+    page_num = 1
+
+    while True:
+        params = {
+            "fields": fields,
+            "limit": limit,
+            "offset": offset,
+            "_status": "active",
+            "_ad_group_status": "active",
+        }
+
+        resp = await _request_with_retries(
+            session,
+            "GET",
+            url,
+            headers=_headers(token),
+            params=params,
+            timeout=aiohttp.ClientTimeout(total=20),
+        )
+
+        if resp.status != 200:
+            text = await resp.text()
+            logger.error(f"❌ Ошибка HTTP {resp.status} при загрузке объявлений: {text[:200]}")
+            raise RuntimeError(f"[banners] HTTP {resp.status}: {text}")
+
+        payload = await resp.json()
+        items = payload.get("items", [])
+        items_all.extend(items)
+
+        logger.debug(f"✓ Страница {page_num}: получено {len(items)} объявлений (всего {len(items_all)})")
+
+        if len(items) < limit:
+            break
+
+        offset += limit
+        page_num += 1
+        await asyncio.sleep(sleep_between_calls)
+
+    logger.info(f"✅ Загружено {len(items_all)} активных объявлений за {page_num} страниц")
+    return items_all
+
+
+async def get_banners_stats_day(
+    session: aiohttp.ClientSession,
+    token: str,
+    base_url: str,
+    date_from: str,
+    date_to: str,
+    banner_ids: list | None = None,
+    metrics: str = "base",
+    batch_size: int = 50,
+    sleep_between_calls: float = 0.25,
+) -> dict:
+    """
+    Получает статистику по объявлениям асинхронно.
+    Возвращает словарь: { banner_id: {"spent": float, "clicks": float, "shows": float, "vk_goals": int} }
+    """
+    if banner_ids:
+        logger.info(
+            f"📊 Запрашиваем статистику за период {date_from} — {date_to} "
+            f"для {len(banner_ids)} активных объявлений"
+        )
+    else:
+        logger.info(
+            f"📊 Запрашиваем статистику за период {date_from} — {date_to} для всех объявлений"
+        )
+
+    url = f"{base_url}/statistics/banners/day.json"
+    aggregated_stats: dict = {}
+
+    async def _one_request(ids_chunk: list | None) -> list[dict]:
+        params = {
+            "date_from": date_from,
+            "date_to": date_to,
+            "metrics": metrics,
+        }
+        if ids_chunk:
+            params["id"] = ",".join(str(i) for i in ids_chunk)
+
+        resp = await _request_with_retries(
+            session,
+            "GET",
+            url,
+            headers=_headers(token),
+            params=params,
+            timeout=aiohttp.ClientTimeout(total=30),
+        )
+
+        if resp.status != 200:
+            text = await resp.text()
+            logger.error(f"❌ Ошибка HTTP {resp.status} при загрузке статистики: {text[:200]}")
+            raise RuntimeError(f"[stats day] HTTP {resp.status}: {text}")
+
+        payload = await resp.json()
+        return payload.get("items", [])
+
+    def _aggregate_batch(items: list[dict]) -> None:
+        """Агрегирует статистику из батча в общий словарь"""
+        for item in items:
+            bid = item.get("id")
+            if bid is None:
+                continue
+
+            total = item.get("total", {}).get("base", {})
+            vk_data = total.get("vk", {}) if isinstance(total.get("vk"), dict) else {}
+            vk_goals = vk_data.get("goals", 0.0)
+
+            aggregated_stats[bid] = {
+                "spent": float(total.get("spent", 0.0)),
+                "clicks": float(total.get("clicks", 0.0)),
+                "shows": float(total.get("impressions", 0.0)),
+                "vk_goals": float(vk_goals)
+            }
+
+    # Если id нет или их мало — один запрос
+    if not banner_ids or len(banner_ids) <= batch_size:
+        items = await _one_request(banner_ids)
+        _aggregate_batch(items)
+        logger.info(f"✅ Обработано {len(aggregated_stats)} объявлений")
+    else:
+        # Разбиваем на батчи и обрабатываем ПОСЛЕДОВАТЕЛЬНО с паузой
+        # (VK API имеет строгий rate limit)
+        total = len(banner_ids)
+        num_batches = (total + batch_size - 1) // batch_size
+        logger.info(f"🔁 Разбиваем {total} объявлений на {num_batches} батчей по {batch_size}")
+
+        for batch_num, start in enumerate(range(0, total, batch_size), 1):
+            chunk = banner_ids[start:start + batch_size]
+
+            try:
+                items = await _one_request(chunk)
+                _aggregate_batch(items)
+                logger.info(
+                    f"  ✓ Батч {batch_num}/{num_batches}: обработано {len(items)} записей "
+                    f"(всего: {len(aggregated_stats)})"
+                )
+            except Exception as e:
+                logger.error(f"❌ Ошибка в батче {batch_num}: {e}")
+
+            # Пауза между батчами для соблюдения rate limit
+            if batch_num < num_batches:
+                await asyncio.sleep(sleep_between_calls)
+
+    logger.info(f"✅ Итого агрегировано статистики для {len(aggregated_stats)} объявлений")
+    return aggregated_stats
+
+
+async def disable_banner(
+    session: aiohttp.ClientSession,
+    token: str,
+    base_url: str,
+    banner_id: int,
+    dry_run: bool = True,
+) -> dict:
+    """
+    Отключает рекламное объявление асинхронно.
+    """
+    if dry_run:
+        logger.info(
+            f"🧪 [DRY RUN] Баннер {banner_id} помечен как убыточный — "
+            f"в реальном режиме был бы отключён"
+        )
+        return {"success": True, "dry_run": True, "banner_id": banner_id}
+
+    url = f"{base_url}/banners/{banner_id}.json"
+    data = {"status": "blocked"}
+
+    try:
+        resp = await _request_with_retries(
+            session,
+            "POST",
+            url,
+            headers=_headers(token),
+            json=data,
+            timeout=aiohttp.ClientTimeout(total=20),
+        )
+    except Exception as e:
+        logger.error(f"❌ Ошибка сети при отключении баннера {banner_id}: {e}")
+        return {"success": False, "error": str(e), "banner_id": banner_id}
+
+    if resp.status in (200, 204):
+        logger.info(f"✅ Баннер {banner_id} успешно отключён")
+        return {"success": True, "banner_id": banner_id}
+
+    text = await resp.text()
+    logger.error(f"❌ Ошибка HTTP {resp.status} при отключении баннера {banner_id}: {text[:200]}")
+    return {"success": False, "error": f"HTTP {resp.status}: {text}", "banner_id": banner_id}
+
+
+async def disable_banners_batch(
+    session: aiohttp.ClientSession,
+    token: str,
+    base_url: str,
+    banners: list[dict],
+    dry_run: bool = True,
+    whitelist_ids: set | None = None,
+    concurrency: int = 5,
+) -> dict:
+    """
+    Отключает несколько баннеров параллельно с ограничением concurrency.
+    """
+    if not banners:
+        logger.info("✅ Нет убыточных объявлений для отключения")
+        return {"disabled": 0, "failed": 0, "skipped": 0, "results": []}
+
+    whitelist_ids = whitelist_ids or set()
+    logger.info(f"🎯 {'[DRY RUN] ' if dry_run else ''}Начинаем отключение {len(banners)} убыточных объявлений")
+
+    # Семафор для ограничения параллельных запросов
+    semaphore = asyncio.Semaphore(concurrency)
+
+    async def _disable_one(banner: dict) -> dict:
+        async with semaphore:
+            banner_id = banner.get("id")
+            banner_name = banner.get("name", "Unknown")
+            spent = banner.get("spent", 0)
+            ad_group_id = banner.get("ad_group_id", "N/A")
+
+            # Проверяем белый список
+            if banner_id in whitelist_ids:
+                logger.info(f"⏳ Пропускаем объявление {banner_id} — находится в белом списке")
+                return {
+                    "banner_id": banner_id,
+                    "banner_name": banner_name,
+                    "ad_group_id": ad_group_id,
+                    "spent": spent,
+                    "success": False,
+                    "skipped": True,
+                    "error": "skipped (whitelisted)"
+                }
+
+            result = await disable_banner(session, token, base_url, banner_id, dry_run)
+
+            return {
+                "banner_id": banner_id,
+                "banner_name": banner_name,
+                "ad_group_id": ad_group_id,
+                "spent": spent,
+                "success": result.get("success", False),
+                "skipped": False,
+                "error": result.get("error") if not result.get("success") else None
+            }
+
+    # Запускаем все отключения параллельно
+    tasks = [_disable_one(banner) for banner in banners]
+    results = await asyncio.gather(*tasks)
+
+    disabled_count = sum(1 for r in results if r.get("success") and not r.get("skipped"))
+    failed_count = sum(1 for r in results if not r.get("success") and not r.get("skipped"))
+    skipped_count = sum(1 for r in results if r.get("skipped"))
+
+    logger.info("=" * 80)
+    logger.info(f"🎯 {'[DRY RUN] ' if dry_run else ''}Итоги отключения объявлений:")
+    logger.info(f"✅ {'Было бы отключено' if dry_run else 'Отключено'}: {disabled_count}")
+    logger.info(f"⏳ Пропущено (whitelist): {skipped_count}")
+    logger.info(f"❌ Ошибок: {failed_count}")
+    logger.info(f"📊 Всего обработано: {len(banners)}")
+    logger.info("=" * 80)
+
+    return {
+        "disabled": disabled_count,
+        "failed": failed_count,
+        "skipped": skipped_count,
+        "total": len(banners),
+        "results": results,
+        "dry_run": dry_run
+    }
+
+
+async def toggle_ad_group_status(
+    session: aiohttp.ClientSession,
+    token: str,
+    base_url: str,
+    group_id: int,
+    new_status: str,
+) -> dict:
+    """
+    Переключает статус группы объявлений асинхронно.
+    """
+    url = f"{base_url}/ad_groups/{group_id}.json"
+    data = {"status": new_status}
+
+    try:
+        resp = await _request_with_retries(
+            session,
+            "POST",
+            url,
+            headers=_headers(token),
+            json=data,
+            timeout=aiohttp.ClientTimeout(total=20),
+        )
+    except Exception as e:
+        logger.error(
+            f"❌ Ошибка сети при переключении статуса группы {group_id} на {new_status}: {e}"
+        )
+        return {"success": False, "error": str(e)}
+
+    if resp.status in (200, 204):
+        logger.info(f"✅ Группа {group_id} успешно переключена в статус {new_status}")
+        return {"success": True}
+
+    text = await resp.text()
+    logger.error(
+        f"❌ Ошибка HTTP {resp.status} при переключении группы {group_id} на {new_status}: {text[:200]}"
+    )
+    return {"success": False, "error": f"HTTP {resp.status}: {text}"}
+
+
+async def trigger_statistics_refresh(
+    session: aiohttp.ClientSession,
+    token: str,
+    base_url: str,
+    trigger_config: dict,
+) -> dict:
+    """
+    Запускает триггер для обновления статистики VK Ads асинхронно.
+    """
+    if not trigger_config.get("enabled", False):
+        logger.debug("🔧 Триггер обновления статистики отключен")
+        return {"success": True, "skipped": True}
+
+    group_id = trigger_config.get("group_id")
+    wait_seconds = trigger_config.get("wait_seconds", 20)
+
+    if not group_id:
+        logger.warning("⚠️ ID группы для триггера не настроен - пропускаем обновление статистики")
+        return {"success": False, "error": "Не настроен group_id"}
+
+    logger.info(f"🎯 ЗАПУСК ТРИГГЕРА ОБНОВЛЕНИЯ СТАТИСТИКИ VK (группа {group_id})")
+
+    # Включаем группу
+    result1 = await toggle_ad_group_status(session, token, base_url, group_id, "active")
+    if not result1.get("success"):
+        logger.error(f"❌ Не удалось включить триггер группу {group_id}: {result1.get('error')}")
+        return {"success": False, "error": f"Ошибка включения: {result1.get('error')}"}
+
+    # Ждем
+    logger.info(f"⏳ Ожидание {wait_seconds} сек. для обновления статистики VK...")
+    await asyncio.sleep(wait_seconds)
+
+    # Отключаем группу обратно
+    result2 = await toggle_ad_group_status(session, token, base_url, group_id, "blocked")
+    if not result2.get("success"):
+        logger.error(f"❌ Не удалось отключить триггер группу {group_id}: {result2.get('error')}")
+        return {"success": False, "error": f"Ошибка отключения: {result2.get('error')}"}
+
+    logger.info(f"✅ Триггер обновления статистики завершен (группа {group_id})")
+    return {"success": True, "group_id": group_id, "wait_seconds": wait_seconds}
