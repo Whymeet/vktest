@@ -1,1 +1,0 @@
-# VK Test Package

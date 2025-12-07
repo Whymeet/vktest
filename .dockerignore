@@ -1,0 +1,56 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+.venv
+venv
+env
+*.egg-info
+dist
+build
+
+# Node.js
+node_modules
+frontend/node_modules
+frontend/dist
+frontend/.cache
+npm-debug.log*
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/*
+!logs/.gitkeep
+*.log
+
+# Data (будем монтировать как volume)
+data/*
+!data/.gitkeep
+
+# Config (будем монтировать как volume)
+config/config.json
+
+# Docker
+Dockerfile
+docker-compose*.yml
+.docker
+
+# Misc
+*.md
+*.bat
+*.sh
+.claude

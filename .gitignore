@@ -1,18 +1,57 @@
+# ======================
 # Конфиденциальные данные
+# ======================
+# Старые JSON конфиги (больше не используются, но на всякий случай)
+config/config.json
 cfg/config.json
+cfg/whitelist.json
 
+# Локальные настройки Claude Code
+.claude/settings.local.json
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# ======================
+# Database
+# ======================
+# PostgreSQL data (Docker volume mount point if local)
+postgres_data/
+pgdata/
+
+# Database backups
+*.sql
+*.dump
+
+# ======================
 # Логи
+# ======================
 logs/
+backend/logs/
+backend/scheduler/logs/
 *.log
 
-# Результаты анализа в папке data
+# ======================
+# Данные и кэш
+# ======================
+# Data directory для JSON-файлов результатов анализа
+data/
+backend/data/
 data/vk_groups_analysis.json
 data/vk_statistics_raw_*.json
-data/vk_adplans*.json  
+data/vk_adplans*.json
 data/vk_campaigns.json
 data/vk_groups_candidates.json
+data/vk_summary_analysis.json
+data/vk_all_unprofitable_banners.json
 
+# ======================
 # Python
+# ======================
 __pycache__/
 *.pyc
 *.pyo
@@ -21,17 +60,90 @@ __pycache__/
 env/
 venv/
 .venv/
-.env
+ENV/
+*.egg
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.cover
+.hypothesis/
 
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# ======================
+# Node.js / Frontend
+# ======================
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+frontend/.cache/
+frontend/.vite/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+package-lock.json
+
+# ======================
+# Docker
+# ======================
+# Ignore Docker volumes data
+docker-compose.override.yml
+*.override.yml
+
+# ======================
 # IDE
+# ======================
 .vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
 .idea/
 *.swp
 *.swo
 *~
+.vs/
+*.code-workspace
 
+# ======================
 # OS
-data/
+# ======================
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
 
+# ======================
+# Временные файлы
+# ======================
+*.tmp
+*.bak
+*.old
+*.orig
+nul
+
+# ======================
+# Миграции и старые файлы
+# ======================
+# Старые директории (удалены в новой структуре)
+webapp/
+web/
+api/
+vpr/
+
+# Миграционные скрипты (можно удалить после миграции)
+migrate_data_to_db.py
+DATABASE_MIGRATION.md

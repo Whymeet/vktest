@@ -1,88 +1,147 @@
 # VK Ads Manager
 
-Система автоматизации управления рекламными кампаниями ВКонтакте с Telegram ботом и веб-интерфейсом.
+Система автоматизации управления рекламными кампаниями ВКонтакте с Telegram ботом и современным веб-интерфейсом.
 
 ## Структура проекта
 
 ```
 vktest/
-├── bot/                    # Telegram бот
-│   ├── telegram_bot.py     # Основной модуль бота
-│   ├── telegram_notify.py  # Уведомления через Telegram
-│   └── __init__.py
-├── cfg/                    # Конфигурация
-│   ├── config.json         # Основные настройки
-│   └── whitelist.json      # Белый список пользователей
-├── requirements/           # Зависимости
-│   └── requirements_admin.txt
-├── scheduler/              # Планировщик задач
-│   ├── scheduler_main.py   # Основной модуль планировщика
-│   ├── scheduler_service.bat
-│   ├── scheduler_service.sh
-│   └── logs/
-├── scripts/               # Скрипты управления
-│   ├── start.sh           # Запуск сервисов
-│   ├── stop.sh            # Остановка сервисов
-│   ├── status.sh          # Статус сервисов
-│   ├── run.sh             # Запуск отдельных компонентов
-│   ├── autostart.sh       # Автозапуск при загрузке
-│   └── *.sh, *.bat        # Остальные скрипты
-├── src/                   # Основной код приложения
-│   ├── main.py            # Главный модуль анализа
-│   └── __init__.py
-├── utils/                 # Утилиты
-│   ├── config.py          # Работа с конфигурацией
-│   ├── logging_setup.py   # Настройка логирования
-│   ├── vk_api.py          # API для работы с ВК
-│   └── __init__.py
-├── web/                   # Веб-интерфейс
-│   ├── admin_panel.py     # Административная панель
-│   └── templates/         # HTML шаблоны
-│       ├── base.html
-│       ├── dashboard.html
-│       └── ...
-└── __init__.py
+├── backend/                  # Python backend
+│   ├── api/                  # FastAPI веб-сервер
+│   │   └── main.py           # REST API endpoints
+│   ├── bot/                  # Telegram бот
+│   │   ├── telegram_bot.py   # Основной модуль бота
+│   │   └── telegram_notify.py # Уведомления
+│   ├── core/                 # Основная бизнес-логика
+│   │   └── main.py           # Анализатор объявлений
+│   ├── scheduler/            # Планировщик задач
+│   │   ├── scheduler_main.py # Автозапуск анализа
+│   │   └── logs/             # Логи планировщика
+│   ├── utils/                # Утилиты
+│   │   ├── config.py         # Работа с конфигурацией
+│   │   ├── logging_setup.py  # Настройка логирования
+│   │   └── vk_api_async.py   # Асинхронный VK API клиент
+│   └── requirements.txt      # Python зависимости
+├── frontend/                 # React веб-интерфейс
+│   ├── src/
+│   │   ├── api/              # API клиент
+│   │   ├── components/       # React компоненты
+│   │   └── pages/            # Страницы приложения
+│   ├── package.json
+│   └── ...
+├── config/                   # Конфигурация
+│   ├── config.json           # Основные настройки
+│   └── whitelist.json        # Белый список объявлений
+├── data/                     # Данные и кэш
+├── logs/                     # Логи приложения
+├── start-web.bat             # Запуск (Windows)
+├── start-web.sh              # Запуск (Linux/Mac)
+└── README.md
 ```
 
-## Запуск
+## Быстрый старт
 
-### Основные команды
+### Установка
 
 ```bash
-# Запуск всех сервисов
-./scripts/start.sh
+# 1. Установите Python зависимости
+pip install -r backend/requirements.txt
 
-# Остановка всех сервисов  
-./scripts/stop.sh
-
-# Проверка статуса
-./scripts/status.sh
-
-# Запуск отдельных компонентов
-./scripts/run.sh main        # Основной анализ
-./scripts/run.sh bot         # Telegram бот
-./scripts/run.sh scheduler   # Планировщик
+# 2. Установите Node.js зависимости
+cd frontend && npm install
 ```
 
-### Windows
+### Запуск веб-интерфейса
 
+**Windows:**
 ```cmd
-# Запуск админ панели
-scripts\start_admin.bat
+start-web.bat
 ```
 
-## Установка
+**Linux/macOS:**
+```bash
+chmod +x start-web.sh
+./start-web.sh
+```
 
-1. Клонируйте репозиторий
-2. Создайте виртуальное окружение: `python -m venv .venv`
-3. Активируйте окружение: `source .venv/bin/activate` (Linux) или `.venv\Scripts\activate` (Windows)
-4. Установите зависимости: `pip install -r requirements/requirements_admin.txt`
-5. Настройте конфигурацию в `cfg/config.json`
+После запуска откроются:
+- **Frontend:** http://localhost:5173
+- **Backend API:** http://localhost:8000
+- **API Docs:** http://localhost:8000/docs
+
+## Веб-интерфейс
+
+### Разделы
+
+| Раздел | Описание |
+|--------|----------|
+| **Dashboard** | Общая статистика, статус процессов |
+| **Кабинеты** | Управление VK Ads кабинетами (CRUD) |
+| **Настройки** | Анализ, Telegram, Планировщик |
+| **Управление** | Запуск/остановка сервисов |
+| **Логи** | Просмотр лог-файлов |
+| **Whitelist** | Защита объявлений от отключения |
 
 ## Конфигурация
 
-Основные настройки в `cfg/config.json`:
-- API токены ВКонтакте
-- Настройки Telegram бота
-- Параметры планировщика
-- Настройки логирования
+Основные настройки в `config/config.json`:
+
+```json
+{
+  "vk_ads_api": {
+    "base_url": "https://ads.vk.com/api/v2",
+    "accounts": {
+      "Название_кабинета": {
+        "api": "Bearer_token",
+        "spent_limit_rub": 100.0
+      }
+    }
+  },
+  "analysis_settings": {
+    "lookback_days": 10,
+    "spent_limit_rub": 100.0,
+    "dry_run": false
+  },
+  "telegram": {
+    "bot_token": "...",
+    "chat_id": ["..."],
+    "enabled": true
+  },
+  "scheduler": {
+    "enabled": true,
+    "interval_minutes": 60
+  }
+}
+```
+
+## Технологии
+
+### Backend
+- **Python 3.8+**
+- **FastAPI** - REST API
+- **aiohttp** - асинхронные HTTP запросы
+- **python-telegram-bot** - Telegram интеграция
+
+### Frontend
+- **React 18** + **TypeScript**
+- **Vite** - сборка
+- **TailwindCSS** - стили
+- **React Query** - управление данными
+- **React Router** - маршрутизация
+
+## API Endpoints
+
+### Основные
+
+| Метод | Endpoint | Описание |
+|-------|----------|----------|
+| GET | `/api/dashboard` | Данные дашборда |
+| GET | `/api/accounts` | Список кабинетов |
+| POST | `/api/accounts` | Создать кабинет |
+| GET | `/api/settings` | Все настройки |
+| GET | `/api/whitelist` | Белый список |
+| GET | `/api/process/status` | Статус процессов |
+| POST | `/api/process/scheduler/start` | Запустить планировщик |
+| POST | `/api/process/analysis/start` | Запустить анализ |
+
+Полная документация API: http://localhost:8000/docs

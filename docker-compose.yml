@@ -1,0 +1,73 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: vkads-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=vkads
+      - POSTGRES_PASSWORD=vkads_password
+      - POSTGRES_DB=vkads
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - vkads-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vkads"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: vkads-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      # Конфиг и данные - монтируем с хоста
+      - ./config:/app/config:ro
+      - ./data:/app/data
+      - ./logs:/app/logs
+    environment:
+      - PYTHONUNBUFFERED=1
+      - IN_DOCKER=true
+      - DATABASE_URL=postgresql://vkads:vkads_password@postgres:5432/vkads
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - vkads-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Frontend (nginx + React)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: vkads-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - vkads-network
+
+networks:
+  vkads-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
