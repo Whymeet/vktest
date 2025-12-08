@@ -24,7 +24,13 @@
       "Bash(docker ps:*)",
       "Bash(docker-compose down:*)",
       "Bash(docker-compose up:*)",
-      "Bash(timeout:*)"
+      "Bash(timeout:*)",
+      "Bash(docker-compose build:*)",
+      "Bash(docker restart:*)",
+      "Bash(start \"\" \"C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe\")",
+      "Bash(docker-compose logs:*)",
+      "Bash(cat:*)",
+      "Bash(npx tsc --noEmit)"
     ],
     "deny": [],
     "ask": []
