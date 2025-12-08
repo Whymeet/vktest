@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Modal } from '../components/Modal';
+import { Pagination } from '../components/Pagination';
 import {
   TrendingUp,
   RefreshCw,
@@ -22,6 +23,7 @@ import {
   AlertCircle,
   CheckCircle,
   Loader2,
+  FileText,
 } from 'lucide-react';
 import {
   getLeadsTechConfig,
@@ -30,11 +32,12 @@ import {
   createLeadsTechCabinet,
   updateLeadsTechCabinet,
   deleteLeadsTechCabinet,
-  getLeadsTechAnalysisRuns,
   getLeadsTechAnalysisResults,
+  getLeadsTechAnalysisCabinets,
   startLeadsTechAnalysis,
   stopLeadsTechAnalysis,
   getLeadsTechAnalysisStatus,
+  getLeadsTechAnalysisLogs,
   getAccounts,
   whitelistProfitableBanners,
   getWhitelistProfitableStatus,
@@ -55,25 +58,14 @@ function formatMoney(amount: number | null): string {
   }) + ' ₽';
 }
 
-function formatDate(isoString: string | null): string {
-  if (!isoString) return '-';
-  const date = new Date(isoString);
-  return date.toLocaleString('ru-RU', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
 export function ProfitableAds() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<TabType>('results');
   const [selectedCabinet, setSelectedCabinet] = useState<string>('');
-  const [selectedAnalysisId, setSelectedAnalysisId] = useState<string>('');
   const [sortField, setSortField] = useState<SortField>('roi_percent');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 500;
 
   // Config form state
   const [configForm, setConfigForm] = useState<LeadsTechConfigCreate>({
@@ -137,18 +129,21 @@ export function ProfitableAds() {
     queryFn: () => getAccounts().then(r => r.data),
   });
 
-  const { data: analysisRuns, refetch: refetchRuns } = useQuery({
-    queryKey: ['leadstechRuns'],
-    queryFn: () => getLeadsTechAnalysisRuns(10).then(r => r.data),
+  const { data: analysisResults, refetch: refetchResults } = useQuery({
+    queryKey: ['leadstechResults', selectedCabinet, currentPage, sortField, sortOrder],
+    queryFn: () => getLeadsTechAnalysisResults(
+      selectedCabinet || undefined,
+      currentPage,
+      pageSize,
+      sortField,
+      sortOrder
+    ).then(r => r.data),
   });
 
-  const { data: analysisResults, refetch: refetchResults } = useQuery({
-    queryKey: ['leadstechResults', selectedAnalysisId, selectedCabinet],
-    queryFn: () => getLeadsTechAnalysisResults(
-      selectedAnalysisId || undefined,
-      selectedCabinet || undefined,
-      500
-    ).then(r => r.data),
+  // Get all unique cabinet names for filter dropdown (separate query)
+  const { data: analysisCabinetsData } = useQuery({
+    queryKey: ['leadstechAnalysisCabinets'],
+    queryFn: () => getLeadsTechAnalysisCabinets().then(r => r.data),
   });
 
   const { data: analysisStatus, refetch: refetchStatus } = useQuery({
@@ -207,7 +202,6 @@ export function ProfitableAds() {
     mutationFn: stopLeadsTechAnalysis,
     onSuccess: () => {
       refetchStatus();
-      refetchRuns();
       refetchResults();
     },
   });
@@ -251,56 +245,13 @@ export function ProfitableAds() {
     },
   });
 
-  // Get unique cabinet names from results
-  const cabinetNames = useMemo(() => {
-    if (!analysisResults?.results) return [];
-    const names = new Set(analysisResults.results.map(r => r.cabinet_name));
-    return Array.from(names);
-  }, [analysisResults]);
+  // Get unique cabinet names from the dedicated endpoint
+  const cabinetNames = analysisCabinetsData?.cabinets || [];
 
-  // Filter and sort results
-  const sortedResults = useMemo(() => {
-    if (!analysisResults?.results) return [];
+  // Results are now sorted server-side, use directly
+  const sortedResults = analysisResults?.results || [];
 
-    let filtered = analysisResults.results;
-
-    if (selectedCabinet) {
-      filtered = filtered.filter(r => r.cabinet_name === selectedCabinet);
-    }
-
-    return [...filtered].sort((a, b) => {
-      let aVal: number, bVal: number;
-
-      switch (sortField) {
-        case 'roi_percent':
-          aVal = a.roi_percent ?? -Infinity;
-          bVal = b.roi_percent ?? -Infinity;
-          break;
-        case 'profit':
-          aVal = a.profit;
-          bVal = b.profit;
-          break;
-        case 'vk_spent':
-          aVal = a.vk_spent;
-          bVal = b.vk_spent;
-          break;
-        case 'lt_revenue':
-          aVal = a.lt_revenue;
-          bVal = b.lt_revenue;
-          break;
-        case 'banner_id':
-          aVal = a.banner_id;
-          bVal = b.banner_id;
-          break;
-        default:
-          return 0;
-      }
-
-      return sortOrder === 'asc' ? aVal - bVal : bVal - aVal;
-    });
-  }, [analysisResults, selectedCabinet, sortField, sortOrder]);
-
-  // Summary stats
+  // Summary stats (for current page only)
   const summary = useMemo(() => {
     const data = sortedResults;
     return {
@@ -321,6 +272,8 @@ export function ProfitableAds() {
       setSortField(field);
       setSortOrder('desc');
     }
+    // Reset to first page when sorting changes
+    setCurrentPage(1);
   };
 
   const SortIcon = ({ field }: { field: SortField }) => {
@@ -331,14 +284,16 @@ export function ProfitableAds() {
   };
 
   const handleRefresh = () => {
-    refetchRuns();
     refetchResults();
     refetchStatus();
     refetchCabinets();
   };
 
   const handleSaveConfig = () => {
-    if (!configForm.login || !configForm.password) return;
+    // Если конфиг не настроен - требуем и логин, и пароль
+    // Если конфиг уже настроен - пароль можно не вводить (оставить текущий)
+    if (!configForm.login) return;
+    if (!configData?.configured && !configForm.password) return;
     updateConfigMutation.mutate(configForm);
   };
 
@@ -369,7 +324,6 @@ export function ProfitableAds() {
       onConfirm: () => {
         whitelistProfitableMutation.mutate({
           roi_threshold: roiThreshold,
-          analysis_id: selectedAnalysisId || undefined,
           enable_banners: enableBanners,
         });
       },
@@ -417,6 +371,31 @@ export function ProfitableAds() {
           <button onClick={handleRefresh} className="btn btn-secondary">
             <RefreshCw className="w-4 h-4" />
             Обновить
+          </button>
+          <button 
+            onClick={() => {
+              getLeadsTechAnalysisLogs(200).then(response => {
+                setModalConfig({
+                  isOpen: true,
+                  title: 'Логи анализа (' + response.data.source + ')',
+                  content: (
+                    <pre className="bg-slate-900 p-4 rounded text-xs overflow-auto max-h-96 text-slate-300">
+                      {response.data.logs}
+                    </pre>
+                  ),
+                });
+              }).catch(error => {
+                setModalConfig({
+                  isOpen: true,
+                  title: 'Ошибка',
+                  content: <p className="text-red-400">Не удалось загрузить логи: {error.message}</p>,
+                });
+              });
+            }}
+            className="btn btn-secondary"
+          >
+            <FileText className="w-4 h-4" />
+            Логи
           </button>
         </div>
       </div>
@@ -560,29 +539,15 @@ export function ProfitableAds() {
           {/* Filters */}
           <Card>
             <div className="flex flex-wrap gap-4">
-              {/* Analysis Run Filter */}
-              <div className="min-w-[250px]">
-                <label className="block text-sm text-slate-400 mb-1">Запуск анализа</label>
-                <select
-                  value={selectedAnalysisId}
-                  onChange={(e) => setSelectedAnalysisId(e.target.value)}
-                  className="input w-full"
-                >
-                  <option value="">Последний</option>
-                  {analysisRuns?.runs.map(run => (
-                    <option key={run.analysis_id} value={run.analysis_id}>
-                      {formatDate(run.created_at)} ({run.banners_count} объявлений)
-                    </option>
-                  ))}
-                </select>
-              </div>
-
               {/* Cabinet Filter */}
               <div className="min-w-[200px]">
                 <label className="block text-sm text-slate-400 mb-1">Кабинет</label>
                 <select
                   value={selectedCabinet}
-                  onChange={(e) => setSelectedCabinet(e.target.value)}
+                  onChange={(e) => {
+                    setSelectedCabinet(e.target.value);
+                    setCurrentPage(1);
+                  }}
                   className="input w-full"
                 >
                   <option value="">Все кабинеты</option>
@@ -642,7 +607,7 @@ export function ProfitableAds() {
 
           {/* Results Table */}
           <Card title="Результаты анализа" icon={TrendingUp}>
-            {!analysisResults?.analysis_id ? (
+            {!analysisResults?.count || analysisResults.count === 0 ? (
               <div className="text-center py-8 text-slate-400">
                 <AlertCircle className="w-12 h-12 mx-auto mb-3 opacity-50" />
                 <p>Нет данных. Запустите анализ для получения результатов.</p>
@@ -745,6 +710,19 @@ export function ProfitableAds() {
                 </table>
               </div>
             )}
+            
+            {/* Pagination */}
+            {analysisResults && analysisResults.total_pages > 1 && (
+              <div className="mt-4 pt-4 border-t border-slate-700">
+                <Pagination
+                  currentPage={currentPage}
+                  totalPages={analysisResults.total_pages}
+                  totalItems={analysisResults.total}
+                  pageSize={pageSize}
+                  onPageChange={setCurrentPage}
+                />
+              </div>
+            )}
           </Card>
         </>
       )}
@@ -772,7 +750,7 @@ export function ProfitableAds() {
                     type={showPassword ? 'text' : 'password'}
                     value={configForm.password}
                     onChange={(e) => setConfigForm({ ...configForm, password: e.target.value })}
-                    placeholder="Введите пароль"
+                    placeholder={configData?.configured ? '••••••••••••••••' : 'Введите пароль'}
                     className="input w-full pr-20"
                   />
                   <button
@@ -783,6 +761,9 @@ export function ProfitableAds() {
                     {showPassword ? 'Скрыть' : 'Показать'}
                   </button>
                 </div>
+                {configData?.configured && !configForm.password && (
+                  <p className="text-xs text-slate-500 mt-1">Пароль сохранён. Оставьте пустым, чтобы не менять.</p>
+                )}
               </div>
               <div>
                 <label className="block text-sm text-slate-400 mb-1">URL API</label>
@@ -833,7 +814,7 @@ export function ProfitableAds() {
               </div>
               <button
                 onClick={handleSaveConfig}
-                disabled={updateConfigMutation.isPending || !configForm.login || !configForm.password}
+                disabled={updateConfigMutation.isPending || !configForm.login || (!configData?.configured && !configForm.password)}
                 className="btn bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50"
               >
                 {updateConfigMutation.isPending ? (

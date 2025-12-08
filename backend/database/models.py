@@ -3,7 +3,7 @@ Database models for VK Ads Manager
 """
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import Column, Integer, String, Boolean, Float, DateTime, Text, ForeignKey, JSON
+from sqlalchemy import Column, Integer, BigInteger, String, Boolean, Float, DateTime, Text, ForeignKey, JSON
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from utils.time_utils import get_moscow_time
@@ -37,7 +37,7 @@ class WhitelistBanner(Base):
     __tablename__ = "whitelist_banners"
 
     id = Column(Integer, primary_key=True, index=True)
-    banner_id = Column(Integer, unique=True, nullable=False, index=True)
+    banner_id = Column(BigInteger, unique=True, nullable=False, index=True)
 
     # Optional metadata
     note = Column(Text, nullable=True)
@@ -57,15 +57,15 @@ class BannerAction(Base):
     id = Column(Integer, primary_key=True, index=True)
 
     # Banner info
-    banner_id = Column(Integer, nullable=False, index=True)
+    banner_id = Column(BigInteger, nullable=False, index=True)
     banner_name = Column(String(500), nullable=True)
 
     # Ad Group info (группа объявлений)
-    ad_group_id = Column(Integer, nullable=True, index=True)
+    ad_group_id = Column(BigInteger, nullable=True, index=True)
     ad_group_name = Column(String(500), nullable=True)
 
     # Campaign info (кампания)
-    campaign_id = Column(Integer, nullable=True, index=True)
+    campaign_id = Column(BigInteger, nullable=True, index=True)
     campaign_name = Column(String(500), nullable=True)
 
     # Account relationship
@@ -124,14 +124,14 @@ class ActiveBanner(Base):
     id = Column(Integer, primary_key=True, index=True)
 
     # Banner info
-    banner_id = Column(Integer, unique=True, nullable=False, index=True)
+    banner_id = Column(BigInteger, unique=True, nullable=False, index=True)
     banner_name = Column(String(500), nullable=True)
 
     # Account
     vk_account_id = Column(Integer, nullable=False, index=True)
 
     # Campaign info
-    campaign_id = Column(Integer, nullable=True, index=True)
+    campaign_id = Column(BigInteger, nullable=True, index=True)
     campaign_name = Column(String(500), nullable=True)
 
     # Current stats
@@ -290,13 +290,12 @@ class LeadsTechAnalysisResult(Base):
 
     id = Column(Integer, primary_key=True, index=True)
 
-    # Analysis run info
-    analysis_id = Column(String(100), nullable=False, index=True)  # Unique ID for this analysis run
+    # Cabinet info
     cabinet_name = Column(String(255), nullable=False, index=True)
     leadstech_label = Column(String(255), nullable=False)
 
     # Banner info
-    banner_id = Column(Integer, nullable=False, index=True)
+    banner_id = Column(BigInteger, nullable=False, index=True)
 
     # Financial data
     vk_spent = Column(Float, default=0.0)  # VK Ads spending

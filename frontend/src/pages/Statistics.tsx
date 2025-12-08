@@ -11,10 +11,10 @@ import {
   ChevronDown,
   ChevronUp,
   AlertCircle,
-  Calendar,
 } from 'lucide-react';
-import { getDisabledBanners } from '../api/client';
+import { getDisabledBanners, getDisabledBannersAccounts } from '../api/client';
 import { Card } from '../components/Card';
+import { Pagination } from '../components/Pagination';
 
 type SortField = 'created_at' | 'banner_id' | 'spend' | 'clicks' | 'shows' | 'ctr' | 'conversions';
 type SortOrder = 'asc' | 'desc';
@@ -43,84 +43,47 @@ export function Statistics() {
   const [selectedAccount, setSelectedAccount] = useState<string>('');
   const [sortField, setSortField] = useState<SortField>('created_at');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 500;
 
-  // Queries - load all records
+  // Queries - load with pagination and sorting
   const { data: disabledData, refetch: refetchDisabled, isLoading } = useQuery({
-    queryKey: ['disabledBanners', selectedAccount],
-    queryFn: () => getDisabledBanners(1000, selectedAccount || undefined).then(r => r.data),
+    queryKey: ['disabledBanners', currentPage, selectedAccount, sortField, sortOrder],
+    queryFn: () => getDisabledBanners(
+      currentPage, 
+      pageSize, 
+      selectedAccount || undefined,
+      sortField,
+      sortOrder
+    ).then(r => r.data),
   });
 
-  // Get unique account names from disabled banners
-  const accountNames = useMemo(() => {
-    if (!disabledData?.disabled) return [];
-    const names = new Set(
-      disabledData.disabled
-        .map(b => b.account_name)
-        .filter((name): name is string => name !== null)
-    );
-    return Array.from(names).sort();
-  }, [disabledData]);
+  // Get all unique account names for filter dropdown (separate query)
+  const { data: accountsData } = useQuery({
+    queryKey: ['disabledBannersAccountsList'],
+    queryFn: () => getDisabledBannersAccounts().then(r => r.data),
+  });
 
-  // Filter and sort results
-  const sortedBanners = useMemo(() => {
-    if (!disabledData?.disabled) return [];
+  const accountNames = accountsData?.accounts || [];
 
-    let filtered = disabledData.disabled;
+  // Results are now sorted server-side, use directly
+  const sortedBanners = disabledData?.disabled || [];
 
-    if (selectedAccount) {
-      filtered = filtered.filter(b => b.account_name === selectedAccount);
-    }
-
-    return [...filtered].sort((a, b) => {
-      let aVal: number | string, bVal: number | string;
-
-      switch (sortField) {
-        case 'created_at':
-          aVal = a.created_at || '';
-          bVal = b.created_at || '';
-          break;
-        case 'banner_id':
-          aVal = a.banner_id;
-          bVal = b.banner_id;
-          break;
-        case 'spend':
-          aVal = a.spend ?? 0;
-          bVal = b.spend ?? 0;
-          break;
-        case 'clicks':
-          aVal = a.clicks;
-          bVal = b.clicks;
-          break;
-        case 'shows':
-          aVal = a.shows;
-          bVal = b.shows;
-          break;
-        case 'ctr':
-          aVal = a.ctr ?? 0;
-          bVal = b.ctr ?? 0;
-          break;
-        case 'conversions':
-          aVal = a.conversions;
-          bVal = b.conversions;
-          break;
-        default:
-          return 0;
-      }
-
-      if (typeof aVal === 'string' && typeof bVal === 'string') {
-        return sortOrder === 'asc' 
-          ? aVal.localeCompare(bVal) 
-          : bVal.localeCompare(aVal);
-      }
-
-      return sortOrder === 'asc' 
-        ? (aVal as number) - (bVal as number) 
-        : (bVal as number) - (aVal as number);
-    });
-  }, [disabledData, selectedAccount, sortField, sortOrder]);
-
-  // Summary stats
+  // Summary stats from server or calculated from current page
   const summary = useMemo(() => {
+    if (disabledData?.summary) {
+      return {
+        totalSpend: disabledData.summary.total_spend,
+        totalClicks: disabledData.summary.total_clicks,
+        totalShows: disabledData.summary.total_shows,
+        totalConversions: 0, // Not in server response, calculate from page
+        avgCtr: disabledData.summary.total_shows > 0 
+          ? (disabledData.summary.total_clicks / disabledData.summary.total_shows * 100) 
+          : 0,
+        count: disabledData.summary.total_banners,
+      };
+    }
+    
     const data = sortedBanners;
     const totalSpend = data.reduce((sum, b) => sum + (b.spend || 0), 0);
     const totalClicks = data.reduce((sum, b) => sum + b.clicks, 0);
@@ -135,7 +98,7 @@ export function Statistics() {
       avgCtr: totalShows > 0 ? (totalClicks / totalShows * 100) : 0,
       count: data.length,
     };
-  }, [sortedBanners]);
+  }, [sortedBanners, disabledData]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -144,6 +107,8 @@ export function Statistics() {
       setSortField(field);
       setSortOrder('desc');
     }
+    // Reset to first page when sorting changes
+    setCurrentPage(1);
   };
 
   const SortIcon = ({ field }: { field: SortField }) => {
@@ -155,6 +120,15 @@ export function Statistics() {
 
   const handleRefresh = () => {
     refetchDisabled();
+  };
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+  };
+
+  const handleAccountChange = (account: string) => {
+    setSelectedAccount(account);
+    setCurrentPage(1); // Reset to first page when filter changes
   };
 
   return (
@@ -238,7 +212,7 @@ export function Statistics() {
         <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-yellow-900/30 rounded-lg">
-              <Calendar className="w-5 h-5 text-yellow-400" />
+              <TrendingDown className="w-5 h-5 text-yellow-400" />
             </div>
             <div>
               <p className="text-sm text-slate-400">Конверсии</p>
@@ -256,7 +230,7 @@ export function Statistics() {
             <label className="block text-sm text-slate-400 mb-1">Кабинет</label>
             <select
               value={selectedAccount}
-              onChange={(e) => setSelectedAccount(e.target.value)}
+              onChange={(e) => handleAccountChange(e.target.value)}
               className="input w-full"
             >
               <option value="">Все кабинеты</option>
@@ -393,6 +367,19 @@ export function Statistics() {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+        
+        {/* Pagination */}
+        {disabledData && disabledData.total_pages > 1 && (
+          <div className="mt-4 pt-4 border-t border-slate-700">
+            <Pagination
+              currentPage={currentPage}
+              totalPages={disabledData.total_pages}
+              totalItems={disabledData.total}
+              pageSize={pageSize}
+              onPageChange={handlePageChange}
+            />
           </div>
         )}
       </Card>

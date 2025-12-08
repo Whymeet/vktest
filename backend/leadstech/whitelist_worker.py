@@ -64,37 +64,48 @@ async def whitelist_profitable_banners(roi_threshold: float, analysis_id: str = 
             enabled_count = 0
             failed_count = 0
             
-            for i, result in enumerate(profitable):
-                banner_id = result.banner_id
-                cabinet_label = result.leadstech_label
+            # Process in batches of 30 (VK API limit: 30 requests/second)
+            BATCH_SIZE = 30
+            total_banners = len(profitable)
+            
+            for batch_start in range(0, total_banners, BATCH_SIZE):
+                batch_end = min(batch_start + BATCH_SIZE, total_banners)
+                batch = profitable[batch_start:batch_end]
                 
-                api_token = cabinet_tokens.get(cabinet_label)
-                if not api_token:
-                    logger.error(f"❌ No API token for cabinet {cabinet_label} (Banner {banner_id})")
-                    failed_count += 1
-                    continue
-
-                try:
-                    vk_result = toggle_banner_status(
-                        token=api_token,
-                        base_url="https://ads.vk.com/api/v2",
-                        banner_id=banner_id,
-                        status="active"
-                    )
+                logger.info(f"📦 Processing batch {batch_start // BATCH_SIZE + 1}: banners {batch_start + 1}-{batch_end} of {total_banners}")
+                
+                for result in batch:
+                    banner_id = result.banner_id
+                    cabinet_label = result.leadstech_label
                     
-                    if vk_result.get("success"):
-                        enabled_count += 1
-                        logger.info(f"✅ Enabled banner {banner_id} (ROI {result.roi_percent:.1f}%)")
-                    else:
+                    api_token = cabinet_tokens.get(cabinet_label)
+                    if not api_token:
+                        logger.error(f"❌ No API token for cabinet {cabinet_label} (Banner {banner_id})")
                         failed_count += 1
-                        logger.error(f"❌ Failed to enable {banner_id}: {vk_result.get('error')}")
-                except Exception as e:
-                    failed_count += 1
-                    logger.error(f"❌ Exception enabling {banner_id}: {e}")
+                        continue
 
-                # Progress update could go here if we had a field for it in DB
-                # For now, just sleep
-                await asyncio.sleep(0.5)
+                    try:
+                        vk_result = toggle_banner_status(
+                            token=api_token,
+                            base_url="https://ads.vk.com/api/v2",
+                            banner_id=banner_id,
+                            status="active"
+                        )
+                        
+                        if vk_result.get("success"):
+                            enabled_count += 1
+                            logger.info(f"✅ Enabled banner {banner_id} (ROI {result.roi_percent:.1f}%)")
+                        else:
+                            failed_count += 1
+                            logger.error(f"❌ Failed to enable {banner_id}: {vk_result.get('error')}")
+                    except Exception as e:
+                        failed_count += 1
+                        logger.error(f"❌ Exception enabling {banner_id}: {e}")
+                
+                # Wait 0.5 seconds between batches to respect VK API rate limit
+                if batch_end < total_banners:
+                    logger.info(f"⏳ Waiting 0.5s before next batch...")
+                    await asyncio.sleep(0.5)
             
             logger.info(f"🏁 Finished. Enabled: {enabled_count}, Failed: {failed_count}")
 

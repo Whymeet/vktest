@@ -13,10 +13,11 @@ from dataclasses import dataclass
 import uuid
 
 import requests
-from utils.time_utils import get_moscow_time
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from utils.time_utils import get_moscow_time
 
 from database import SessionLocal
 from database import crud
@@ -244,9 +245,11 @@ class VkAdsClient:
         if banner_ids:
             params["id"] = ",".join(map(str, banner_ids))
 
+        # Log API token prefix for debugging
+        token_prefix = self.cfg.api_token[:20] if self.cfg.api_token else "NONE"
         logger.info(
-            "VK Ads: requesting stats for banners (period %s..%s)",
-            params["date_from"], params["date_to"],
+            "VK Ads: requesting stats for %d banners (period %s..%s), token=%s...",
+            len(banner_ids), params["date_from"], params["date_to"], token_prefix,
         )
 
         max_retries = 5
@@ -277,7 +280,13 @@ class VkAdsClient:
 
             payload = resp.json()
             items = payload.get("items", [])
-            logger.info("VK Ads: received %d banners in stats", len(items))
+            
+            # Log which banners were returned
+            returned_ids = [item.get("id") for item in items if item.get("id")]
+            logger.info("VK Ads: requested %d banners, received %d in response", len(banner_ids), len(items))
+            if len(items) == 0 and len(banner_ids) > 0:
+                logger.warning("VK Ads: API returned 0 items! Banner IDs may not exist in this VK account. Requested: %s", banner_ids[:5])
+            
             return items
 
         logger.error("VK Ads: failed to get stats after %d attempts due to rate limiting", max_retries)
@@ -395,10 +404,11 @@ def run_analysis():
         if not cabinets:
             logger.error("No enabled LeadsTech cabinets")
             return
-
-        # Generate unique analysis ID
-        analysis_id = f"lt_{get_moscow_time().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
-        logger.info("Analysis ID: %s", analysis_id)
+        
+        logger.info("Found %d enabled cabinet(s)", len(cabinets))
+        for cab in cabinets:
+            logger.info("  - Cabinet ID %d: account_id=%d, label='%s', enabled=%s", 
+                       cab.id, cab.account_id, cab.leadstech_label, cab.enabled)
 
         # Calculate date range
         lookback_days = lt_config.lookback_days or 10
@@ -448,8 +458,12 @@ def run_analysis():
 
             banner_ids = sorted(lt_by_banner.keys())
             logger.info("Cabinet %s: %d banners from LeadsTech", cabinet_name, len(banner_ids))
+            logger.info("Cabinet %s: first 10 banner IDs: %s", cabinet_name, banner_ids[:10])
 
             # 2. Fetch VK Ads spending
+            token_prefix = account.api_token[:25] if account.api_token else "NONE"
+            logger.info("Cabinet %s: using VK API token %s...", cabinet_name, token_prefix)
+            
             vk_cfg = VkAdsConfig(
                 base_url="https://ads.vk.com/api/v2",
                 api_token=account.api_token,
@@ -462,6 +476,14 @@ def run_analysis():
                 logger.error("Failed to fetch VK Ads data for %s: %s", cabinet_name, e)
                 vk_spent_by_banner = {}
 
+            # Log how many banners have spending data
+            banners_with_spent = sum(1 for v in vk_spent_by_banner.values() if v > 0)
+            logger.info("Cabinet %s: VK returned spend for %d/%d banners (%d with non-zero spent)", 
+                       cabinet_name, len(vk_spent_by_banner), len(banner_ids), banners_with_spent)
+            
+            if len(vk_spent_by_banner) == 0:
+                logger.warning("Cabinet %s: VK API returned NO data for any banners! Check if banner IDs exist in this VK account.", cabinet_name)
+
             # 3. Merge and calculate ROI
             for banner_id, lt_data in lt_by_banner.items():
                 lt_revenue = float(lt_data.get("lt_revenue", 0.0))
@@ -473,7 +495,6 @@ def run_analysis():
                     roi_percent = (profit / vk_spent) * 100.0
 
                 result = {
-                    "analysis_id": analysis_id,
                     "cabinet_name": cabinet_name,
                     "leadstech_label": lt_label,
                     "banner_id": banner_id,
@@ -493,17 +514,18 @@ def run_analysis():
 
             logger.info("Cabinet %s: merged %d banners", cabinet_name, len(lt_by_banner))
 
-        # 4. Save results to database
+        # 4. Clear old results and save new ones
         if all_results:
-            count = crud.save_leadstech_analysis_results_bulk(db, all_results)
-            logger.info("Saved %d results to database with analysis_id=%s", count, analysis_id)
+            logger.info("Clearing old results and saving %d new results...", len(all_results))
+            count = crud.replace_leadstech_analysis_results(db, all_results)
+            logger.info("✅ Saved %d results to database (replaced all previous)", count)
         else:
-            logger.warning("No results to save")
+            logger.warning("⚠️ No results to save")
 
         logger.info("=== LeadsTech Analysis Complete ===")
 
     except Exception as e:
-        logger.exception("Analysis failed: %s", e)
+        logger.exception("❌ Analysis failed: %s", e)
         raise
     finally:
         db.close()

@@ -282,9 +282,12 @@ def get_banner_history(
     banner_id: Optional[int] = None,
     vk_account_id: Optional[int] = None,
     action: Optional[str] = None,
-    limit: int = 100
-) -> List[BannerAction]:
-    """Get banner action history with filters"""
+    limit: int = 500,
+    offset: int = 0,
+    sort_by: str = 'created_at',
+    sort_order: str = 'desc'
+) -> tuple[List[BannerAction], int]:
+    """Get banner action history with filters, pagination and sorting"""
     query = db.query(BannerAction)
 
     if banner_id is not None:
@@ -294,12 +297,40 @@ def get_banner_history(
     if action is not None:
         query = query.filter(BannerAction.action == action)
 
-    return query.order_by(desc(BannerAction.created_at)).limit(limit).all()
+    total = query.count()
+    
+    # Determine sort column
+    sort_columns = {
+        'created_at': BannerAction.created_at,
+        'spend': BannerAction.spend,
+        'clicks': BannerAction.clicks,
+        'shows': BannerAction.shows,
+        'ctr': BannerAction.ctr,
+        'conversions': BannerAction.conversions,
+        'cost_per_conversion': BannerAction.cost_per_conversion,
+        'banner_id': BannerAction.banner_id,
+    }
+    
+    sort_column = sort_columns.get(sort_by, BannerAction.created_at)
+    
+    if sort_order == 'asc':
+        query = query.order_by(sort_column.asc().nullslast())
+    else:
+        query = query.order_by(sort_column.desc().nullslast())
+    
+    items = query.offset(offset).limit(limit).all()
+    return items, total
 
 
-def get_disabled_banners(db: Session, limit: int = 100) -> List[BannerAction]:
-    """Get recently disabled banners"""
-    return get_banner_history(db, action='disabled', limit=limit)
+def get_disabled_banners(
+    db: Session, 
+    limit: int = 500, 
+    offset: int = 0,
+    sort_by: str = 'created_at',
+    sort_order: str = 'desc'
+) -> tuple[List[BannerAction], int]:
+    """Get recently disabled banners with sorting"""
+    return get_banner_history(db, action='disabled', limit=limit, offset=offset, sort_by=sort_by, sort_order=sort_order)
 
 
 # ===== Active Banners =====
@@ -810,15 +841,18 @@ def save_leadstech_analysis_result(
     return result
 
 
-def save_leadstech_analysis_results_bulk(
+def replace_leadstech_analysis_results(
     db: Session,
     results: List[dict]
 ) -> int:
-    """Save multiple banner analysis results"""
+    """Clear all existing results and save new ones"""
+    # Delete all existing results
+    db.query(LeadsTechAnalysisResult).delete()
+    
+    # Add new results
     count = 0
     for r in results:
         result = LeadsTechAnalysisResult(
-            analysis_id=r['analysis_id'],
             cabinet_name=r['cabinet_name'],
             leadstech_label=r['leadstech_label'],
             banner_id=r['banner_id'],
@@ -842,63 +876,50 @@ def save_leadstech_analysis_results_bulk(
 
 def get_leadstech_analysis_results(
     db: Session,
-    analysis_id: Optional[str] = None,
     cabinet_name: Optional[str] = None,
-    limit: int = 500
-) -> List[LeadsTechAnalysisResult]:
-    """Get LeadsTech analysis results with filters"""
+    limit: int = 500,
+    offset: int = 0,
+    sort_by: str = 'created_at',
+    sort_order: str = 'desc'
+) -> tuple[List[LeadsTechAnalysisResult], int]:
+    """Get LeadsTech analysis results with pagination and sorting"""
     query = db.query(LeadsTechAnalysisResult)
 
-    if analysis_id:
-        query = query.filter(LeadsTechAnalysisResult.analysis_id == analysis_id)
     if cabinet_name:
         query = query.filter(LeadsTechAnalysisResult.cabinet_name == cabinet_name)
 
-    return query.order_by(desc(LeadsTechAnalysisResult.created_at)).limit(limit).all()
+    total = query.count()
+    
+    # Determine sort column
+    sort_columns = {
+        'created_at': LeadsTechAnalysisResult.created_at,
+        'roi_percent': LeadsTechAnalysisResult.roi_percent,
+        'profit': LeadsTechAnalysisResult.profit,
+        'vk_spent': LeadsTechAnalysisResult.vk_spent,
+        'lt_revenue': LeadsTechAnalysisResult.lt_revenue,
+        'banner_id': LeadsTechAnalysisResult.banner_id,
+    }
+    
+    sort_column = sort_columns.get(sort_by, LeadsTechAnalysisResult.created_at)
+    
+    if sort_order == 'asc':
+        query = query.order_by(sort_column.asc().nullslast())
+    else:
+        query = query.order_by(sort_column.desc().nullslast())
+    
+    items = query.offset(offset).limit(limit).all()
+    return items, total
 
 
-def get_latest_leadstech_analysis(db: Session) -> Optional[str]:
-    """Get the latest analysis_id"""
-    result = db.query(LeadsTechAnalysisResult).order_by(
-        desc(LeadsTechAnalysisResult.created_at)
-    ).first()
-    return result.analysis_id if result else None
+def get_leadstech_analysis_cabinet_names(db: Session) -> List[str]:
+    """Get all unique cabinet names from analysis results"""
+    results = db.query(LeadsTechAnalysisResult.cabinet_name).distinct().all()
+    return sorted([r[0] for r in results if r[0]])
 
 
-def get_leadstech_analysis_runs(db: Session, limit: int = 10) -> List[dict]:
-    """Get list of analysis runs with summary"""
-    from sqlalchemy import func
-
-    # Get unique analysis runs
-    subquery = db.query(
-        LeadsTechAnalysisResult.analysis_id,
-        func.min(LeadsTechAnalysisResult.created_at).label('created_at'),
-        func.count(LeadsTechAnalysisResult.id).label('banners_count'),
-        func.sum(LeadsTechAnalysisResult.vk_spent).label('total_spent'),
-        func.sum(LeadsTechAnalysisResult.lt_revenue).label('total_revenue'),
-        func.sum(LeadsTechAnalysisResult.profit).label('total_profit')
-    ).group_by(LeadsTechAnalysisResult.analysis_id).order_by(
-        desc(func.min(LeadsTechAnalysisResult.created_at))
-    ).limit(limit).all()
-
-    runs = []
-    for row in subquery:
-        runs.append({
-            'analysis_id': row.analysis_id,
-            'created_at': row.created_at.isoformat() if row.created_at else None,
-            'banners_count': row.banners_count,
-            'total_spent': round(row.total_spent or 0, 2),
-            'total_revenue': round(row.total_revenue or 0, 2),
-            'total_profit': round(row.total_profit or 0, 2)
-        })
-
-    return runs
-
-
-def delete_leadstech_analysis_results(db: Session, analysis_id: str) -> int:
-    """Delete all results for a specific analysis run"""
-    count = db.query(LeadsTechAnalysisResult).filter(
-        LeadsTechAnalysisResult.analysis_id == analysis_id
-    ).delete()
-    db.commit()
-    return count
+def get_disabled_banners_account_names(db: Session) -> List[str]:
+    """Get all unique account names from disabled banners"""
+    results = db.query(BannerAction.account_name).filter(
+        BannerAction.action == 'disabled'
+    ).distinct().all()
+    return sorted([r[0] for r in results if r[0]])
