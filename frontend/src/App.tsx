@@ -7,6 +7,8 @@ import { Settings } from './pages/Settings';
 import { Control } from './pages/Control';
 import { Logs } from './pages/Logs';
 import { Whitelist } from './pages/Whitelist';
+import { Statistics } from './pages/Statistics';
+import { ProfitableAds } from './pages/ProfitableAds';
 import './index.css';
 
 const queryClient = new QueryClient({
@@ -26,6 +28,8 @@ function App() {
           <Route path="/" element={<Layout />}>
             <Route index element={<Dashboard />} />
             <Route path="accounts" element={<Accounts />} />
+            <Route path="statistics" element={<Statistics />} />
+            <Route path="profitable-ads" element={<ProfitableAds />} />
             <Route path="settings" element={<Settings />} />
             <Route path="control" element={<Control />} />
             <Route path="logs" element={<Logs />} />

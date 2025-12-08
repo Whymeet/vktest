@@ -160,6 +160,119 @@ def _iso(d: date) -> str:
     return d.isoformat()
 
 
+async def log_disabled_banners_to_db(
+    over_limit: list,
+    disable_results: dict | None,
+    account_name: str,
+    spent_limit: float,
+    lookback_days: int,
+    date_from: str,
+    date_to: str,
+    is_dry_run: bool = False
+):
+    """
+    Логирует все отключённые баннеры в базу данных.
+    Выполняется асинхронно в отдельном потоке чтобы не блокировать event loop.
+    """
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+
+    def _log_to_db():
+        db = SessionLocal()
+        try:
+            logged_count = 0
+            for banner_data in over_limit:
+                banner_id = banner_data.get("id")
+
+                # Проверяем результат отключения
+                disable_success = True
+                if disable_results and isinstance(disable_results, dict):
+                    result = disable_results.get(str(banner_id)) or disable_results.get(banner_id)
+                    if result:
+                        disable_success = result.get("success", True)
+
+                try:
+                    crud.log_disabled_banner(
+                        db=db,
+                        banner_data=banner_data,
+                        account_name=account_name,
+                        spent_limit=spent_limit,
+                        lookback_days=lookback_days,
+                        date_from=date_from,
+                        date_to=date_to,
+                        is_dry_run=is_dry_run,
+                        disable_success=disable_success
+                    )
+                    logged_count += 1
+                except Exception as e:
+                    logger.error(f"❌ Ошибка записи в БД для баннера {banner_id}: {e}")
+
+            logger.info(f"💾 [{account_name}] Записано в БД: {logged_count} отключённых баннеров")
+        except Exception as e:
+            logger.error(f"❌ Ошибка при логировании в БД: {e}")
+        finally:
+            db.close()
+
+    # Выполняем запись в БД в thread pool чтобы не блокировать async
+    loop = asyncio.get_event_loop()
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        await loop.run_in_executor(executor, _log_to_db)
+
+
+async def save_account_stats_to_db(
+    account_name: str,
+    stats_date: str,
+    over_limit: list,
+    under_limit: list,
+    no_activity: list,
+    total_spent: float,
+    total_conversions: int,
+    spent_limit: float,
+    lookback_days: int,
+    vk_account_id: int = None
+):
+    """
+    Сохраняет статистику по кабинету в БД.
+    Выполняется асинхронно в отдельном потоке.
+    """
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+
+    def _save_stats():
+        db = SessionLocal()
+        try:
+            # Подсчитываем статистику
+            total_clicks = sum(b.get("clicks", 0) for b in over_limit + under_limit + no_activity)
+            total_shows = sum(b.get("shows", 0) for b in over_limit + under_limit + no_activity)
+
+            crud.save_account_stats(
+                db=db,
+                account_name=account_name,
+                stats_date=stats_date,
+                active_banners=len(over_limit) + len(under_limit) + len(no_activity),
+                disabled_banners=len(over_limit),
+                over_limit_banners=len(over_limit),
+                under_limit_banners=len(under_limit),
+                no_activity_banners=len(no_activity),
+                total_spend=total_spent,
+                total_clicks=int(total_clicks),
+                total_shows=int(total_shows),
+                total_conversions=total_conversions,
+                spent_limit=spent_limit,
+                lookback_days=lookback_days,
+                vk_account_id=vk_account_id
+            )
+            logger.info(f"📊 [{account_name}] Статистика сохранена в БД")
+        except Exception as e:
+            logger.error(f"❌ Ошибка сохранения статистики в БД: {e}")
+        finally:
+            db.close()
+
+    loop = asyncio.get_event_loop()
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        await loop.run_in_executor(executor, _save_stats)
+
+
 def _prepare_whitelist_set() -> set:
     """Подготавливает set из whitelist для быстрой проверки"""
     whitelist_raw = WHITELIST.get("banners_whitelist", []) if isinstance(WHITELIST, dict) else []
@@ -330,6 +443,31 @@ async def analyze_account(
                 whitelist_ids=whitelist_set,
                 concurrency=5  # До 5 параллельных отключений
             )
+
+            # Логируем отключённые баннеры в БД
+            await log_disabled_banners_to_db(
+                over_limit=over_limit,
+                disable_results=disable_results,
+                account_name=account_name,
+                spent_limit=spent_limit,
+                lookback_days=LOOKBACK_DAYS,
+                date_from=date_from,
+                date_to=date_to,
+                is_dry_run=DRY_RUN
+            )
+
+        # Сохраняем статистику по кабинету в БД
+        await save_account_stats_to_db(
+            account_name=account_name,
+            stats_date=date_to,  # Дата = последний день периода
+            over_limit=over_limit,
+            under_limit=under_limit,
+            no_activity=no_activity,
+            total_spent=total_spent,
+            total_conversions=int(total_vk_goals),
+            spent_limit=spent_limit,
+            lookback_days=LOOKBACK_DAYS
+        )
 
         logger.info(f"✅ [{account_name}] Анализ кабинета завершен!")
 

@@ -1,0 +1,512 @@
+"""
+LeadsTech Analyzer - fetches data from LeadsTech and VK Ads, calculates ROI
+Reads configuration from database and saves results back to database
+"""
+
+import logging
+import os
+import sys
+from datetime import date, datetime, timedelta
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+from dataclasses import dataclass
+import uuid
+
+import requests
+
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from database import SessionLocal
+from database import crud
+
+# Setup logging
+logger = logging.getLogger("leadstech_analyzer")
+
+
+def setup_logging():
+    """Setup logging configuration"""
+    logger.setLevel(logging.DEBUG)
+    logger.handlers.clear()
+
+    fmt = logging.Formatter(
+        "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+
+    # Console handler
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.INFO)
+    ch.setFormatter(fmt)
+    logger.addHandler(ch)
+
+    # File handler
+    logs_dir = Path(__file__).parent.parent.parent / "logs"
+    logs_dir.mkdir(parents=True, exist_ok=True)
+
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_path = logs_dir / f"leadstech_analyzer_{ts}.log"
+
+    fh = logging.FileHandler(log_path, encoding="utf-8")
+    fh.setLevel(logging.DEBUG)
+    fh.setFormatter(fmt)
+    logger.addHandler(fh)
+
+    logger.info("Logs writing to %s", log_path)
+
+
+# === LeadsTech Client ===
+
+@dataclass
+class LeadstechClientConfig:
+    base_url: str
+    login: str
+    password: str
+    page_size: int = 500
+    banner_sub_field: str = "sub4"
+
+
+class LeadstechClient:
+    """LeadsTech API client"""
+
+    def __init__(self, cfg: LeadstechClientConfig):
+        self.cfg = cfg
+        self._token: Optional[str] = None
+
+    @property
+    def _login_url(self) -> str:
+        return f"{self.cfg.base_url.rstrip('/')}/v1/front/authorization/login"
+
+    @property
+    def _by_subid_url(self) -> str:
+        return f"{self.cfg.base_url.rstrip('/')}/v1/front/stat/by-subid"
+
+    def _login(self) -> str:
+        """Authenticate and get token"""
+        headers = {
+            "Content-Type": "application/json; charset=UTF-8",
+            "Accept": "application/json",
+        }
+        payload = {
+            "login": self.cfg.login,
+            "password": self.cfg.password,
+        }
+
+        logger.info("LeadsTech: authenticating as %s", self.cfg.login)
+
+        resp = requests.post(self._login_url, headers=headers, json=payload, timeout=30)
+        resp.raise_for_status()
+
+        data = resp.json()
+        if not data.get("success"):
+            raise RuntimeError(f"LeadsTech login error: {data}")
+
+        token = data.get("data", {}).get("jsonAccessWebToken")
+        if not token:
+            raise RuntimeError(f"jsonAccessWebToken not found in response: {data}")
+
+        logger.info("LeadsTech: token received (length %d)", len(token))
+        return token
+
+    def _get_token(self) -> str:
+        if self._token is None:
+            self._token = self._login()
+        return self._token
+
+    def get_stat_by_subid(
+        self,
+        date_from: date,
+        date_to: date,
+        sub1_value: str,
+        subs_field: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Fetch stats by subid with pagination"""
+        token = self._get_token()
+        subs_field = subs_field or self.cfg.banner_sub_field
+
+        headers = {
+            "X-Auth-Token": token,
+            "Accept": "application/json",
+        }
+
+        all_rows: List[Dict[str, Any]] = []
+        page = 1
+
+        while True:
+            params: Dict[str, Any] = {
+                "page": page,
+                "pageSize": self.cfg.page_size,
+                "dateStart": date_from.strftime("%d-%m-%Y"),
+                "dateEnd": date_to.strftime("%d-%m-%Y"),
+                "sub1": sub1_value,
+                "strictSubs": 0,
+                "untilCurrentTime": 0,
+                "limitLowerDay": 0,
+                "limitUpperDay": 0,
+                "subs[]": subs_field,
+            }
+
+            logger.info(
+                "LeadsTech: by-subid page=%s (sub1=%s, subs[]=%s, %s..%s)",
+                page, sub1_value, subs_field, params["dateStart"], params["dateEnd"],
+            )
+
+            resp = requests.get(
+                self._by_subid_url,
+                headers=headers,
+                params=params,
+                timeout=30,
+            )
+
+            try:
+                resp.raise_for_status()
+            except requests.HTTPError as exc:
+                logger.error(
+                    "LeadsTech: error requesting by-subid page=%s: %s, body=%s",
+                    page, exc, resp.text,
+                )
+                raise
+
+            payload = resp.json()
+            rows = self._extract_rows(payload)
+
+            logger.info("LeadsTech: page=%s - %d rows", page, len(rows))
+
+            if not rows:
+                break
+
+            all_rows.extend(rows)
+
+            if len(rows) < self.cfg.page_size:
+                break
+
+            page += 1
+
+        logger.info("LeadsTech: total %d rows received", len(all_rows))
+        return all_rows
+
+    @staticmethod
+    def _extract_rows(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Extract rows from API response"""
+        data = payload.get("data")
+        if isinstance(data, dict):
+            if isinstance(data.get("rows"), list):
+                return data["rows"]
+            for key in ("items", "list", "stats"):
+                if isinstance(data.get(key), list):
+                    return data[key]
+
+        if isinstance(payload, list):
+            return payload
+
+        if isinstance(payload.get("rows"), list):
+            return payload["rows"]
+
+        raise ValueError(f"Could not extract rows from LeadsTech response: {payload}")
+
+
+# === VK Ads Client ===
+
+@dataclass
+class VkAdsConfig:
+    base_url: str
+    api_token: str
+
+
+class VkAdsClient:
+    """VK Ads API client"""
+
+    def __init__(self, cfg: VkAdsConfig):
+        self.cfg = cfg
+
+    def _headers(self) -> Dict[str, str]:
+        return {"Authorization": f"Bearer {self.cfg.api_token}"}
+
+    def get_banners_stats_day(
+        self,
+        date_from: date,
+        date_to: date,
+        banner_ids: List[int],
+        metrics: str = "base",
+    ) -> List[Dict[str, Any]]:
+        """Fetch banner stats with retry on rate limit"""
+        import time
+
+        url = self.cfg.base_url.rstrip("/") + "/statistics/banners/day.json"
+
+        params: Dict[str, Any] = {
+            "date_from": date_from.isoformat(),
+            "date_to": date_to.isoformat(),
+            "metrics": metrics,
+        }
+
+        if banner_ids:
+            params["id"] = ",".join(map(str, banner_ids))
+
+        logger.info(
+            "VK Ads: requesting stats for banners (period %s..%s)",
+            params["date_from"], params["date_to"],
+        )
+
+        max_retries = 5
+        backoff = 1.0
+
+        for attempt in range(1, max_retries + 1):
+            resp = requests.get(
+                url,
+                headers=self._headers(),
+                params=params,
+                timeout=30,
+            )
+
+            if resp.status_code == 429:
+                logger.warning(
+                    "VK Ads: 429 Too Many Requests, attempt %d/%d, waiting %.1f sec",
+                    attempt, max_retries, backoff,
+                )
+                time.sleep(backoff)
+                backoff *= 2
+                continue
+
+            try:
+                resp.raise_for_status()
+            except requests.HTTPError as exc:
+                logger.error("VK Ads: error requesting banner stats: %s, body=%s", exc, resp.text)
+                raise
+
+            payload = resp.json()
+            items = payload.get("items", [])
+            logger.info("VK Ads: received %d banners in stats", len(items))
+            return items
+
+        logger.error("VK Ads: failed to get stats after %d attempts due to rate limiting", max_retries)
+        return []
+
+    def get_spent_by_banner(
+        self,
+        date_from: date,
+        date_to: date,
+        banner_ids: List[int],
+    ) -> Dict[int, float]:
+        """Get spending by banner with chunking"""
+        if not banner_ids:
+            return {}
+
+        spent_by_id: Dict[int, float] = {}
+        chunk_size = 150
+
+        total_ids = len(banner_ids)
+        logger.info("VK Ads: calculating spend for %d banners (chunks of %d)", total_ids, chunk_size)
+
+        for start in range(0, total_ids, chunk_size):
+            chunk = banner_ids[start:start + chunk_size]
+
+            items = self.get_banners_stats_day(date_from, date_to, chunk, metrics="base")
+
+            for item in items:
+                bid = item.get("id")
+                if bid is None:
+                    continue
+
+                total_base = item.get("total", {}).get("base", {})
+                spent = float(total_base.get("spent", 0) or 0)
+
+                try:
+                    banner_id_int = int(bid)
+                except (TypeError, ValueError):
+                    continue
+
+                spent_by_id[banner_id_int] = spent
+
+        logger.info("VK Ads: collected spend for %d banners", len(spent_by_id))
+        return spent_by_id
+
+
+# === Aggregation ===
+
+def aggregate_leadstech_by_banner(
+    rows: List[Dict[str, Any]],
+    banner_sub_field: str = "sub4",
+) -> Dict[int, Dict[str, Any]]:
+    """Aggregate LeadsTech data by banner ID"""
+    logger.info("Aggregating LeadsTech by field %s", banner_sub_field)
+
+    result: Dict[int, Dict[str, Any]] = {}
+
+    for row in rows:
+        sub_value = row.get(banner_sub_field)
+        if not sub_value:
+            continue
+
+        try:
+            banner_id = int(str(sub_value))
+        except (TypeError, ValueError):
+            continue
+
+        revenue = float(row.get("sumwebmaster", 0) or 0)
+        clicks = int(row.get("clicks", 0) or 0)
+        conversions = int(row.get("conversions", 0) or 0)
+        inprogress = int(row.get("inprogress", 0) or 0)
+        approved = int(row.get("approved", 0) or 0)
+        rejected = int(row.get("rejected", 0) or 0)
+
+        if banner_id not in result:
+            result[banner_id] = {
+                "banner_id": banner_id,
+                "lt_revenue": 0.0,
+                "lt_clicks": 0,
+                "lt_conversions": 0,
+                "lt_inprogress": 0,
+                "lt_approved": 0,
+                "lt_rejected": 0,
+            }
+
+        agg = result[banner_id]
+        agg["lt_revenue"] += revenue
+        agg["lt_clicks"] += clicks
+        agg["lt_conversions"] += conversions
+        agg["lt_inprogress"] += inprogress
+        agg["lt_approved"] += approved
+        agg["lt_rejected"] += rejected
+
+    logger.info("Aggregated %d banners from LeadsTech", len(result))
+    return result
+
+
+# === Main Analysis ===
+
+def run_analysis():
+    """Main analysis function"""
+    setup_logging()
+    logger.info("=== LeadsTech Analysis Starting ===")
+
+    db = SessionLocal()
+
+    try:
+        # Get LeadsTech config
+        lt_config = crud.get_leadstech_config(db)
+        if not lt_config:
+            logger.error("LeadsTech not configured")
+            return
+
+        # Get enabled cabinets
+        cabinets = crud.get_leadstech_cabinets(db, enabled_only=True)
+        if not cabinets:
+            logger.error("No enabled LeadsTech cabinets")
+            return
+
+        # Generate unique analysis ID
+        analysis_id = f"lt_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
+        logger.info("Analysis ID: %s", analysis_id)
+
+        # Calculate date range
+        lookback_days = lt_config.lookback_days or 10
+        date_to = date.today()
+        date_from = date_to - timedelta(days=lookback_days)
+        logger.info("Analysis period: %s to %s (%d days)", date_from, date_to, lookback_days)
+
+        # Create LeadsTech client (shared for all cabinets)
+        lt_client_cfg = LeadstechClientConfig(
+            base_url=lt_config.base_url,
+            login=lt_config.login,
+            password=lt_config.password,
+            banner_sub_field=lt_config.banner_sub_field,
+        )
+        lt_client = LeadstechClient(lt_client_cfg)
+
+        all_results = []
+
+        for cabinet in cabinets:
+            account = cabinet.account
+            if not account:
+                logger.warning("Cabinet %d has no linked account, skipping", cabinet.id)
+                continue
+
+            cabinet_name = account.name
+            lt_label = cabinet.leadstech_label
+
+            logger.info("--- Processing cabinet: %s (label=%s) ---", cabinet_name, lt_label)
+
+            # 1. Fetch LeadsTech data
+            try:
+                lt_rows = lt_client.get_stat_by_subid(
+                    date_from=date_from,
+                    date_to=date_to,
+                    sub1_value=lt_label,
+                    subs_field=lt_config.banner_sub_field,
+                )
+            except Exception as e:
+                logger.error("Failed to fetch LeadsTech data for %s: %s", cabinet_name, e)
+                continue
+
+            lt_by_banner = aggregate_leadstech_by_banner(lt_rows, lt_config.banner_sub_field)
+
+            if not lt_by_banner:
+                logger.warning("Cabinet %s: no LeadsTech data, skipping", cabinet_name)
+                continue
+
+            banner_ids = sorted(lt_by_banner.keys())
+            logger.info("Cabinet %s: %d banners from LeadsTech", cabinet_name, len(banner_ids))
+
+            # 2. Fetch VK Ads spending
+            vk_cfg = VkAdsConfig(
+                base_url="https://ads.vk.com/api/v2",
+                api_token=account.api_token,
+            )
+            vk_client = VkAdsClient(vk_cfg)
+
+            try:
+                vk_spent_by_banner = vk_client.get_spent_by_banner(date_from, date_to, banner_ids)
+            except Exception as e:
+                logger.error("Failed to fetch VK Ads data for %s: %s", cabinet_name, e)
+                vk_spent_by_banner = {}
+
+            # 3. Merge and calculate ROI
+            for banner_id, lt_data in lt_by_banner.items():
+                lt_revenue = float(lt_data.get("lt_revenue", 0.0))
+                vk_spent = float(vk_spent_by_banner.get(banner_id, 0.0))
+
+                profit = lt_revenue - vk_spent
+                roi_percent = None
+                if vk_spent > 0:
+                    roi_percent = (profit / vk_spent) * 100.0
+
+                result = {
+                    "analysis_id": analysis_id,
+                    "cabinet_name": cabinet_name,
+                    "leadstech_label": lt_label,
+                    "banner_id": banner_id,
+                    "vk_spent": round(vk_spent, 2),
+                    "lt_revenue": round(lt_revenue, 2),
+                    "profit": round(profit, 2),
+                    "roi_percent": round(roi_percent, 2) if roi_percent is not None else None,
+                    "lt_clicks": int(lt_data.get("lt_clicks", 0)),
+                    "lt_conversions": int(lt_data.get("lt_conversions", 0)),
+                    "lt_approved": int(lt_data.get("lt_approved", 0)),
+                    "lt_inprogress": int(lt_data.get("lt_inprogress", 0)),
+                    "lt_rejected": int(lt_data.get("lt_rejected", 0)),
+                    "date_from": date_from.isoformat(),
+                    "date_to": date_to.isoformat(),
+                }
+                all_results.append(result)
+
+            logger.info("Cabinet %s: merged %d banners", cabinet_name, len(lt_by_banner))
+
+        # 4. Save results to database
+        if all_results:
+            count = crud.save_leadstech_analysis_results_bulk(db, all_results)
+            logger.info("Saved %d results to database with analysis_id=%s", count, analysis_id)
+        else:
+            logger.warning("No results to save")
+
+        logger.info("=== LeadsTech Analysis Complete ===")
+
+    except Exception as e:
+        logger.exception("Analysis failed: %s", e)
+        raise
+    finally:
+        db.close()
+
+
+if __name__ == "__main__":
+    run_analysis()

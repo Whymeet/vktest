@@ -7,11 +7,15 @@ import {
   FileText,
   Shield,
   Activity,
+  BarChart3,
+  TrendingUp,
 } from 'lucide-react';
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/accounts', icon: Users, label: 'Кабинеты' },
+  { to: '/statistics', icon: BarChart3, label: 'Статистика' },
+  { to: '/profitable-ads', icon: TrendingUp, label: 'Прибыльные объявления' },
   { to: '/settings', icon: Settings, label: 'Настройки' },
   { to: '/control', icon: PlayCircle, label: 'Управление' },
   { to: '/logs', icon: FileText, label: 'Логи' },
