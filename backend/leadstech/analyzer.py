@@ -13,6 +13,7 @@ from dataclasses import dataclass
 import uuid
 
 import requests
+from utils.time_utils import get_moscow_time
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -44,7 +45,7 @@ def setup_logging():
     logs_dir = Path(__file__).parent.parent.parent / "logs"
     logs_dir.mkdir(parents=True, exist_ok=True)
 
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    ts = get_moscow_time().strftime("%Y%m%d_%H%M%S")
     log_path = logs_dir / f"leadstech_analyzer_{ts}.log"
 
     fh = logging.FileHandler(log_path, encoding="utf-8")
@@ -396,12 +397,12 @@ def run_analysis():
             return
 
         # Generate unique analysis ID
-        analysis_id = f"lt_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
+        analysis_id = f"lt_{get_moscow_time().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
         logger.info("Analysis ID: %s", analysis_id)
 
         # Calculate date range
         lookback_days = lt_config.lookback_days or 10
-        date_to = date.today()
+        date_to = get_moscow_time().date()
         date_from = date_to - timedelta(days=lookback_days)
         logger.info("Analysis period: %s to %s (%d days)", date_from, date_to, lookback_days)
 

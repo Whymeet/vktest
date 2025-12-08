@@ -5,6 +5,7 @@ from typing import List, Optional
 from datetime import datetime
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, and_
+from utils.time_utils import get_moscow_time
 
 from .models import (
     Account,
@@ -71,7 +72,7 @@ def update_account(
     if client_id is not None:
         account.client_id = client_id
 
-    account.updated_at = datetime.utcnow()
+    account.updated_at = get_moscow_time()
     db.commit()
     db.refresh(account)
     return account
@@ -331,7 +332,7 @@ def add_active_banner(
         existing.campaign_name = campaign_name or existing.campaign_name
         existing.current_spend = current_spend
         existing.current_conversions = current_conversions
-        existing.updated_at = datetime.utcnow()
+        existing.updated_at = get_moscow_time()
         db.commit()
         db.refresh(existing)
         return existing
@@ -379,7 +380,7 @@ def update_active_banner_stats(
 
     banner.current_spend = spend
     banner.current_conversions = conversions
-    banner.last_checked = datetime.utcnow()
+    banner.last_checked = get_moscow_time()
     db.commit()
     db.refresh(banner)
     return banner
@@ -400,7 +401,7 @@ def set_setting(db: Session, key: str, value: dict, description: Optional[str] =
     setting = db.query(Settings).filter(Settings.key == key).first()
     if setting:
         setting.value = value
-        setting.updated_at = datetime.utcnow()
+        setting.updated_at = get_moscow_time()
         if description:
             setting.description = description
     else:
@@ -449,7 +450,7 @@ def set_process_running(
 ) -> ProcessState:
     """Mark process as running with PID"""
     state = get_process_state(db, name)
-    now = datetime.utcnow()
+    now = get_moscow_time()
 
     if state:
         state.pid = pid
@@ -480,7 +481,7 @@ def set_process_stopped(db: Session, name: str, error: Optional[str] = None) -> 
     if not state:
         return None
 
-    now = datetime.utcnow()
+    now = get_moscow_time()
     state.pid = None
     state.status = 'crashed' if error else 'stopped'
     state.stopped_at = now
@@ -499,7 +500,7 @@ def update_process_status(db: Session, name: str, status: str) -> Optional[Proce
         return None
 
     state.status = status
-    state.updated_at = datetime.utcnow()
+    state.updated_at = get_moscow_time()
 
     db.commit()
     db.refresh(state)
@@ -574,7 +575,7 @@ def get_account_stats(
 
 def get_today_stats(db: Session, account_name: Optional[str] = None) -> List[DailyAccountStats]:
     """Get today's statistics for all or specific account"""
-    today = datetime.utcnow().strftime('%Y-%m-%d')
+    today = get_moscow_time().strftime('%Y-%m-%d')
     return get_account_stats(db, account_name=account_name, stats_date=today, limit=100)
 
 
@@ -602,7 +603,7 @@ def get_account_stats_summary(db: Session, days: int = 7) -> dict:
     """Get aggregated summary for last N days"""
     from datetime import timedelta
 
-    end_date = datetime.utcnow().date()
+    end_date = get_moscow_time().date()
     start_date = end_date - timedelta(days=days)
 
     stats = get_stats_by_date_range(
@@ -663,7 +664,7 @@ def create_or_update_leadstech_config(
         config.base_url = base_url
         config.lookback_days = lookback_days
         config.banner_sub_field = banner_sub_field
-        config.updated_at = datetime.utcnow()
+        config.updated_at = get_moscow_time()
     else:
         config = LeadsTechConfig(
             login=login,
@@ -717,7 +718,7 @@ def create_leadstech_cabinet(
         # Update existing
         existing.leadstech_label = leadstech_label
         existing.enabled = enabled
-        existing.updated_at = datetime.utcnow()
+        existing.updated_at = get_moscow_time()
         db.commit()
         db.refresh(existing)
         return existing
@@ -748,7 +749,7 @@ def update_leadstech_cabinet(
         cabinet.leadstech_label = leadstech_label
     if enabled is not None:
         cabinet.enabled = enabled
-    cabinet.updated_at = datetime.utcnow()
+    cabinet.updated_at = get_moscow_time()
 
     db.commit()
     db.refresh(cabinet)

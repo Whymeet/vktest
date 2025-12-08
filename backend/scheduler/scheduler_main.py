@@ -11,6 +11,7 @@ import logging
 import signal
 from datetime import datetime, timedelta
 from pathlib import Path
+from utils.time_utils import get_moscow_time
 
 # Добавляем родительскую директорию в путь для импорта
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -127,7 +128,7 @@ class VKAdsScheduler:
             return False
 
         try:
-            now = datetime.now()
+            now = get_moscow_time()
             start = datetime.strptime(quiet_hours.get("start", "23:00"), "%H:%M").time()
             end = datetime.strptime(quiet_hours.get("end", "08:00"), "%H:%M").time()
             current_time = now.time()
@@ -179,7 +180,7 @@ class VKAdsScheduler:
     def calculate_next_run(self):
         """Вычисление времени следующего запуска"""
         interval = self.settings.get("interval_minutes", 60)
-        self.next_run_time = datetime.now() + timedelta(minutes=interval)
+        self.next_run_time = get_moscow_time() + timedelta(minutes=interval)
         return self.next_run_time
 
     def run(self):
@@ -217,7 +218,7 @@ class VKAdsScheduler:
 
             # Запуск анализа
             self.run_count += 1
-            self.last_run_time = datetime.now()
+            self.last_run_time = get_moscow_time()
             self.logger.info(f"📊 Запуск #{self.run_count}")
 
             success = self.run_analysis()
@@ -251,7 +252,7 @@ class VKAdsScheduler:
         if not self.next_run_time:
             return
 
-        while datetime.now() < self.next_run_time and not self.should_stop:
+        while get_moscow_time() < self.next_run_time and not self.should_stop:
             time.sleep(1)
 
 

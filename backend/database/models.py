@@ -6,6 +6,7 @@ from typing import Optional
 from sqlalchemy import Column, Integer, String, Boolean, Float, DateTime, Text, ForeignKey, JSON
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
+from utils.time_utils import get_moscow_time
 
 Base = declarative_base()
 
@@ -21,8 +22,8 @@ class Account(Base):
     client_id = Column(Integer, nullable=False)
 
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=get_moscow_time, nullable=False)
+    updated_at = Column(DateTime, default=get_moscow_time, onupdate=get_moscow_time, nullable=False)
 
     # Relationships
     banner_actions = relationship("BannerAction", back_populates="account", cascade="all, delete-orphan")
@@ -43,7 +44,7 @@ class WhitelistBanner(Base):
     added_by = Column(String(100), nullable=True)
 
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=get_moscow_time, nullable=False)
 
     def __repr__(self):
         return f"<WhitelistBanner(banner_id={self.banner_id})>"
@@ -107,7 +108,7 @@ class BannerAction(Base):
     is_dry_run = Column(Boolean, default=False)
 
     # Timestamp
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    created_at = Column(DateTime, default=get_moscow_time, nullable=False, index=True)
 
     # Relationships
     account = relationship("Account", back_populates="banner_actions")
@@ -139,11 +140,11 @@ class ActiveBanner(Base):
 
     # Status info
     is_whitelisted = Column(Boolean, default=False)
-    last_checked = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_checked = Column(DateTime, default=get_moscow_time, onupdate=get_moscow_time)
 
     # Timestamps
-    enabled_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    enabled_at = Column(DateTime, default=get_moscow_time, nullable=False)
+    updated_at = Column(DateTime, default=get_moscow_time, onupdate=get_moscow_time, nullable=False)
 
     def __repr__(self):
         return f"<ActiveBanner(banner_id={self.banner_id}, name='{self.banner_name}')>"
@@ -161,8 +162,8 @@ class Settings(Base):
     description = Column(Text, nullable=True)
 
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=get_moscow_time, nullable=False)
+    updated_at = Column(DateTime, default=get_moscow_time, onupdate=get_moscow_time, nullable=False)
 
     def __repr__(self):
         return f"<Settings(key='{self.key}', value={self.value})>"
@@ -199,7 +200,7 @@ class DailyAccountStats(Base):
     lookback_days = Column(Integer, nullable=True)
 
     # Timestamp когда записана статистика
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    created_at = Column(DateTime, default=get_moscow_time, nullable=False, index=True)
 
     def __repr__(self):
         return f"<DailyAccountStats(account='{self.account_name}', date={self.stats_date}, spend={self.total_spend})>"
@@ -227,8 +228,8 @@ class ProcessState(Base):
     last_error = Column(Text, nullable=True)
 
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=get_moscow_time, nullable=False)
+    updated_at = Column(DateTime, default=get_moscow_time, onupdate=get_moscow_time, nullable=False)
 
     def __repr__(self):
         return f"<ProcessState(name='{self.name}', pid={self.pid}, status='{self.status}')>"
@@ -250,8 +251,8 @@ class LeadsTechConfig(Base):
     banner_sub_field = Column(String(50), default="sub4")
 
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=get_moscow_time, nullable=False)
+    updated_at = Column(DateTime, default=get_moscow_time, onupdate=get_moscow_time, nullable=False)
 
     def __repr__(self):
         return f"<LeadsTechConfig(login='{self.login}', lookback_days={self.lookback_days})>"
@@ -273,8 +274,8 @@ class LeadsTechCabinet(Base):
     enabled = Column(Boolean, default=True)
 
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=get_moscow_time, nullable=False)
+    updated_at = Column(DateTime, default=get_moscow_time, onupdate=get_moscow_time, nullable=False)
 
     # Relationship
     account = relationship("Account", backref="leadstech_cabinet")
@@ -315,7 +316,7 @@ class LeadsTechAnalysisResult(Base):
     date_to = Column(String(20), nullable=False)
 
     # Timestamp
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    created_at = Column(DateTime, default=get_moscow_time, nullable=False, index=True)
 
     def __repr__(self):
         return f"<LeadsTechAnalysisResult(banner_id={self.banner_id}, roi={self.roi_percent}, profit={self.profit})>"

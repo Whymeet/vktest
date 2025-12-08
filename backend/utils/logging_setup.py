@@ -2,6 +2,7 @@ import logging
 import os
 from datetime import datetime
 from pathlib import Path
+from utils.time_utils import get_moscow_time
 
 def setup_logging():
     # Путь относительно корня проекта
@@ -16,7 +17,7 @@ def setup_logging():
     console_handler.setLevel(logging.DEBUG)
     console_handler.setFormatter(formatter)
     logger.addHandler(console_handler)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = get_moscow_time().strftime("%Y%m%d_%H%M%S")
     log_file = log_dir / f"vk_ads_manager_{timestamp}.log"
     file_handler = logging.FileHandler(log_file, encoding='utf-8')
     file_handler.setLevel(logging.DEBUG)

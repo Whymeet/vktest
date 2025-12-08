@@ -1,5 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
+import type { ReactNode } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Modal } from '../components/Modal';
 import {
   TrendingUp,
   RefreshCw,
@@ -34,6 +36,9 @@ import {
   stopLeadsTechAnalysis,
   getLeadsTechAnalysisStatus,
   getAccounts,
+  whitelistProfitableBanners,
+  getWhitelistProfitableStatus,
+  stopWhitelistProfitableWorker,
   type LeadsTechConfigCreate,
 } from '../api/client';
 import { Card } from '../components/Card';
@@ -86,6 +91,23 @@ export function ProfitableAds() {
   const [editingCabinetId, setEditingCabinetId] = useState<number | null>(null);
   const [editingLabel, setEditingLabel] = useState('');
 
+  // Whitelist by ROI state
+  const [roiThreshold, setRoiThreshold] = useState<number>(10);
+  const [enableBanners, setEnableBanners] = useState<boolean>(true);
+
+  // Modal state
+  const [modalConfig, setModalConfig] = useState<{
+    isOpen: boolean;
+    title: string;
+    content: ReactNode;
+    onConfirm?: () => void;
+    confirmText?: string;
+  }>({
+    isOpen: false,
+    title: '',
+    content: null,
+  });
+
   // Queries
   const { data: configData } = useQuery({
     queryKey: ['leadstechConfig'],
@@ -135,6 +157,12 @@ export function ProfitableAds() {
     refetchInterval: 3000,
   });
 
+  const { data: whitelistStatus, refetch: refetchWhitelistStatus } = useQuery({
+    queryKey: ['whitelistStatus'],
+    queryFn: () => getWhitelistProfitableStatus().then(r => r.data),
+    refetchInterval: 3000,
+  });
+
   // Mutations
   const updateConfigMutation = useMutation({
     mutationFn: updateLeadsTechConfig,
@@ -181,6 +209,45 @@ export function ProfitableAds() {
       refetchStatus();
       refetchRuns();
       refetchResults();
+    },
+  });
+
+  const whitelistProfitableMutation = useMutation({
+    mutationFn: whitelistProfitableBanners,
+    onSuccess: (response) => {
+      refetchWhitelistStatus();
+      setModalConfig({
+        isOpen: true,
+        title: 'Процесс запущен',
+        content: (
+          <div className="space-y-2">
+            <p className="font-medium text-green-400">
+              Процесс добавления в белый список запущен (PID: {response.data.pid}).
+            </p>
+            <p className="text-sm text-slate-300">
+              Вы можете следить за статусом выполнения в верхней части страницы.
+            </p>
+          </div>
+        ),
+      });
+    },
+    onError: (error: any) => {
+      setModalConfig({
+        isOpen: true,
+        title: 'Ошибка',
+        content: (
+          <div className="text-red-400">
+            {error.response?.data?.detail || error.message}
+          </div>
+        ),
+      });
+    },
+  });
+
+  const stopWhitelistMutation = useMutation({
+    mutationFn: stopWhitelistProfitableWorker,
+    onSuccess: () => {
+      refetchWhitelistStatus();
     },
   });
 
@@ -284,6 +351,31 @@ export function ProfitableAds() {
     });
   };
 
+  const handleWhitelistProfitable = () => {
+    if (roiThreshold === null || roiThreshold === undefined) {
+      setModalConfig({
+        isOpen: true,
+        title: 'Внимание',
+        content: 'Укажите порог ROI',
+      });
+      return;
+    }
+
+    setModalConfig({
+      isOpen: true,
+      title: 'Подтверждение',
+      content: `Добавить объявления с ROI >= ${roiThreshold}% в белый список${enableBanners ? ' и включить их в VK Ads?' : '?'}`,
+      confirmText: 'Выполнить',
+      onConfirm: () => {
+        whitelistProfitableMutation.mutate({
+          roi_threshold: roiThreshold,
+          analysis_id: selectedAnalysisId || undefined,
+          enable_banners: enableBanners,
+        });
+      },
+    });
+  };
+
   const isRunning = analysisStatus?.running;
 
   return (
@@ -337,6 +429,31 @@ export function ProfitableAds() {
             <p className="text-blue-400 font-medium">Анализ выполняется...</p>
             <p className="text-sm text-blue-300/70">PID: {analysisStatus.pid}</p>
           </div>
+        </div>
+      )}
+
+      {/* Whitelist Status Banner */}
+      {whitelistStatus?.running && (
+        <div className="bg-purple-900/30 border border-purple-700 rounded-lg p-4 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <Loader2 className="w-5 h-5 text-purple-400 animate-spin" />
+            <div>
+              <p className="text-purple-400 font-medium">Добавление в белый список...</p>
+              <p className="text-sm text-purple-300/70">PID: {whitelistStatus.pid}</p>
+            </div>
+          </div>
+          <button
+            onClick={() => stopWhitelistMutation.mutate()}
+            disabled={stopWhitelistMutation.isPending}
+            className="btn btn-sm bg-red-600/80 hover:bg-red-700 text-white"
+          >
+            {stopWhitelistMutation.isPending ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              <Square className="w-3 h-3" />
+            )}
+            Остановить
+          </button>
         </div>
       )}
 
@@ -460,7 +577,7 @@ export function ProfitableAds() {
                 </select>
               </div>
 
-                            {/* Cabinet Filter */}
+              {/* Cabinet Filter */}
               <div className="min-w-[200px]">
                 <label className="block text-sm text-slate-400 mb-1">Кабинет</label>
                 <select
@@ -474,6 +591,52 @@ export function ProfitableAds() {
                   ))}
                 </select>
               </div>
+            </div>
+          </Card>
+
+          {/* Whitelist by ROI */}
+          <Card title="Автоматическое добавление в белый список" icon={CheckCircle}>
+            <div className="bg-blue-900/10 border border-blue-700/30 rounded-lg p-4 mb-4">
+              <p className="text-sm text-blue-300">
+                💡 Добавьте прибыльные объявления в белый список и включите их автоматически по порогу ROI.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-4 items-end">
+              <div className="min-w-[200px]">
+                <label className="block text-sm text-slate-400 mb-1">Минимальный ROI (%)</label>
+                <input
+                  type="number"
+                  value={roiThreshold}
+                  onChange={(e) => setRoiThreshold(parseFloat(e.target.value) || 0)}
+                  className="input w-full"
+                  placeholder="10"
+                  step="0.1"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="enable-banners"
+                  checked={enableBanners}
+                  onChange={(e) => setEnableBanners(e.target.checked)}
+                  className="w-4 h-4 rounded border-slate-500 bg-slate-700 text-blue-600"
+                />
+                <label htmlFor="enable-banners" className="text-sm text-slate-300">
+                  Включить объявления в VK Ads
+                </label>
+              </div>
+              <button
+                onClick={handleWhitelistProfitable}
+                disabled={whitelistProfitableMutation.isPending || whitelistStatus?.running || !analysisResults?.results || sortedResults.length === 0}
+                className="btn bg-green-600 hover:bg-green-700 text-white disabled:opacity-50"
+              >
+                {whitelistProfitableMutation.isPending || whitelistStatus?.running ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <CheckCircle className="w-4 h-4" />
+                )}
+                Добавить прибыльные
+              </button>
             </div>
           </Card>
 
@@ -815,6 +978,47 @@ export function ProfitableAds() {
           </Card>
         </>
       )}
+
+      <Modal
+        isOpen={modalConfig.isOpen}
+        onClose={() => setModalConfig(prev => ({ ...prev, isOpen: false }))}
+        title={modalConfig.title}
+      >
+        <div className="space-y-4">
+          <div className="text-slate-300">
+            {modalConfig.content}
+          </div>
+          
+          <div className="flex justify-end gap-3 mt-6">
+            {modalConfig.onConfirm ? (
+              <>
+                <button
+                  onClick={() => setModalConfig(prev => ({ ...prev, isOpen: false }))}
+                  className="px-4 py-2 rounded-lg text-slate-300 hover:text-white hover:bg-slate-700 transition-colors"
+                >
+                  Отмена
+                </button>
+                <button
+                  onClick={() => {
+                    modalConfig.onConfirm?.();
+                    setModalConfig(prev => ({ ...prev, isOpen: false }));
+                  }}
+                  className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+                >
+                  {modalConfig.confirmText || 'Подтвердить'}
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => setModalConfig(prev => ({ ...prev, isOpen: false }))}
+                className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white transition-colors"
+              >
+                Закрыть
+              </button>
+            )}
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
