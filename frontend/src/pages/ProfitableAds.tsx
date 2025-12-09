@@ -251,19 +251,19 @@ export function ProfitableAds() {
   // Results are now sorted server-side, use directly
   const sortedResults = analysisResults?.results || [];
 
-  // Summary stats (for current page only)
+  // Summary stats (for current page + total count from server)
   const summary = useMemo(() => {
     const data = sortedResults;
     return {
       totalSpent: data.reduce((sum, r) => sum + r.vk_spent, 0),
       totalRevenue: data.reduce((sum, r) => sum + r.lt_revenue, 0),
       totalProfit: data.reduce((sum, r) => sum + r.profit, 0),
-      count: data.length,
+      count: analysisResults?.total || 0, // Use total from server (includes filtered results)
       avgRoi: data.filter(r => r.roi_percent !== null).length > 0
         ? data.filter(r => r.roi_percent !== null).reduce((sum, r) => sum + (r.roi_percent || 0), 0) / data.filter(r => r.roi_percent !== null).length
         : null,
     };
-  }, [sortedResults]);
+  }, [sortedResults, analysisResults?.total]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
