@@ -22,17 +22,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger("whitelist_worker")
 
-async def whitelist_profitable_banners(roi_threshold: float, analysis_id: str = None, enable_banners: bool = True):
+async def whitelist_profitable_banners(roi_threshold: float, enable_banners: bool = True):
     db = SessionLocal()
     try:
         logger.info(f"🚀 Starting whitelist worker. ROI >= {roi_threshold}%, Enable: {enable_banners}")
         
-        # Get profitable banners
-        results = crud.get_leadstech_analysis_results(
+        # Get profitable banners (all, without pagination)
+        results, total = crud.get_leadstech_analysis_results(
             db,
-            analysis_id=analysis_id,
             cabinet_name=None,
-            limit=10000
+            limit=10000,
+            offset=0
         )
 
         profitable = [
@@ -118,11 +118,10 @@ async def whitelist_profitable_banners(roi_threshold: float, analysis_id: str = 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--roi", type=float, required=True)
-    parser.add_argument("--analysis_id", type=str, default=None)
     parser.add_argument("--enable", type=str, default="true")
     
     args = parser.parse_args()
     
     enable_banners = args.enable.lower() == "true"
     
-    asyncio.run(whitelist_profitable_banners(args.roi, args.analysis_id, enable_banners))
+    asyncio.run(whitelist_profitable_banners(args.roi, enable_banners))
