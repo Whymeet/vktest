@@ -18,6 +18,7 @@ export function Whitelist() {
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['whitelist'],
     queryFn: () => getWhitelist().then((r) => r.data),
+    refetchInterval: 10000, // Auto-refresh every 10 seconds
   });
 
   const addMutation = useMutation({

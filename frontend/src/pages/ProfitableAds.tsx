@@ -104,6 +104,7 @@ export function ProfitableAds() {
   const { data: configData } = useQuery({
     queryKey: ['leadstechConfig'],
     queryFn: () => getLeadsTechConfig().then(r => r.data),
+    refetchInterval: 10000, // Auto-refresh every 10 seconds
   });
 
   // Initialize config form when data loads
@@ -122,11 +123,13 @@ export function ProfitableAds() {
   const { data: cabinetsData, isLoading: isLoadingCabinets, refetch: refetchCabinets } = useQuery({
     queryKey: ['leadstechCabinets'],
     queryFn: () => getLeadsTechCabinets().then(r => r.data),
+    refetchInterval: 10000, // Auto-refresh every 10 seconds
   });
 
   const { data: accountsData } = useQuery({
     queryKey: ['accounts'],
     queryFn: () => getAccounts().then(r => r.data),
+    refetchInterval: 10000, // Auto-refresh every 10 seconds
   });
 
   const { data: analysisResults, refetch: refetchResults } = useQuery({
@@ -138,18 +141,20 @@ export function ProfitableAds() {
       sortField,
       sortOrder
     ).then(r => r.data),
+    refetchInterval: 5000, // Auto-refresh every 5 seconds
   });
 
   // Get all unique cabinet names for filter dropdown (separate query)
   const { data: analysisCabinetsData } = useQuery({
     queryKey: ['leadstechAnalysisCabinets'],
     queryFn: () => getLeadsTechAnalysisCabinets().then(r => r.data),
+    refetchInterval: 10000, // Auto-refresh every 10 seconds
   });
 
   const { data: analysisStatus, refetch: refetchStatus } = useQuery({
     queryKey: ['leadstechStatus'],
     queryFn: () => getLeadsTechAnalysisStatus().then(r => r.data),
-    refetchInterval: 3000,
+    refetchInterval: 3000, // Auto-refresh every 3 seconds
   });
 
   const { data: whitelistStatus, refetch: refetchWhitelistStatus } = useQuery({

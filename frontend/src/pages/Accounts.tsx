@@ -106,6 +106,7 @@ export function Accounts() {
   const { data: accountsData, isLoading, refetch } = useQuery({
     queryKey: ['accounts'],
     queryFn: () => getAccounts().then((r) => r.data),
+    refetchInterval: 10000, // Auto-refresh every 10 seconds
   });
 
   // Convert accounts object to array

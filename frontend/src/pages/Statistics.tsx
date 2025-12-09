@@ -56,12 +56,14 @@ export function Statistics() {
       sortField,
       sortOrder
     ).then(r => r.data),
+    refetchInterval: 5000, // Auto-refresh every 5 seconds
   });
 
   // Get all unique account names for filter dropdown (separate query)
   const { data: accountsData } = useQuery({
     queryKey: ['disabledBannersAccountsList'],
     queryFn: () => getDisabledBannersAccounts().then(r => r.data),
+    refetchInterval: 10000, // Auto-refresh every 10 seconds
   });
 
   const accountNames = accountsData?.accounts || [];

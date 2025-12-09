@@ -48,6 +48,7 @@ export function Logs() {
   const { data: logs, isLoading: logsLoading, refetch: refetchLogs } = useQuery({
     queryKey: ['logs'],
     queryFn: () => getLogs().then((r) => r.data),
+    refetchInterval: 10000, // Auto-refresh every 10 seconds
   });
 
   const { data: logContent, isLoading: contentLoading, refetch: refetchContent } = useQuery({
@@ -55,6 +56,7 @@ export function Logs() {
     queryFn: () =>
       selectedLog ? getLogContent(selectedLog.type, selectedLog.name, tailLines).then((r) => r.data) : null,
     enabled: !!selectedLog,
+    refetchInterval: 5000, // Auto-refresh every 5 seconds when log is selected
   });
 
   const filteredLogs = logs?.filter((log) =>

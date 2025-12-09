@@ -25,6 +25,7 @@ export function Settings() {
   const { data: settings, isLoading } = useQuery({
     queryKey: ['settings'],
     queryFn: () => getSettings().then((r) => r.data),
+    refetchInterval: 30000, // Auto-refresh every 30 seconds
   });
 
   // Local state for forms
