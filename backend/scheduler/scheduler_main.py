@@ -11,11 +11,11 @@ import logging
 import signal
 from datetime import datetime, timedelta
 from pathlib import Path
-from utils.time_utils import get_moscow_time
 
 # Добавляем родительскую директорию в путь для импорта
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from utils.time_utils import get_moscow_time
 from database import SessionLocal, init_db
 from database import crud
 

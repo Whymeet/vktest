@@ -17,6 +17,7 @@ interface ProcessCardProps {
   description: string;
   icon: React.ElementType;
   running: boolean;
+  pid?: number;
   onStart: () => void;
   onStop: () => void;
   isStarting: boolean;
@@ -28,6 +29,7 @@ function ProcessCard({
   description,
   icon: Icon,
   running,
+  pid,
   onStart,
   onStop,
   isStarting,
@@ -43,8 +45,11 @@ function ProcessCard({
           <div>
             <h3 className="text-lg font-semibold text-white">{title}</h3>
             <p className="text-sm text-slate-400 mt-1">{description}</p>
-            <div className="mt-3">
+            <div className="mt-3 flex items-center gap-3">
               <StatusBadge running={running} />
+              {running && pid && (
+                <span className="text-xs text-slate-400">PID: {pid}</span>
+              )}
             </div>
           </div>
         </div>
@@ -144,6 +149,7 @@ export function Control() {
         description="Автоматический запуск анализа по расписанию. Отправляет уведомления в Telegram если включено в настройках."
         icon={Clock}
         running={isRunning}
+        pid={status?.scheduler?.pid}
         onStart={() => startSchedulerMutation.mutate()}
         onStop={() => stopSchedulerMutation.mutate()}
         isStarting={startSchedulerMutation.isPending}
