@@ -18,6 +18,10 @@ from .models import (
     LeadsTechConfig,
     LeadsTechCabinet,
     LeadsTechAnalysisResult,
+    ScalingConfig,
+    ScalingConfigAccount,
+    ScalingCondition,
+    ScalingLog,
 )
 
 
@@ -927,3 +931,357 @@ def get_disabled_banners_account_names(db: Session) -> List[str]:
         BannerAction.action == 'disabled'
     ).distinct().all()
     return sorted([r[0] for r in results if r[0]])
+
+
+# ===== Auto-Scaling =====
+
+def get_scaling_configs(db: Session) -> List[ScalingConfig]:
+    """Get all scaling configurations"""
+    return db.query(ScalingConfig).order_by(ScalingConfig.created_at.desc()).all()
+
+
+def get_scaling_config_by_id(db: Session, config_id: int) -> Optional[ScalingConfig]:
+    """Get scaling configuration by ID"""
+    return db.query(ScalingConfig).filter(ScalingConfig.id == config_id).first()
+
+
+def get_enabled_scaling_configs(db: Session) -> List[ScalingConfig]:
+    """Get all enabled scaling configurations"""
+    return db.query(ScalingConfig).filter(ScalingConfig.enabled == True).all()
+
+
+def get_scaling_config_account_ids(db: Session, config_id: int) -> List[int]:
+    """Get list of account IDs linked to a scaling config"""
+    links = db.query(ScalingConfigAccount).filter(
+        ScalingConfigAccount.config_id == config_id
+    ).all()
+    return [link.account_id for link in links]
+
+
+def set_scaling_config_accounts(db: Session, config_id: int, account_ids: List[int]) -> None:
+    """Set accounts for a scaling config (replaces existing links)"""
+    # Delete existing links
+    db.query(ScalingConfigAccount).filter(
+        ScalingConfigAccount.config_id == config_id
+    ).delete()
+    
+    # Create new links
+    for account_id in account_ids:
+        link = ScalingConfigAccount(config_id=config_id, account_id=account_id)
+        db.add(link)
+    
+    db.commit()
+
+
+def create_scaling_config(
+    db: Session,
+    name: str,
+    schedule_time: str = "08:00",
+    account_id: Optional[int] = None,
+    account_ids: Optional[List[int]] = None,
+    new_budget: Optional[float] = None,
+    auto_activate: bool = False,
+    lookback_days: int = 7,
+    duplicates_count: int = 1,
+    enabled: bool = False
+) -> ScalingConfig:
+    """Create new scaling configuration"""
+    config = ScalingConfig(
+        name=name,
+        schedule_time=schedule_time,
+        account_id=account_id,
+        new_budget=new_budget,
+        auto_activate=auto_activate,
+        lookback_days=lookback_days,
+        duplicates_count=duplicates_count,
+        enabled=enabled
+    )
+    db.add(config)
+    db.commit()
+    db.refresh(config)
+    
+    # Set account links if provided
+    if account_ids:
+        set_scaling_config_accounts(db, config.id, account_ids)
+    
+    return config
+
+
+def update_scaling_config(
+    db: Session,
+    config_id: int,
+    name: Optional[str] = None,
+    schedule_time: Optional[str] = None,
+    account_id: Optional[int] = None,
+    account_ids: Optional[List[int]] = None,
+    new_budget: Optional[float] = None,
+    auto_activate: Optional[bool] = None,
+    lookback_days: Optional[int] = None,
+    duplicates_count: Optional[int] = None,
+    enabled: Optional[bool] = None
+) -> Optional[ScalingConfig]:
+    """Update scaling configuration"""
+    config = get_scaling_config_by_id(db, config_id)
+    if not config:
+        return None
+    
+    if name is not None:
+        config.name = name
+    if schedule_time is not None:
+        config.schedule_time = schedule_time
+    if account_id is not None:
+        config.account_id = account_id if account_id > 0 else None
+    if new_budget is not None:
+        config.new_budget = new_budget if new_budget > 0 else None
+    if auto_activate is not None:
+        config.auto_activate = auto_activate
+    if lookback_days is not None:
+        config.lookback_days = lookback_days
+    if duplicates_count is not None:
+        config.duplicates_count = max(1, duplicates_count)
+    if enabled is not None:
+        config.enabled = enabled
+    
+    config.updated_at = get_moscow_time()
+    db.commit()
+    db.refresh(config)
+    
+    # Update account links if provided
+    if account_ids is not None:
+        set_scaling_config_accounts(db, config_id, account_ids)
+    
+    return config
+
+
+def delete_scaling_config(db: Session, config_id: int) -> bool:
+    """Delete scaling configuration"""
+    config = get_scaling_config_by_id(db, config_id)
+    if not config:
+        return False
+    
+    db.delete(config)
+    db.commit()
+    return True
+
+
+def update_scaling_config_last_run(db: Session, config_id: int) -> None:
+    """Update last run time of scaling config"""
+    config = get_scaling_config_by_id(db, config_id)
+    if config:
+        config.last_run_at = get_moscow_time()
+        db.commit()
+
+
+# ===== Scaling Conditions =====
+
+def get_scaling_conditions(db: Session, config_id: int) -> List[ScalingCondition]:
+    """Get all conditions for a scaling config"""
+    return db.query(ScalingCondition).filter(
+        ScalingCondition.config_id == config_id
+    ).order_by(ScalingCondition.order).all()
+
+
+def create_scaling_condition(
+    db: Session,
+    config_id: int,
+    metric: str,
+    operator: str,
+    value: float,
+    order: int = 0
+) -> ScalingCondition:
+    """Create new scaling condition"""
+    condition = ScalingCondition(
+        config_id=config_id,
+        metric=metric,
+        operator=operator,
+        value=value,
+        order=order
+    )
+    db.add(condition)
+    db.commit()
+    db.refresh(condition)
+    return condition
+
+
+def update_scaling_condition(
+    db: Session,
+    condition_id: int,
+    metric: Optional[str] = None,
+    operator: Optional[str] = None,
+    value: Optional[float] = None,
+    order: Optional[int] = None
+) -> Optional[ScalingCondition]:
+    """Update scaling condition"""
+    condition = db.query(ScalingCondition).filter(ScalingCondition.id == condition_id).first()
+    if not condition:
+        return None
+    
+    if metric is not None:
+        condition.metric = metric
+    if operator is not None:
+        condition.operator = operator
+    if value is not None:
+        condition.value = value
+    if order is not None:
+        condition.order = order
+    
+    db.commit()
+    db.refresh(condition)
+    return condition
+
+
+def delete_scaling_condition(db: Session, condition_id: int) -> bool:
+    """Delete scaling condition"""
+    condition = db.query(ScalingCondition).filter(ScalingCondition.id == condition_id).first()
+    if not condition:
+        return False
+    
+    db.delete(condition)
+    db.commit()
+    return True
+
+
+def delete_all_scaling_conditions(db: Session, config_id: int) -> int:
+    """Delete all conditions for a scaling config"""
+    count = db.query(ScalingCondition).filter(
+        ScalingCondition.config_id == config_id
+    ).delete()
+    db.commit()
+    return count
+
+
+def set_scaling_conditions(
+    db: Session,
+    config_id: int,
+    conditions: List[dict]
+) -> List[ScalingCondition]:
+    """Replace all conditions for a config with new ones"""
+    # Delete existing conditions
+    delete_all_scaling_conditions(db, config_id)
+    
+    # Create new conditions
+    result = []
+    for i, cond in enumerate(conditions):
+        condition = create_scaling_condition(
+            db,
+            config_id=config_id,
+            metric=cond.get("metric", "goals"),
+            operator=cond.get("operator", ">"),
+            value=cond.get("value", 0),
+            order=i
+        )
+        result.append(condition)
+    
+    return result
+
+
+# ===== Scaling Logs =====
+
+def get_scaling_logs(
+    db: Session,
+    config_id: Optional[int] = None,
+    limit: int = 100,
+    offset: int = 0
+) -> tuple[List[ScalingLog], int]:
+    """Get scaling logs with pagination"""
+    query = db.query(ScalingLog)
+    
+    if config_id:
+        query = query.filter(ScalingLog.config_id == config_id)
+    
+    total = query.count()
+    items = query.order_by(ScalingLog.created_at.desc()).offset(offset).limit(limit).all()
+    
+    return items, total
+
+
+def create_scaling_log(
+    db: Session,
+    config_id: Optional[int],
+    config_name: Optional[str],
+    account_name: Optional[str],
+    original_group_id: int,
+    original_group_name: Optional[str],
+    new_group_id: Optional[int] = None,
+    new_group_name: Optional[str] = None,
+    stats_snapshot: Optional[dict] = None,
+    success: bool = False,
+    error_message: Optional[str] = None,
+    total_banners: int = 0,
+    duplicated_banners: int = 0
+) -> ScalingLog:
+    """Create new scaling log entry"""
+    log = ScalingLog(
+        config_id=config_id,
+        config_name=config_name,
+        account_name=account_name,
+        original_group_id=original_group_id,
+        original_group_name=original_group_name,
+        new_group_id=new_group_id,
+        new_group_name=new_group_name,
+        stats_snapshot=stats_snapshot,
+        success=success,
+        error_message=error_message,
+        total_banners=total_banners,
+        duplicated_banners=duplicated_banners
+    )
+    db.add(log)
+    db.commit()
+    db.refresh(log)
+    return log
+
+
+def check_group_conditions(stats: dict, conditions: List[ScalingCondition]) -> bool:
+    """
+    Check if ad group stats match all conditions
+    
+    Args:
+        stats: Dict with keys: spent, shows, clicks, goals, cost_per_goal
+        conditions: List of ScalingCondition objects
+    
+    Returns:
+        True if ALL conditions are satisfied
+    """
+    if not conditions:
+        return False  # No conditions = don't match anything
+    
+    for condition in conditions:
+        metric = condition.metric
+        operator = condition.operator
+        threshold = condition.value
+        
+        # Get metric value from stats
+        actual_value = stats.get(metric)
+        
+        # Handle None values
+        if actual_value is None:
+            if metric == "cost_per_goal":
+                # If no goals, cost_per_goal is infinite
+                actual_value = float('inf')
+            else:
+                actual_value = 0
+        
+        # Check condition
+        if operator == ">":
+            if not (actual_value > threshold):
+                return False
+        elif operator == ">=":
+            if not (actual_value >= threshold):
+                return False
+        elif operator == "<":
+            if not (actual_value < threshold):
+                return False
+        elif operator == "<=":
+            if not (actual_value <= threshold):
+                return False
+        elif operator == "==":
+            if not (actual_value == threshold):
+                return False
+        elif operator == "!=":
+            if not (actual_value != threshold):
+                return False
+        else:
+            # Unknown operator, skip
+            continue
+    
+    return True

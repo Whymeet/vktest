@@ -319,3 +319,120 @@ class LeadsTechAnalysisResult(Base):
 
     def __repr__(self):
         return f"<LeadsTechAnalysisResult(banner_id={self.banner_id}, roi={self.roi_percent}, profit={self.profit})>"
+
+
+# ===== Auto-Scaling Models =====
+
+class ScalingConfigAccount(Base):
+    """Many-to-many link between ScalingConfig and Account"""
+    __tablename__ = "scaling_config_accounts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    config_id = Column(Integer, ForeignKey("scaling_configs.id", ondelete="CASCADE"), nullable=False)
+    account_id = Column(Integer, ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False)
+    created_at = Column(DateTime, default=get_moscow_time, nullable=False)
+
+    def __repr__(self):
+        return f"<ScalingConfigAccount(config_id={self.config_id}, account_id={self.account_id})>"
+
+
+class ScalingConfig(Base):
+    """Auto-scaling configuration"""
+    __tablename__ = "scaling_configs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    
+    # Basic settings
+    name = Column(String(255), nullable=False)  # Name of this scaling config
+    enabled = Column(Boolean, default=False)
+    
+    # Schedule settings
+    schedule_time = Column(String(10), nullable=False, default="08:00")  # HH:MM format (MSK)
+    
+    # Target account (deprecated - use scaling_config_accounts for multiple accounts)
+    account_id = Column(Integer, ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True)
+    
+    # Scaling options
+    new_budget = Column(Float, nullable=True)  # New budget for duplicated groups (NULL = same as original)
+    auto_activate = Column(Boolean, default=False)  # Activate duplicated groups immediately
+    lookback_days = Column(Integer, default=7)  # Period for statistics analysis
+    duplicates_count = Column(Integer, default=1)  # Number of duplicates to create per group
+    
+    # Timestamps
+    created_at = Column(DateTime, default=get_moscow_time, nullable=False)
+    updated_at = Column(DateTime, default=get_moscow_time, onupdate=get_moscow_time, nullable=False)
+    last_run_at = Column(DateTime, nullable=True)  # Last execution time
+    
+    # Relationships
+    conditions = relationship("ScalingCondition", back_populates="config", cascade="all, delete-orphan")
+    account = relationship("Account", backref="scaling_configs", foreign_keys=[account_id])
+    config_accounts = relationship("ScalingConfigAccount", backref="config", cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<ScalingConfig(id={self.id}, name='{self.name}', enabled={self.enabled})>"
+
+
+class ScalingCondition(Base):
+    """Condition for auto-scaling (e.g., goals > 2, cost_per_goal < 200)"""
+    __tablename__ = "scaling_conditions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    
+    # Link to config
+    config_id = Column(Integer, ForeignKey("scaling_configs.id", ondelete="CASCADE"), nullable=False)
+    
+    # Condition definition
+    metric = Column(String(50), nullable=False)  # spent, shows, clicks, goals, cost_per_goal
+    operator = Column(String(10), nullable=False)  # >, <, >=, <=, ==
+    value = Column(Float, nullable=False)  # Threshold value
+    
+    # Order for display
+    order = Column(Integer, default=0)
+    
+    # Timestamps
+    created_at = Column(DateTime, default=get_moscow_time, nullable=False)
+    
+    # Relationship
+    config = relationship("ScalingConfig", back_populates="conditions")
+
+    def __repr__(self):
+        return f"<ScalingCondition(metric='{self.metric}', operator='{self.operator}', value={self.value})>"
+
+
+class ScalingLog(Base):
+    """Log of auto-scaling operations"""
+    __tablename__ = "scaling_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    
+    # Reference to config
+    config_id = Column(Integer, ForeignKey("scaling_configs.id", ondelete="SET NULL"), nullable=True)
+    config_name = Column(String(255), nullable=True)
+    
+    # Account info
+    account_name = Column(String(255), nullable=True)
+    
+    # Original group info
+    original_group_id = Column(BigInteger, nullable=False)
+    original_group_name = Column(String(500), nullable=True)
+    
+    # New group info
+    new_group_id = Column(BigInteger, nullable=True)
+    new_group_name = Column(String(500), nullable=True)
+    
+    # Statistics at the time of duplication
+    stats_snapshot = Column(JSON, nullable=True)  # {spent, shows, clicks, goals, cost_per_goal}
+    
+    # Result
+    success = Column(Boolean, default=False)
+    error_message = Column(Text, nullable=True)
+    
+    # Banners info
+    total_banners = Column(Integer, default=0)
+    duplicated_banners = Column(Integer, default=0)
+    
+    # Timestamp
+    created_at = Column(DateTime, default=get_moscow_time, nullable=False, index=True)
+
+    def __repr__(self):
+        return f"<ScalingLog(original={self.original_group_id}, new={self.new_group_id}, success={self.success})>"

@@ -9,6 +9,7 @@ import {
   Activity,
   BarChart3,
   TrendingUp,
+  Copy,
 } from 'lucide-react';
 
 const navItems = [
@@ -16,6 +17,7 @@ const navItems = [
   { to: '/accounts', icon: Users, label: 'Кабинеты' },
   { to: '/statistics', icon: BarChart3, label: 'Статистика' },
   { to: '/profitable-ads', icon: TrendingUp, label: 'Прибыльные объявления' },
+  { to: '/scaling', icon: Copy, label: 'Масштабирование' },
   { to: '/settings', icon: Settings, label: 'Настройки' },
   { to: '/control', icon: PlayCircle, label: 'Управление' },
   { to: '/logs', icon: FileText, label: 'Логи' },
