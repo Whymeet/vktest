@@ -84,6 +84,10 @@ def delete_account(db: Session, account_id: int) -> bool:
     if not account:
         return False
 
+    # Сначала удаляем связанные записи LeadsTechCabinet
+    db.query(LeadsTechCabinet).filter(LeadsTechCabinet.account_id == account.id).delete()
+    
+    # Теперь удаляем сам аккаунт (остальные связи удалятся каскадно)
     db.delete(account)
     db.commit()
     return True
