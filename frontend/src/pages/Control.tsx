@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Play, Square, RefreshCw, AlertTriangle, Clock, Settings } from 'lucide-react';
+import { Play, Square, RefreshCw, AlertTriangle, Clock, Settings, Shield } from 'lucide-react';
 import {
   getProcessStatus,
   startScheduler,
@@ -184,6 +184,22 @@ export function Control() {
               <Link to="/settings" className="btn btn-secondary btn-sm">
                 <Settings className="w-4 h-4" />
                 Перейти к настройкам
+              </Link>
+            </div>
+          </div>
+        </Card>
+
+        <Card>
+          <div className="flex items-start gap-3">
+            <Shield className="w-5 h-5 text-purple-400 flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-slate-300">
+              <p className="font-medium text-purple-400 mb-1">Правила отключения</p>
+              <p className="text-slate-400 mb-2">
+                Гибкие правила для автоматического отключения баннеров по метрикам.
+              </p>
+              <Link to="/disable-rules" className="btn btn-secondary btn-sm">
+                <Shield className="w-4 h-4" />
+                Настроить правила
               </Link>
             </div>
           </div>

@@ -10,6 +10,7 @@ import {
   BarChart3,
   TrendingUp,
   Copy,
+  Ban,
 } from 'lucide-react';
 
 const navItems = [
@@ -18,6 +19,7 @@ const navItems = [
   { to: '/statistics', icon: BarChart3, label: 'Статистика' },
   { to: '/profitable-ads', icon: TrendingUp, label: 'Прибыльные объявления' },
   { to: '/scaling', icon: Copy, label: 'Масштабирование' },
+  { to: '/disable-rules', icon: Ban, label: 'Правила отключения' },
   { to: '/settings', icon: Settings, label: 'Настройки' },
   { to: '/control', icon: PlayCircle, label: 'Управление' },
   { to: '/logs', icon: FileText, label: 'Логи' },

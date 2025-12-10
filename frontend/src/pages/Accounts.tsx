@@ -16,7 +16,6 @@ function AccountForm({ account, onSubmit, onCancel }: AccountFormProps) {
   const [name, setName] = useState(account?.name || '');
   const [api, setApi] = useState(account?.api_full || account?.api || '');
   const [trigger, setTrigger] = useState(account?.trigger?.toString() || '');
-  const [spentLimit, setSpentLimit] = useState(account?.spent_limit_rub?.toString() || '100');
   const [showApi, setShowApi] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -25,7 +24,6 @@ function AccountForm({ account, onSubmit, onCancel }: AccountFormProps) {
       name,
       api,
       trigger: trigger ? parseInt(trigger) : undefined,
-      spent_limit_rub: parseFloat(spentLimit) || 100,
     } as Account);
   };
 
@@ -62,28 +60,18 @@ function AccountForm({ account, onSubmit, onCancel }: AccountFormProps) {
           </button>
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="label">Trigger ID (опционально)</label>
-          <input
-            type="number"
-            value={trigger}
-            onChange={(e) => setTrigger(e.target.value)}
-            className="input"
-            placeholder="123456789"
-          />
-        </div>
-        <div>
-          <label className="label">Лимит расходов (₽)</label>
-          <input
-            type="number"
-            step="0.01"
-            value={spentLimit}
-            onChange={(e) => setSpentLimit(e.target.value)}
-            className="input"
-            placeholder="100"
-          />
-        </div>
+      <div>
+        <label className="label">Trigger ID (опционально)</label>
+        <input
+          type="number"
+          value={trigger}
+          onChange={(e) => setTrigger(e.target.value)}
+          className="input"
+          placeholder="123456789"
+        />
+        <p className="text-xs text-slate-500 mt-1">
+          💡 Правила отключения объявлений настраиваются отдельно в разделе "Правила отключения"
+        </p>
       </div>
       <div className="flex gap-3 pt-4">
         <button type="submit" className="btn btn-primary flex-1">

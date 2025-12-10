@@ -119,16 +119,6 @@ export function Settings() {
             />
           </div>
           <div>
-            <label className="label">Лимит расходов по умолчанию (₽)</label>
-            <input
-              type="number"
-              step="0.01"
-              value={analysisForm.spent_limit_rub}
-              onChange={(e) => setAnalysisForm({ ...analysisForm, spent_limit_rub: parseFloat(e.target.value) || 100 })}
-              className="input"
-            />
-          </div>
-          <div>
             <label className="label">Пауза между запросами (сек)</label>
             <input
               type="number"
@@ -138,7 +128,7 @@ export function Settings() {
               className="input"
             />
           </div>
-          <div className="flex items-center justify-between p-4 bg-slate-700/50 rounded-lg">
+          <div className="flex items-center justify-between p-4 bg-slate-700/50 rounded-lg md:col-span-2">
             <div>
               <p className="text-white font-medium">Тестовый режим (Dry Run)</p>
               <p className="text-sm text-slate-400">Не отключает объявления, только выводит</p>
@@ -150,6 +140,9 @@ export function Settings() {
           </div>
         </div>
         <div className="mt-4 pt-4 border-t border-slate-700">
+          <p className="text-sm text-slate-400 mb-3">
+            💡 Правила отключения объявлений настраиваются на странице "Правила отключения"
+          </p>
           <button
             onClick={() => analysisMutation.mutate(analysisForm)}
             className="btn btn-primary"

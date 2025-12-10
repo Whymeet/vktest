@@ -436,3 +436,95 @@ class ScalingLog(Base):
 
     def __repr__(self):
         return f"<ScalingLog(original={self.original_group_id}, new={self.new_group_id}, success={self.success})>"
+
+
+# ===== Disable Rules Models (автоотключение объявлений) =====
+
+class DisableRuleAccount(Base):
+    """Many-to-many link between DisableRule and Account"""
+    __tablename__ = "disable_rule_accounts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    rule_id = Column(Integer, ForeignKey("disable_rules.id", ondelete="CASCADE"), nullable=False)
+    account_id = Column(Integer, ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False)
+    created_at = Column(DateTime, default=get_moscow_time, nullable=False)
+
+    def __repr__(self):
+        return f"<DisableRuleAccount(rule_id={self.rule_id}, account_id={self.account_id})>"
+
+
+class DisableRule(Base):
+    """
+    Rule block for auto-disabling ads.
+    Each rule contains multiple conditions that must ALL be met (AND logic).
+    A rule can be applied to specific accounts.
+    """
+    __tablename__ = "disable_rules"
+
+    id = Column(Integer, primary_key=True, index=True)
+    
+    # Rule identification
+    name = Column(String(255), nullable=False)  # Human-readable name
+    description = Column(Text, nullable=True)  # Optional description
+    
+    # Rule status
+    enabled = Column(Boolean, default=True)
+    priority = Column(Integer, default=0)  # Higher priority rules checked first
+    
+    # Timestamps
+    created_at = Column(DateTime, default=get_moscow_time, nullable=False)
+    updated_at = Column(DateTime, default=get_moscow_time, onupdate=get_moscow_time, nullable=False)
+    
+    # Relationships
+    conditions = relationship("DisableRuleCondition", back_populates="rule", cascade="all, delete-orphan")
+    rule_accounts = relationship("DisableRuleAccount", backref="rule", cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<DisableRule(id={self.id}, name='{self.name}', enabled={self.enabled})>"
+
+
+class DisableRuleCondition(Base):
+    """
+    Single condition within a disable rule.
+    All conditions in a rule must be satisfied for the rule to trigger (AND logic).
+    
+    Available metrics:
+    - goals: количество результатов/конверсий (vk_goals)
+    - spent: потраченный бюджет (в рублях)
+    - clicks: количество кликов
+    - shows: количество показов
+    - ctr: CTR (click-through rate, %)
+    - cpc: цена за клик (cost per click)
+    - cost_per_goal: цена за результат (spent / goals)
+    
+    Available operators:
+    - equals (==)
+    - not_equals (!=)
+    - greater_than (>)
+    - less_than (<)
+    - greater_or_equal (>=)
+    - less_or_equal (<=)
+    """
+    __tablename__ = "disable_rule_conditions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    
+    # Link to rule
+    rule_id = Column(Integer, ForeignKey("disable_rules.id", ondelete="CASCADE"), nullable=False)
+    
+    # Condition definition
+    metric = Column(String(50), nullable=False)  # goals, spent, clicks, shows, ctr, cpc, cost_per_goal
+    operator = Column(String(20), nullable=False)  # equals, not_equals, greater_than, less_than, greater_or_equal, less_or_equal
+    value = Column(Float, nullable=False)  # Threshold value
+    
+    # Order for display
+    order = Column(Integer, default=0)
+    
+    # Timestamps
+    created_at = Column(DateTime, default=get_moscow_time, nullable=False)
+    
+    # Relationship
+    rule = relationship("DisableRule", back_populates="conditions")
+
+    def __repr__(self):
+        return f"<DisableRuleCondition(metric='{self.metric}', operator='{self.operator}', value={self.value})>"

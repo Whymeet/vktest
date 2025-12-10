@@ -10,6 +10,7 @@ import { Whitelist } from './pages/Whitelist';
 import { Statistics } from './pages/Statistics';
 import { ProfitableAds } from './pages/ProfitableAds';
 import { Scaling } from './pages/Scaling';
+import { DisableRules } from './pages/DisableRules';
 import './index.css';
 
 const queryClient = new QueryClient({
@@ -32,6 +33,7 @@ function App() {
             <Route path="statistics" element={<Statistics />} />
             <Route path="profitable-ads" element={<ProfitableAds />} />
             <Route path="scaling" element={<Scaling />} />
+            <Route path="disable-rules" element={<DisableRules />} />
             <Route path="settings" element={<Settings />} />
             <Route path="control" element={<Control />} />
             <Route path="logs" element={<Logs />} />

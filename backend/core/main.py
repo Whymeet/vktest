@@ -29,6 +29,7 @@ from bot.telegram_notify import send_telegram_message, format_telegram_account_s
 # Импортируем работу с БД
 from database import SessionLocal, init_db
 from database import crud
+from database.models import DisableRule
 
 
 # ===================== НАСТРОЙКИ ИЗ БД =====================
@@ -164,7 +165,6 @@ async def log_disabled_banners_to_db(
     over_limit: list,
     disable_results: dict | None,
     account_name: str,
-    spent_limit: float,
     lookback_days: int,
     date_from: str,
     date_to: str,
@@ -191,17 +191,20 @@ async def log_disabled_banners_to_db(
                     if result:
                         disable_success = result.get("success", True)
 
+                # Получаем причину отключения (название правила)
+                matched_rule = banner_data.get("matched_rule", "Правило не указано")
+
                 try:
                     crud.log_disabled_banner(
                         db=db,
                         banner_data=banner_data,
                         account_name=account_name,
-                        spent_limit=spent_limit,
                         lookback_days=lookback_days,
                         date_from=date_from,
                         date_to=date_to,
                         is_dry_run=is_dry_run,
-                        disable_success=disable_success
+                        disable_success=disable_success,
+                        reason=f"Сработало правило: {matched_rule}"
                     )
                     logged_count += 1
                 except Exception as e:
@@ -227,7 +230,6 @@ async def save_account_stats_to_db(
     no_activity: list,
     total_spent: float,
     total_conversions: int,
-    spent_limit: float,
     lookback_days: int,
     vk_account_id: int = None
 ):
@@ -258,7 +260,6 @@ async def save_account_stats_to_db(
                 total_clicks=int(total_clicks),
                 total_shows=int(total_shows),
                 total_conversions=total_conversions,
-                spent_limit=spent_limit,
                 lookback_days=lookback_days,
                 vk_account_id=vk_account_id
             )
@@ -310,14 +311,41 @@ async def analyze_account(
             logger.info(f"🎯 Используем индивидуальный триггер для кабинета {account_name}: группа {account_trigger_id}")
         else:
             trigger_config["enabled"] = False
-            logger.info(f"⚠️ Для кабинета {account_name} триггер не настроен - пропускаем обновление статистики")
+            logger.info(f"⚠️ Для кабинета {account_name} триггер не настроен — пропускаем обновление статистики")
 
         trigger_result = await trigger_statistics_refresh(session, access_token, BASE_URL, trigger_config)
         if not trigger_result.get("success") and not trigger_result.get("skipped"):
             logger.warning(f"⚠️ Триггер обновления статистики не сработал: {trigger_result.get('error')}")
 
-        # Получаем индивидуальный лимит для кабинета или используем глобальный
-        spent_limit = account_config.get("account_spent_limit", SPENT_LIMIT_RUB)
+        # Загружаем правила для этого кабинета из БД
+        db = SessionLocal()
+        try:
+            account_rules = crud.get_rules_for_account_by_name(db, account_name, enabled_only=True)
+            logger.info(f"📋 [{account_name}] Загружено правил отключения: {len(account_rules)}")
+            for rule in account_rules:
+                conditions_str = ", ".join([
+                    f"{c.metric} {c.operator} {c.value}" for c in rule.conditions
+                ])
+                logger.info(f"   📌 Правило \"{rule.name}\": {conditions_str}")
+        finally:
+            db.close()
+
+        # Если нет правил для этого кабинета, пропускаем его
+        if not account_rules:
+            logger.warning(f"⚠️ [{account_name}] Нет активных правил отключения — кабинет пропущен")
+            return {
+                "account_name": account_name,
+                "over_limit": [],
+                "under_limit": [],
+                "no_activity": [],
+                "total_spent": 0.0,
+                "total_vk_goals": 0,
+                "matched_rules": [],
+                "disable_results": None,
+                "date_from": _iso(date.today() - timedelta(days=LOOKBACK_DAYS)),
+                "date_to": _iso(date.today()),
+                "skipped": True
+            }
 
         # Определяем период анализа
         today = date.today()
@@ -326,7 +354,6 @@ async def analyze_account(
 
         logger.info(f"🏢 Кабинет: {account_name}")
         logger.info(f"📅 Анализируем период: {date_from} — {date_to} ({LOOKBACK_DAYS} дней)")
-        logger.info(f"💰 Лимит расходов: {spent_limit}₽")
 
         # Загружаем активные объявления
         banners = await get_banners_active(
@@ -401,10 +428,30 @@ async def analyze_account(
                 "moderation_status": moderation_status, "account": account_name
             }
 
-            # Категоризируем объявления
-            if spent >= spent_limit and vk_goals == 0:
+            # Категоризируем объявления с помощью системы правил
+            # Подготавливаем stats для проверки правил (нормализуем поля)
+            rule_stats = {
+                "goals": vk_goals,
+                "vk_goals": vk_goals,
+                "spent": spent,
+                "clicks": clicks,
+                "shows": shows,
+                "ctr": (clicks / shows * 100) if shows > 0 else 0,
+                "cpc": (spent / clicks) if clicks > 0 else float('inf'),
+                "cost_per_goal": (spent / vk_goals) if vk_goals > 0 else float('inf'),
+            }
+            
+            # Проверяем соответствие правилам отключения
+            matched_rule = crud.check_banner_against_rules(rule_stats, account_rules)
+            
+            if matched_rule:
+                # Объявление подпадает под правило отключения
+                banner_data["matched_rule"] = matched_rule.name
+                banner_data["matched_rule_id"] = matched_rule.id
                 over_limit.append(banner_data)
-                logger.info(f"🔴 [{account_name}] УБЫТОЧНОЕ: [{bid}] {name} (потрачено: {spent:.2f}₽)")
+                reason = crud.format_rule_match_reason(matched_rule, rule_stats)
+                logger.info(f"🔴 [{account_name}] УБЫТОЧНОЕ: [{bid}] {name}")
+                logger.info(f"   {reason.replace(chr(10), chr(10) + '   ')}")
 
             elif vk_goals >= 1:
                 under_limit.append(banner_data)
@@ -412,6 +459,9 @@ async def analyze_account(
 
             elif spent > 0:
                 no_activity.append(banner_data)
+                # Логируем почему не подпало под правило
+                logger.debug(f"⚠️ [{account_name}] ТЕСТИРУЕТСЯ: [{bid}] {name}")
+                logger.debug(f"   spent={spent:.2f}₽, goals={vk_goals}, clicks={clicks}, shows={shows}")
                 logger.info(f"⚠️ [{account_name}] ТЕСТИРУЕТСЯ: [{bid}] {name} ({spent:.2f}₽)")
 
             else:
@@ -420,13 +470,13 @@ async def analyze_account(
         # Итоговая статистика
         logger.info("=" * 80)
         logger.info(f"📈 ИТОГОВАЯ СТАТИСТИКА ПО КАБИНЕТУ: {account_name}")
-        logger.info(f"🔴 Убыточных: {len(over_limit)}")
+        logger.info(f"🔴 Убыточных (по правилам): {len(over_limit)}")
         logger.info(f"🟢 Эффективных: {len(under_limit)}")
         logger.info(f"⚠️ Тестируемых/неактивных: {len(no_activity)}")
         logger.info(f"📊 Всего активных: {len(banners)}")
 
-        total_spent = sum(b["spent"] for b in over_limit + under_limit)
-        total_vk_goals = sum(b["vk_goals"] for b in over_limit + under_limit)
+        total_spent = sum(b["spent"] for b in over_limit + under_limit + no_activity)
+        total_vk_goals = sum(b["vk_goals"] for b in over_limit + under_limit + no_activity)
 
         logger.info(f"💰 [{account_name}] Общие расходы: {total_spent:.2f}₽")
         logger.info(f"🎯 [{account_name}] Общие VK цели: {int(total_vk_goals)}")
@@ -449,7 +499,6 @@ async def analyze_account(
                 over_limit=over_limit,
                 disable_results=disable_results,
                 account_name=account_name,
-                spent_limit=spent_limit,
                 lookback_days=LOOKBACK_DAYS,
                 date_from=date_from,
                 date_to=date_to,
@@ -465,7 +514,6 @@ async def analyze_account(
             no_activity=no_activity,
             total_spent=total_spent,
             total_conversions=int(total_vk_goals),
-            spent_limit=spent_limit,
             lookback_days=LOOKBACK_DAYS
         )
 
@@ -478,7 +526,7 @@ async def analyze_account(
             "no_activity": no_activity,
             "total_spent": total_spent,
             "total_vk_goals": int(total_vk_goals),
-            "spent_limit": spent_limit,
+            "rules_count": len(account_rules),
             "disable_results": disable_results,
             "date_from": date_from,
             "date_to": date_to
@@ -497,9 +545,6 @@ def _prepare_account_config(global_config: dict, account_config) -> dict:
     if isinstance(account_config, dict):
         trigger_id = account_config.get("trigger")
         account_full_config["account_trigger_id"] = trigger_id if trigger_id else None
-
-        if "spent_limit_rub" in account_config:
-            account_full_config["account_spent_limit"] = account_config["spent_limit_rub"]
     else:
         account_full_config["account_trigger_id"] = None
 

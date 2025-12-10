@@ -149,8 +149,11 @@ class VKAdsScheduler:
             return False
 
         self.logger.info("🚀 Запуск анализа объявлений...")
+        self.logger.debug(f"   Команда: {sys.executable} {MAIN_SCRIPT}")
+        self.logger.debug(f"   Рабочая директория: {PROJECT_ROOT}")
 
         try:
+            start_time = time.time()
             self.current_process = subprocess.Popen(
                 [sys.executable, str(MAIN_SCRIPT)],
                 stdout=subprocess.PIPE,
@@ -161,19 +164,35 @@ class VKAdsScheduler:
             # Ждем завершения
             stdout, stderr = self.current_process.communicate()
             return_code = self.current_process.returncode
+            elapsed = time.time() - start_time
             self.current_process = None
 
             if return_code == 0:
-                self.logger.info("✅ Анализ завершен успешно")
+                self.logger.info(f"✅ Анализ завершен успешно за {elapsed:.1f} сек")
+                # Логируем stdout если есть важные сообщения
+                if stdout:
+                    stdout_text = stdout.decode('utf-8', errors='ignore')
+                    # Ищем ключевые строки в выводе
+                    for line in stdout_text.split('\n'):
+                        if any(kw in line for kw in ['УБЫТОЧНОЕ', 'отключено', 'disabled', 'ERROR', 'ОШИБКА']):
+                            self.logger.info(f"   📋 {line.strip()}")
                 return True
             else:
-                self.logger.error(f"❌ Анализ завершен с ошибкой (код {return_code})")
+                self.logger.error(f"❌ Анализ завершен с ошибкой (код {return_code}) за {elapsed:.1f} сек")
                 if stderr:
-                    self.logger.error(f"Stderr: {stderr.decode('utf-8', errors='ignore')[:500]}")
+                    stderr_text = stderr.decode('utf-8', errors='ignore')
+                    self.logger.error(f"Stderr:\n{stderr_text[:2000]}")
+                if stdout:
+                    stdout_text = stdout.decode('utf-8', errors='ignore')
+                    # Показываем последние 50 строк stdout
+                    lines = stdout_text.strip().split('\n')
+                    self.logger.error(f"Stdout (последние 50 строк):\n{'...'.join(lines[-50:])}")
                 return False
 
         except Exception as e:
             self.logger.error(f"❌ Ошибка запуска анализа: {e}")
+            import traceback
+            self.logger.error(traceback.format_exc())
             self.current_process = None
             return False
 
