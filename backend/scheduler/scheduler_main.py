@@ -2,6 +2,9 @@
 """
 VK Ads Manager Scheduler - Автоматический планировщик анализа рекламных групп
 Версия с PostgreSQL базой данных
+Работает в два прохода:
+1. Обычный анализ с настроенным lookback_days
+2. Анализ с рандомной прибавкой к lookback_days
 """
 import os
 import sys
@@ -9,6 +12,7 @@ import time
 import subprocess
 import logging
 import signal
+import random
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -142,23 +146,39 @@ class VKAdsScheduler:
             self.logger.error(f"Ошибка проверки тихих часов: {e}")
             return False
 
-    def run_analysis(self):
-        """Запуск анализа объявлений"""
+    def run_analysis(self, extra_lookback_days: int = 0, run_type: str = "основной"):
+        """Запуск анализа объявлений
+        
+        Args:
+            extra_lookback_days: Дополнительные дни к lookback_days (передаётся через переменную окружения)
+            run_type: Тип запуска для логирования
+        """
         if not MAIN_SCRIPT.exists():
             self.logger.error(f"❌ Скрипт не найден: {MAIN_SCRIPT}")
             return False
 
-        self.logger.info("🚀 Запуск анализа объявлений...")
+        extra_info = f" (+{extra_lookback_days} дней)" if extra_lookback_days > 0 else "..."
+        
+        self.logger.info(f"🚀 Запуск {run_type} анализа VK Ads Manager{extra_info}")
         self.logger.debug(f"   Команда: {sys.executable} {MAIN_SCRIPT}")
         self.logger.debug(f"   Рабочая директория: {PROJECT_ROOT}")
+        if extra_lookback_days > 0:
+            self.logger.debug(f"   VK_EXTRA_LOOKBACK_DAYS={extra_lookback_days}")
 
         try:
             start_time = time.time()
+            
+            # Подготавливаем окружение с дополнительными днями
+            env = os.environ.copy()
+            if extra_lookback_days > 0:
+                env["VK_EXTRA_LOOKBACK_DAYS"] = str(extra_lookback_days)
+            
             self.current_process = subprocess.Popen(
                 [sys.executable, str(MAIN_SCRIPT)],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                cwd=str(PROJECT_ROOT)
+                cwd=str(PROJECT_ROOT),
+                env=env
             )
 
             # Ждем завершения
@@ -168,7 +188,7 @@ class VKAdsScheduler:
             self.current_process = None
 
             if return_code == 0:
-                self.logger.info(f"✅ Анализ завершен успешно за {elapsed:.1f} сек")
+                self.logger.info(f"✅ {run_type.capitalize()} анализ завершен успешно за {elapsed:.1f} сек")
                 # Логируем stdout если есть важные сообщения
                 if stdout:
                     stdout_text = stdout.decode('utf-8', errors='ignore')
@@ -178,7 +198,7 @@ class VKAdsScheduler:
                             self.logger.info(f"   📋 {line.strip()}")
                 return True
             else:
-                self.logger.error(f"❌ Анализ завершен с ошибкой (код {return_code}) за {elapsed:.1f} сек")
+                self.logger.error(f"❌ {run_type.capitalize()} анализ завершен с ошибкой (код {return_code}) за {elapsed:.1f} сек")
                 if stderr:
                     stderr_text = stderr.decode('utf-8', errors='ignore')
                     self.logger.error(f"Stderr:\n{stderr_text[:2000]}")
@@ -190,11 +210,43 @@ class VKAdsScheduler:
                 return False
 
         except Exception as e:
-            self.logger.error(f"❌ Ошибка запуска анализа: {e}")
+            self.logger.error(f"❌ Ошибка запуска {run_type} анализа: {e}")
             import traceback
             self.logger.error(traceback.format_exc())
             self.current_process = None
             return False
+
+    def run_double_analysis(self):
+        """Запуск двойного анализа: основной + со случайной прибавкой дней"""
+        # 1-й проход: обычный анализ
+        self.logger.info("🎯 ПРОХОД 1/2: Стандартный анализ")
+        success1 = self.run_analysis(extra_lookback_days=0, run_type="основной")
+        
+        if self.should_stop:
+            return success1
+        
+        # Пауза между проходами
+        self.logger.info("⏳ Пауза 1 минута между проходами...")
+        time.sleep(60)
+        
+        if self.should_stop:
+            return success1
+        
+        # 2-й проход: с случайной прибавкой дней (5-30 дней) - ВЫПОЛНЯЕТСЯ ВСЕГДА
+        extra_days = random.randint(5, 30)
+        self.logger.info(f"🎯 ПРОХОД 2/2: Расширенный анализ (+{extra_days} дней)")
+        success2 = self.run_analysis(extra_lookback_days=extra_days, run_type="расширенный")
+        
+        if success1 and success2:
+            self.logger.info("✅ Оба прохода завершены успешно!")
+        elif success1:
+            self.logger.warning("⚠️ Основной анализ успешен, расширенный неудачен")
+        elif success2:
+            self.logger.warning("⚠️ Расширенный анализ успешен, основной неудачен")
+        else:
+            self.logger.error("❌ Оба прохода неудачны")
+        
+        return success1 or success2  # Успех если хотя бы один прошел
 
     def calculate_next_run(self):
         """Вычисление времени следующего запуска"""
@@ -235,12 +287,12 @@ class VKAdsScheduler:
                 self._sleep_until_next_run()
                 continue
 
-            # Запуск анализа
+            # Запуск двойного анализа (2 прохода)
             self.run_count += 1
             self.last_run_time = get_moscow_time()
             self.logger.info(f"📊 Запуск #{self.run_count}")
 
-            success = self.run_analysis()
+            success = self.run_double_analysis()
 
             # Обработка ошибки с ретраями
             if not success and self.settings.get("retry_on_error", True):

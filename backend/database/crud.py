@@ -1639,21 +1639,30 @@ def check_banner_against_rules(
             # Check condition based on operator
             condition_met = False
             
-            if operator == "equals":
+            # FIX: Если CPA = бесконечности (0 целей), игнорируем правила "CPA > X"
+            # Это нужно, чтобы не отключать объявления с 0 целей по правилу высокой стоимости,
+            # так как для 0 целей обычно есть отдельные правила (Goals = 0).
+            if metric == "cost_per_goal" and actual_value == float('inf'):
+                if operator in ("not_equals", "!="):
+                    condition_met = True
+                else:
+                    condition_met = False
+            elif operator in ("equals", "=", "=="):
                 condition_met = (actual_value == threshold)
-            elif operator == "not_equals":
+            elif operator in ("not_equals", "!=", "<>"):
                 condition_met = (actual_value != threshold)
-            elif operator == "greater_than":
+            elif operator in ("greater_than", ">"):
                 condition_met = (actual_value > threshold)
-            elif operator == "less_than":
+            elif operator in ("less_than", "<"):
                 condition_met = (actual_value < threshold)
-            elif operator == "greater_or_equal":
+            elif operator in ("greater_or_equal", ">="):
                 condition_met = (actual_value >= threshold)
-            elif operator == "less_or_equal":
+            elif operator in ("less_or_equal", "<="):
                 condition_met = (actual_value <= threshold)
             else:
-                # Unknown operator - skip this condition
-                continue
+                # Unknown operator - FAIL the condition (don't skip!)
+                # This prevents rules from matching when operators are broken
+                condition_met = False
             
             if not condition_met:
                 all_conditions_met = False
