@@ -192,19 +192,19 @@ function AccountSelector({
           Нет доступных аккаунтов. Если не выбран ни один аккаунт, правило применяется ко всем.
         </p>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-48 overflow-y-auto p-2 bg-slate-800 rounded-lg border border-slate-700">
+        <div className="flex flex-col gap-1 max-h-64 overflow-y-auto p-2 bg-slate-800 rounded-lg border border-slate-700">
           {accountList.map(([name, acc]) => (
             <label
               key={acc.id}
-              className="flex items-center gap-2 p-2 rounded hover:bg-slate-700 cursor-pointer"
+              className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-slate-700 cursor-pointer"
             >
               <input
                 type="checkbox"
                 checked={selectedIds.includes(acc.id!)}
                 onChange={() => toggleAccount(acc.id!)}
-                className="rounded border-slate-600 bg-slate-700 text-blue-500 focus:ring-blue-500"
+                className="rounded border-slate-600 bg-slate-700 text-blue-500 focus:ring-blue-500 flex-shrink-0"
               />
-              <span className="text-sm text-slate-300 truncate">{name}</span>
+              <span className="text-sm text-slate-300">{name}</span>
             </label>
           ))}
         </div>
