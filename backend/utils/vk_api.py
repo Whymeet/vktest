@@ -319,6 +319,66 @@ def get_ad_groups_active(token: str, base_url: str, fields: str = "id,name,statu
     return items_all
 
 
+def get_ad_groups_all(token: str, base_url: str, fields: str = "id,name,status", limit: int = 200, include_deleted: bool = False):
+    """
+    Загружает все группы объявлений (ad_groups) - активные и отключенные.
+    По умолчанию НЕ включает удалённые группы.
+    
+    Args:
+        token: VK Ads API токен
+        base_url: Базовый URL VK Ads API
+        fields: Поля для загрузки
+        limit: Лимит на запрос
+        include_deleted: Включать ли удалённые группы (по умолчанию False)
+    
+    Returns:
+        list: Список всех групп (активных + отключенных)
+    """
+    url = f"{base_url}/ad_groups.json"
+    offset = 0
+    items_all = []
+    
+    # Получаем активные и отключенные группы отдельно
+    statuses = ["active", "blocked"]
+    if include_deleted:
+        statuses.append("deleted")
+    
+    for status in statuses:
+        offset = 0
+        while True:
+            params = {
+                "fields": fields,
+                "limit": limit,
+                "offset": offset,
+                "_status": status
+            }
+            
+            try:
+                r = requests.get(url, headers=_headers(token), params=params, timeout=20)
+                if r.status_code != 200:
+                    logger.error(f"❌ Ошибка HTTP {r.status_code} при загрузке групп (status={status}): {r.text[:200]}")
+                    raise RuntimeError(f"[ad_groups] HTTP {r.status_code}: {r.text}")
+                
+                payload = r.json()
+                items = payload.get("items", [])
+                items_all.extend(items)
+                
+                logger.debug(f"   Загружено {len(items)} групп со статусом '{status}' (offset={offset})")
+                
+                if len(items) < limit:
+                    break
+                    
+                offset += limit
+                time.sleep(0.25)
+                
+            except requests.RequestException as e:
+                logger.error(f"❌ Ошибка сети при загрузке групп (status={status}): {e}")
+                raise
+    
+    logger.info(f"📊 Всего загружено {len(items_all)} групп (активных + отключенных)")
+    return items_all
+
+
 def disable_ad_group(token: str, base_url: str, group_id: int, dry_run: bool = False):
     """Отключает группу объявлений (ad_group)"""
     if dry_run:
@@ -819,7 +879,7 @@ def duplicate_ad_group_full(
         return {"success": False, "error": error_msg}
 
 
-def get_ad_groups_with_stats(token: str, base_url: str, date_from: str, date_to: str, limit: int = 200):
+def get_ad_groups_with_stats(token: str, base_url: str, date_from: str, date_to: str, limit: int = 200, include_blocked: bool = True):
     """
     Получает группы объявлений со статистикой за период
     
@@ -829,17 +889,24 @@ def get_ad_groups_with_stats(token: str, base_url: str, date_from: str, date_to:
         date_from: Начало периода (YYYY-MM-DD)
         date_to: Конец периода (YYYY-MM-DD)
         limit: Лимит на запрос
+        include_blocked: Включать ли отключенные группы (по умолчанию True)
     
     Returns:
         list: Список групп со статистикой
     """
-    # Сначала получаем все активные группы
-    groups = get_ad_groups_active(token, base_url, fields="id,name,status,day_limit", limit=limit)
+    # Получаем группы: активные + отключенные (кроме удалённых)
+    # Используем только валидные поля VK API (day_limit не поддерживается, используем budget_limit_day)
+    if include_blocked:
+        groups = get_ad_groups_all(token, base_url, fields="id,name,status,budget_limit_day", limit=limit, include_deleted=False)
+    else:
+        groups = get_ad_groups_active(token, base_url, fields="id,name,status,budget_limit_day", limit=limit)
     
     if not groups:
         return []
     
     group_ids = [g['id'] for g in groups]
+    
+    logger.info(f"📊 Получаем статистику для {len(group_ids)} групп за период {date_from} — {date_to}")
     
     # Получаем статистику по группам
     stats_url = f"{base_url}/statistics/ad_groups/day.json"
@@ -854,30 +921,53 @@ def get_ad_groups_with_stats(token: str, base_url: str, date_from: str, date_to:
         response = requests.get(stats_url, headers=_headers(token), params=params, timeout=30)
         
         if response.status_code != 200:
-            logger.error(f"❌ Ошибка получения статистики групп: HTTP {response.status_code}")
+            logger.error(f"❌ Ошибка получения статистики групп: HTTP {response.status_code}, Response: {response.text[:500]}")
             # Возвращаем группы без статистики
             return groups
         
         stats_data = response.json().get("items", [])
+        logger.info(f"📊 Получено {len(stats_data)} записей статистики от VK API")
         
         # Агрегируем статистику по группам
+        # Используем такую же логику как для баннеров в get_banners_stats_day
         stats_by_group = {}
         for item in stats_data:
             gid = item.get("id")
-            if gid not in stats_by_group:
-                stats_by_group[gid] = {
-                    "spent": 0,
-                    "shows": 0,
-                    "clicks": 0,
-                    "goals": 0
-                }
+            if gid is None:
+                continue
+                
+            # Получаем total.base — агрегированные данные за весь период
+            total = item.get("total", {})
+            base = total.get("base", {}) if isinstance(total, dict) else {}
             
-            rows = item.get("rows", [])
-            for row in rows:
-                stats_by_group[gid]["spent"] += float(row.get("spent", 0))
-                stats_by_group[gid]["shows"] += int(row.get("shows", 0))
-                stats_by_group[gid]["clicks"] += int(row.get("clicks", 0))
-                stats_by_group[gid]["goals"] += int(row.get("goals", 0))
+            # VK goals находятся в total.base.vk.goals
+            vk_data = base.get("vk", {}) if isinstance(base.get("vk"), dict) else {}
+            vk_goals = float(vk_data.get("goals", 0) or 0)
+            
+            # Основные метрики
+            spent = float(base.get("spent", 0) or 0)
+            shows = float(base.get("impressions", 0) or 0)  # VK API использует 'impressions'
+            clicks = float(base.get("clicks", 0) or 0)
+            
+            # Если total.base пустой, пробуем агрегировать из rows
+            if spent == 0 and shows == 0 and clicks == 0:
+                rows = item.get("rows", [])
+                for row in rows:
+                    row_base = row.get("base", {}) if isinstance(row.get("base"), dict) else row
+                    spent += float(row_base.get("spent", 0) or 0)
+                    shows += float(row_base.get("impressions", row_base.get("shows", 0)) or 0)
+                    clicks += float(row_base.get("clicks", 0) or 0)
+                    row_vk = row_base.get("vk", {}) if isinstance(row_base.get("vk"), dict) else {}
+                    vk_goals += float(row_vk.get("goals", 0) or 0)
+            
+            stats_by_group[gid] = {
+                "spent": spent,
+                "shows": shows,
+                "clicks": clicks,
+                "goals": vk_goals
+            }
+            
+            logger.debug(f"   Группа {gid}: spent={spent:.2f}, shows={shows}, clicks={clicks}, goals={vk_goals}")
         
         # Объединяем группы со статистикой
         for group in groups:
@@ -893,6 +983,9 @@ def get_ad_groups_with_stats(token: str, base_url: str, date_from: str, date_to:
                     group["stats"]["cost_per_goal"] = spent / goals
                 else:
                     group["stats"]["cost_per_goal"] = None
+                    
+                logger.info(f"   📋 Группа {gid} ({group.get('name', 'Unknown')}): "
+                           f"spent={spent:.2f}₽, goals={goals}, cost_per_goal={group['stats']['cost_per_goal']}")
             else:
                 group["stats"] = {
                     "spent": 0,
@@ -901,6 +994,7 @@ def get_ad_groups_with_stats(token: str, base_url: str, date_from: str, date_to:
                     "goals": 0,
                     "cost_per_goal": None
                 }
+                logger.debug(f"   📋 Группа {gid}: нет статистики")
         
         return groups
         
