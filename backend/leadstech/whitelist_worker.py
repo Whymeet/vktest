@@ -12,7 +12,14 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from database import SessionLocal, init_db
 from database import crud
-from utils.vk_api import toggle_banner_status
+from utils.vk_api import (
+    toggle_banner_status,
+    get_banner_info,
+    get_ad_group_full,
+    get_campaign_full,
+    toggle_ad_group_status,
+    toggle_campaign_status
+)
 
 # Setup logging
 logging.basicConfig(
@@ -64,6 +71,14 @@ async def whitelist_profitable_banners(roi_threshold: float, enable_banners: boo
             enabled_count = 0
             failed_count = 0
             
+            # Кэши для групп и кампаний, чтобы не делать повторные запросы
+            enabled_groups = set()  # ID групп, которые уже активны или были включены
+            enabled_campaigns = set()  # ID кампаний, которые уже активны или были включены
+            
+            # Счетчики для статистики
+            campaigns_activated = 0
+            groups_activated = 0
+            
             # Process in batches of 30 (VK API limit: 30 requests/second)
             BATCH_SIZE = 30
             total_banners = len(profitable)
@@ -85,9 +100,80 @@ async def whitelist_profitable_banners(roi_threshold: float, enable_banners: boo
                         continue
 
                     try:
+                        base_url = "https://ads.vk.com/api/v2"
+                        
+                        # Шаг 1: Получаем информацию о баннере
+                        banner_info = get_banner_info(api_token, base_url, banner_id)
+                        if not banner_info:
+                            logger.error(f"❌ Не удалось получить информацию о баннере {banner_id}")
+                            failed_count += 1
+                            continue
+                        
+                        ad_group_id = banner_info.get("ad_group_id")
+                        if not ad_group_id:
+                            logger.error(f"❌ Баннер {banner_id} не содержит ad_group_id")
+                            failed_count += 1
+                            continue
+                        
+                        # Шаг 2: Получаем информацию о группе объявлений (только если еще не проверяли)
+                        campaign_id = None
+                        if ad_group_id not in enabled_groups:
+                            group_info = get_ad_group_full(api_token, base_url, ad_group_id)
+                            if not group_info:
+                                logger.error(f"❌ Не удалось получить информацию о группе {ad_group_id}")
+                                failed_count += 1
+                                continue
+                            
+                            group_status = group_info.get("status")
+                            campaign_id = group_info.get("ad_plan_id")
+                            
+                            if not campaign_id:
+                                logger.error(f"❌ Группа {ad_group_id} не содержит ad_plan_id (campaign_id)")
+                                failed_count += 1
+                                continue
+                            
+                            # Шаг 3: Проверяем кампанию (только если еще не проверяли)
+                            if campaign_id not in enabled_campaigns:
+                                campaign_info = get_campaign_full(api_token, base_url, campaign_id)
+                                if not campaign_info:
+                                    logger.error(f"❌ Не удалось получить информацию о кампании {campaign_id}")
+                                    failed_count += 1
+                                    continue
+                                
+                                campaign_status = campaign_info.get("status")
+                                
+                                # Шаг 4: Включаем кампанию, если она выключена
+                                if campaign_status != "active":
+                                    logger.info(f"⚠️ Кампания {campaign_id} выключена (статус: {campaign_status}), включаем...")
+                                    campaign_result = toggle_campaign_status(api_token, base_url, campaign_id, "active")
+                                    if not campaign_result.get("success"):
+                                        logger.error(f"❌ Не удалось включить кампанию {campaign_id}: {campaign_result.get('error')}")
+                                        failed_count += 1
+                                        continue
+                                    logger.info(f"✅ Кампания {campaign_id} включена")
+                                    campaigns_activated += 1
+                                
+                                # Добавляем в кэш
+                                enabled_campaigns.add(campaign_id)
+                            
+                            # Шаг 5: Включаем группу, если она выключена
+                            if group_status != "active":
+                                logger.info(f"⚠️ Группа {ad_group_id} выключена (статус: {group_status}), включаем...")
+                                group_result = toggle_ad_group_status(api_token, base_url, ad_group_id, "active")
+                                if not group_result.get("success"):
+                                    logger.error(f"❌ Не удалось включить группу {ad_group_id}: {group_result.get('error')}")
+                                    failed_count += 1
+                                    continue
+                                logger.info(f"✅ Группа {ad_group_id} включена")
+                                groups_activated += 1
+                            
+                            # Добавляем в кэш
+                            enabled_groups.add(ad_group_id)
+                        
+                        # Шаг 6: Включаем баннер
                         vk_result = toggle_banner_status(
                             token=api_token,
-                            base_url="https://ads.vk.com/api/v2",
+                            base_url=base_url,
                             banner_id=banner_id,
                             status="active"
                         )
@@ -107,7 +193,8 @@ async def whitelist_profitable_banners(roi_threshold: float, enable_banners: boo
                     logger.info(f"⏳ Waiting 0.5s before next batch...")
                     await asyncio.sleep(0.5)
             
-            logger.info(f"🏁 Finished. Enabled: {enabled_count}, Failed: {failed_count}")
+            logger.info(f"🏁 Finished. Banners enabled: {enabled_count}, Failed: {failed_count}")
+            logger.info(f"📊 Statistics: Campaigns activated: {campaigns_activated}, Groups activated: {groups_activated}")
 
     except Exception as e:
         logger.error(f"❌ Worker failed: {e}")
