@@ -404,8 +404,8 @@ function ManualDuplicateModal({
   const [isProcessing, setIsProcessing] = useState(false);
 
   const duplicateMutation = useMutation({
-    mutationFn: duplicateAdGroup,
-    onSuccess: (data) => {
+    mutationFn: (data: any) => duplicateAdGroup(data),
+    onSuccess: (data: any) => {
       setResult(data.data);
       setIsProcessing(false);
       queryClient.invalidateQueries({ queryKey: ['scaling-logs'] });
@@ -667,7 +667,7 @@ export function Scaling() {
 
   // Преобразуем AccountsResponse в массив Account[]
   const accounts: Account[] = accountsData?.accounts 
-    ? Object.entries(accountsData.accounts).map(([name, acc]) => ({ ...acc, name }))
+    ? Object.entries(accountsData.accounts).map(([name, acc]: [string, any]) => ({ ...(acc as any), name }))
     : [];
 
   const { data: configs = [], isLoading: configsLoading } = useQuery({
@@ -677,7 +677,7 @@ export function Scaling() {
 
   const { data: logsData } = useQuery({
     queryKey: ['scaling-logs'],
-    queryFn: () => getScalingLogs(undefined, 50).then((r) => r.data),
+    queryFn: () => getScalingLogs(undefined, 50).then((r: any) => r.data),
   });
 
   // Mutations
@@ -784,7 +784,7 @@ export function Scaling() {
           </div>
         ) : (
           <div className="space-y-3">
-            {configs.map((config) => (
+            {configs.map((config: any) => (
               <div
                 key={config.id}
                 className="border border-slate-700 rounded-lg overflow-hidden"
@@ -880,8 +880,8 @@ export function Scaling() {
                         <p className="text-sm text-blue-400">Все кабинеты</p>
                       ) : (
                         <div className="flex flex-wrap gap-2">
-                          {config.account_ids.map((accId) => {
-                            const account = accounts.find(a => a.id === accId);
+                          {config.account_ids.map((accId: number) => {
+                            const account = accounts.find((a: any) => a.id === accId);
                             return (
                               <span
                                 key={accId}
@@ -902,7 +902,7 @@ export function Scaling() {
                         <p className="text-sm text-slate-500 italic">Нет условий</p>
                       ) : (
                         <div className="flex flex-wrap gap-2">
-                          {config.conditions.map((condition, idx) => (
+                          {config.conditions.map((condition: any, idx: number) => (
                             <span
                               key={idx}
                               className="px-3 py-1 bg-slate-800 rounded-full text-sm text-slate-300"

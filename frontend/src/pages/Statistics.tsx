@@ -55,14 +55,14 @@ export function Statistics() {
       selectedAccount || undefined,
       sortField,
       sortOrder
-    ).then(r => r.data),
+    ).then((r: any) => r.data),
     refetchInterval: 5000, // Auto-refresh every 5 seconds
   });
 
   // Get all unique account names for filter dropdown (separate query)
   const { data: accountsData } = useQuery({
     queryKey: ['disabledBannersAccountsList'],
-    queryFn: () => getDisabledBannersAccounts().then(r => r.data),
+    queryFn: () => getDisabledBannersAccounts().then((r: any) => r.data),
     refetchInterval: 10000, // Auto-refresh every 10 seconds
   });
 
@@ -87,10 +87,10 @@ export function Statistics() {
     }
     
     const data = sortedBanners;
-    const totalSpend = data.reduce((sum, b) => sum + (b.spend || 0), 0);
-    const totalClicks = data.reduce((sum, b) => sum + b.clicks, 0);
-    const totalShows = data.reduce((sum, b) => sum + b.shows, 0);
-    const totalConversions = data.reduce((sum, b) => sum + b.conversions, 0);
+    const totalSpend = data.reduce((sum: number, b: any) => sum + (b.spend || 0), 0);
+    const totalClicks = data.reduce((sum: number, b: any) => sum + b.clicks, 0);
+    const totalShows = data.reduce((sum: number, b: any) => sum + b.shows, 0);
+    const totalConversions = data.reduce((sum: number, b: any) => sum + b.conversions, 0);
 
     return {
       totalSpend,
@@ -236,7 +236,7 @@ export function Statistics() {
               className="input w-full"
             >
               <option value="">Все кабинеты</option>
-              {accountNames.map(name => (
+              {accountNames.map((name: string) => (
                 <option key={name} value={name}>{name}</option>
               ))}
             </select>
@@ -330,7 +330,7 @@ export function Statistics() {
                 </tr>
               </thead>
               <tbody>
-                {sortedBanners.map((banner) => (
+                {sortedBanners.map((banner: any) => (
                   <tr
                     key={banner.id}
                     className="border-b border-slate-700/50 hover:bg-slate-700/30 transition-colors"

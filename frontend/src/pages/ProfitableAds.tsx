@@ -103,14 +103,14 @@ export function ProfitableAds() {
   // Queries
   const { data: configData } = useQuery({
     queryKey: ['leadstechConfig'],
-    queryFn: () => getLeadsTechConfig().then(r => r.data),
+    queryFn: () => getLeadsTechConfig().then((r: any) => r.data),
     refetchInterval: 10000, // Auto-refresh every 10 seconds
   });
 
   // Initialize config form when data loads
   useEffect(() => {
     if (configData?.configured) {
-      setConfigForm(prev => ({
+      setConfigForm((prev: any) => ({
         ...prev,
         login: configData.login || '',
         base_url: configData.base_url || 'https://api.leads.tech',
@@ -122,7 +122,7 @@ export function ProfitableAds() {
 
   const { data: cabinetsData, isLoading: isLoadingCabinets, refetch: refetchCabinets } = useQuery({
     queryKey: ['leadstechCabinets'],
-    queryFn: () => getLeadsTechCabinets().then(r => r.data),
+    queryFn: () => getLeadsTechCabinets().then((r: any) => r.data),
     refetchInterval: 10000, // Auto-refresh every 10 seconds
   });
 
@@ -140,26 +140,26 @@ export function ProfitableAds() {
       pageSize,
       sortField,
       sortOrder
-    ).then(r => r.data),
+    ).then((r: any) => r.data),
     refetchInterval: 5000, // Auto-refresh every 5 seconds
   });
 
   // Get all unique cabinet names for filter dropdown (separate query)
   const { data: analysisCabinetsData } = useQuery({
     queryKey: ['leadstechAnalysisCabinets'],
-    queryFn: () => getLeadsTechAnalysisCabinets().then(r => r.data),
+    queryFn: () => getLeadsTechAnalysisCabinets().then((r: any) => r.data),
     refetchInterval: 10000, // Auto-refresh every 10 seconds
   });
 
   const { data: analysisStatus, refetch: refetchStatus } = useQuery({
     queryKey: ['leadstechStatus'],
-    queryFn: () => getLeadsTechAnalysisStatus().then(r => r.data),
+    queryFn: () => getLeadsTechAnalysisStatus().then((r: any) => r.data),
     refetchInterval: 3000, // Auto-refresh every 3 seconds
   });
 
   const { data: whitelistStatus, refetch: refetchWhitelistStatus } = useQuery({
     queryKey: ['whitelistStatus'],
-    queryFn: () => getWhitelistProfitableStatus().then(r => r.data),
+    queryFn: () => getWhitelistProfitableStatus().then((r: any) => r.data),
     refetchInterval: 3000,
   });
 
@@ -221,7 +221,7 @@ export function ProfitableAds() {
         content: (
           <div className="space-y-2">
             <p className="font-medium text-green-400">
-              Процесс добавления в белый список запущен (PID: {response.data.pid}).
+              Процесс добавления в белый список запущен (PID: {(response as any).data.pid}).
             </p>
             <p className="text-sm text-slate-300">
               Вы можете следить за статусом выполнения в верхней части страницы.
@@ -260,12 +260,12 @@ export function ProfitableAds() {
   const summary = useMemo(() => {
     const data = sortedResults;
     return {
-      totalSpent: data.reduce((sum, r) => sum + r.vk_spent, 0),
-      totalRevenue: data.reduce((sum, r) => sum + r.lt_revenue, 0),
-      totalProfit: data.reduce((sum, r) => sum + r.profit, 0),
+      totalSpent: data.reduce((sum: number, r: any) => sum + r.vk_spent, 0),
+      totalRevenue: data.reduce((sum: number, r: any) => sum + r.lt_revenue, 0),
+      totalProfit: data.reduce((sum: number, r: any) => sum + r.profit, 0),
       count: analysisResults?.total || 0, // Use total from server (includes filtered results)
-      avgRoi: data.filter(r => r.roi_percent !== null).length > 0
-        ? data.filter(r => r.roi_percent !== null).reduce((sum, r) => sum + (r.roi_percent || 0), 0) / data.filter(r => r.roi_percent !== null).length
+      avgRoi: data.filter((r: any) => r.roi_percent !== null).length > 0
+        ? data.filter((r: any) => r.roi_percent !== null).reduce((sum: number, r: any) => sum + (r.roi_percent || 0), 0) / data.filter((r: any) => r.roi_percent !== null).length
         : null,
     };
   }, [sortedResults, analysisResults?.total]);
@@ -379,7 +379,7 @@ export function ProfitableAds() {
           </button>
           <button 
             onClick={() => {
-              getLeadsTechAnalysisLogs(200).then(response => {
+              getLeadsTechAnalysisLogs(200).then((response: any) => {
                 setModalConfig({
                   isOpen: true,
                   title: 'Логи анализа (' + response.data.source + ')',
@@ -389,7 +389,7 @@ export function ProfitableAds() {
                     </pre>
                   ),
                 });
-              }).catch(error => {
+              }).catch((error: any) => {
                 setModalConfig({
                   isOpen: true,
                   title: 'Ошибка',
@@ -556,7 +556,7 @@ export function ProfitableAds() {
                   className="input w-full"
                 >
                   <option value="">Все кабинеты</option>
-                  {cabinetNames.map(name => (
+                  {cabinetNames.map((name: string) => (
                     <option key={name} value={name}>{name}</option>
                   ))}
                 </select>
@@ -678,7 +678,7 @@ export function ProfitableAds() {
                         </td>
                       </tr>
                     ) : (
-                      sortedResults.map((result) => (
+                      sortedResults.map((result: any) => (
                         <tr
                           key={result.id}
                           className="border-b border-slate-700/50 hover:bg-slate-700/30 transition-colors"
@@ -844,12 +844,12 @@ export function ProfitableAds() {
                   className="input flex-1"
                 >
                   <option value="">Выберите кабинет VK</option>
-                  {accountsData?.accounts && Object.entries(accountsData.accounts).map(([name, acc]) => {
+                  {accountsData?.accounts && Object.entries(accountsData.accounts).map(([name, acc]: [string, any]) => {
                     // Check if account already has cabinet
-                    const hasLabel = cabinetsData?.cabinets.some(c => c.account_name === name);
+                    const hasLabel = cabinetsData?.cabinets.some((c: any) => c.account_name === name);
                     if (hasLabel) return null;
                     return (
-                      <option key={name} value={acc.id || 0}>{name}</option>
+                      <option key={name} value={(acc as any).id || 0}>{name}</option>
                     );
                   })}
                 </select>
@@ -886,7 +886,7 @@ export function ProfitableAds() {
                   Нет настроенных кабинетов
                 </div>
               ) : (
-                cabinetsData?.cabinets.map((cabinet) => (
+                cabinetsData?.cabinets.map((cabinet: any) => (
                   <div
                     key={cabinet.id}
                     className="flex items-center justify-between p-3 bg-slate-700/30 rounded-lg"

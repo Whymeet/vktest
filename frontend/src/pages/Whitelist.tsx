@@ -59,7 +59,7 @@ export function Whitelist() {
   });
 
   const bannerIds = Array.isArray(data?.banner_ids) ? data.banner_ids : [];
-  const filteredIds = bannerIds.filter((id) =>
+  const filteredIds = bannerIds.filter((id: number) =>
     id.toString().includes(searchTerm)
   );
 
@@ -190,7 +190,7 @@ export function Whitelist() {
       <Card>
         {filteredIds.length > 0 ? (
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
-            {filteredIds.map((id) => (
+            {filteredIds.map((id: number) => (
               <div
                 key={id}
                 className="flex items-center justify-between px-3 py-2 bg-slate-700/50 rounded-lg group hover:bg-slate-700"
