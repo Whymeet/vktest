@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Shield, Plus, Trash2, RefreshCw, Search, AlertCircle, Copy, Check } from 'lucide-react';
-import { getWhitelist, updateWhitelist, addToWhitelist, removeFromWhitelist } from '../api/client';
+import { getWhitelist, bulkAddToWhitelist, bulkRemoveFromWhitelist, addToWhitelist, removeFromWhitelist } from '../api/client';
 import { Card } from '../components/Card';
 import { Modal } from '../components/Modal';
 
@@ -13,6 +13,8 @@ export function Whitelist() {
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
   const [bulkInput, setBulkInput] = useState('');
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
+  const [bulkRemoveInput, setBulkRemoveInput] = useState('');
+  const [isBulkRemoveModalOpen, setIsBulkRemoveModalOpen] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const { data, isLoading, refetch } = useQuery({
@@ -38,12 +40,21 @@ export function Whitelist() {
     },
   });
 
-  const bulkUpdateMutation = useMutation({
-    mutationFn: updateWhitelist,
+  const bulkAddMutation = useMutation({
+    mutationFn: bulkAddToWhitelist,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['whitelist'] });
       setIsBulkModalOpen(false);
       setBulkInput('');
+    },
+  });
+
+  const bulkRemoveMutation = useMutation({
+    mutationFn: bulkRemoveFromWhitelist,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['whitelist'] });
+      setIsBulkRemoveModalOpen(false);
+      setBulkRemoveInput('');
     },
   });
 
@@ -60,7 +71,7 @@ export function Whitelist() {
     }
   };
 
-  const handleBulkUpdate = (e: React.FormEvent) => {
+  const handleBulkAdd = (e: React.FormEvent) => {
     e.preventDefault();
     const ids = bulkInput
       .split(/[\s,\n]+/)
@@ -68,7 +79,19 @@ export function Whitelist() {
       .filter((n) => !isNaN(n) && n > 0);
 
     if (ids.length > 0) {
-      bulkUpdateMutation.mutate(ids);
+      bulkAddMutation.mutate(ids);
+    }
+  };
+
+  const handleBulkRemove = (e: React.FormEvent) => {
+    e.preventDefault();
+    const ids = bulkRemoveInput
+      .split(/[\s,\n]+/)
+      .map((s) => parseInt(s.trim()))
+      .filter((n) => !isNaN(n) && n > 0);
+
+    if (ids.length > 0) {
+      bulkRemoveMutation.mutate(ids);
     }
   };
 
@@ -101,11 +124,16 @@ export function Whitelist() {
             <RefreshCw className="w-4 h-4" />
           </button>
           <button onClick={() => setIsBulkModalOpen(true)} className="btn btn-secondary">
-            Массовый импорт
+            <Plus className="w-4 h-4" />
+            Массовое добавление
+          </button>
+          <button onClick={() => setIsBulkRemoveModalOpen(true)} className="btn btn-secondary">
+            <Trash2 className="w-4 h-4" />
+            Массовое удаление
           </button>
           <button onClick={() => setIsAddModalOpen(true)} className="btn btn-primary">
             <Plus className="w-4 h-4" />
-            Добавить
+            Добавить один
           </button>
         </div>
       </div>
@@ -239,16 +267,16 @@ export function Whitelist() {
         </form>
       </Modal>
 
-      {/* Bulk Import Modal */}
+      {/* Bulk Add Modal */}
       <Modal
         isOpen={isBulkModalOpen}
         onClose={() => {
           setIsBulkModalOpen(false);
           setBulkInput('');
         }}
-        title="Массовый импорт"
+        title="Массовое добавление"
       >
-        <form onSubmit={handleBulkUpdate} className="space-y-4">
+        <form onSubmit={handleBulkAdd} className="space-y-4">
           <div>
             <label className="label">ID баннеров (через запятую, пробел или каждый с новой строки)</label>
             <textarea
@@ -259,23 +287,69 @@ export function Whitelist() {
               required
             />
           </div>
-          <div className="flex items-center gap-2 text-sm text-yellow-400">
+          <div className="flex items-center gap-2 text-sm text-blue-400">
             <AlertCircle className="w-4 h-4" />
-            <span>Внимание: это полностью заменит текущий whitelist!</span>
+            <span>Эти баннеры будут добавлены к существующему whitelist (без удаления старых)</span>
           </div>
           <div className="flex gap-3">
             <button
               type="submit"
-              className="btn btn-warning flex-1"
-              disabled={bulkUpdateMutation.isPending}
+              className="btn btn-primary flex-1"
+              disabled={bulkAddMutation.isPending}
             >
-              {bulkUpdateMutation.isPending ? 'Импорт...' : 'Заменить whitelist'}
+              {bulkAddMutation.isPending ? 'Добавление...' : 'Добавить в whitelist'}
             </button>
             <button
               type="button"
               onClick={() => {
                 setIsBulkModalOpen(false);
                 setBulkInput('');
+              }}
+              className="btn btn-secondary"
+            >
+              Отмена
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Bulk Remove Modal */}
+      <Modal
+        isOpen={isBulkRemoveModalOpen}
+        onClose={() => {
+          setIsBulkRemoveModalOpen(false);
+          setBulkRemoveInput('');
+        }}
+        title="Массовое удаление"
+      >
+        <form onSubmit={handleBulkRemove} className="space-y-4">
+          <div>
+            <label className="label">ID баннеров для удаления (через запятую, пробел или каждый с новой строки)</label>
+            <textarea
+              value={bulkRemoveInput}
+              onChange={(e) => setBulkRemoveInput(e.target.value)}
+              className="input min-h-[200px] font-mono text-sm"
+              placeholder="123456789&#10;987654321&#10;111222333"
+              required
+            />
+          </div>
+          <div className="flex items-center gap-2 text-sm text-yellow-400">
+            <AlertCircle className="w-4 h-4" />
+            <span>Эти баннеры будут удалены из whitelist</span>
+          </div>
+          <div className="flex gap-3">
+            <button
+              type="submit"
+              className="btn btn-danger flex-1"
+              disabled={bulkRemoveMutation.isPending}
+            >
+              {bulkRemoveMutation.isPending ? 'Удаление...' : 'Удалить из whitelist'}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setIsBulkRemoveModalOpen(false);
+                setBulkRemoveInput('');
               }}
               className="btn btn-secondary"
             >

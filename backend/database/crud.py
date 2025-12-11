@@ -151,6 +151,46 @@ def replace_whitelist(db: Session, banner_ids: List[int]) -> List[int]:
     return banner_ids
 
 
+def bulk_add_to_whitelist(db: Session, banner_ids: List[int]) -> dict:
+    """Add multiple banners to whitelist (without removing existing ones)"""
+    added_count = 0
+    skipped_count = 0
+    
+    for banner_id in banner_ids:
+        # Check if already exists
+        existing = db.query(WhitelistBanner).filter(WhitelistBanner.banner_id == banner_id).first()
+        if existing:
+            skipped_count += 1
+            continue
+        
+        db.add(WhitelistBanner(banner_id=banner_id))
+        added_count += 1
+    
+    db.commit()
+    return {
+        "added": added_count,
+        "skipped": skipped_count,
+        "total": len(banner_ids)
+    }
+
+
+def bulk_remove_from_whitelist(db: Session, banner_ids: List[int]) -> dict:
+    """Remove multiple banners from whitelist"""
+    removed_count = 0
+    
+    for banner_id in banner_ids:
+        banner = db.query(WhitelistBanner).filter(WhitelistBanner.banner_id == banner_id).first()
+        if banner:
+            db.delete(banner)
+            removed_count += 1
+    
+    db.commit()
+    return {
+        "removed": removed_count,
+        "total": len(banner_ids)
+    }
+
+
 # ===== Banner Actions (History) =====
 
 def create_banner_action(
