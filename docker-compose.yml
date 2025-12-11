@@ -32,9 +32,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      # Конфиг и данные - монтируем с хоста
-      - ./config:/app/config:ro
-      - ./data:/app/data
+      # Только логи - всё остальное в БД
       - ./logs:/app/logs
     environment:
       - PYTHONUNBUFFERED=1

@@ -281,6 +281,7 @@ export function Statistics() {
                   </th>
                   <th className="pb-3 pr-4">Название</th>
                   <th className="pb-3 pr-4">Кабинет</th>
+                  <th className="pb-3 pr-4">Правило</th>
                   <th className="pb-3 pr-4 text-right">
                     <button
                       onClick={() => handleSort('spend')}
@@ -345,6 +346,11 @@ export function Statistics() {
                     </td>
                     <td className="py-3 pr-4 whitespace-nowrap">
                       <span className="text-sm text-slate-300">{banner.account_name || '-'}</span>
+                    </td>
+                    <td className="py-3 pr-4 max-w-xs">
+                      <span className="text-xs text-slate-400 line-clamp-2" title={banner.reason || 'Не указано'}>
+                        {banner.reason || '-'}
+                      </span>
                     </td>
                     <td className="py-3 pr-4 text-right whitespace-nowrap">
                       <span className="text-orange-400">{formatMoney(banner.spend)}</span>
