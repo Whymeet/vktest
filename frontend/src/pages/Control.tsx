@@ -146,7 +146,7 @@ export function Control() {
       {/* Scheduler Card */}
       <ProcessCard
         title="Планировщик"
-        description="Автоматический запуск анализа по расписанию. Отправляет уведомления в Telegram если включено в настройках."
+        description="Автоматический анализ и отключение убыточных объявлений + автовключение (если включено в настройках)."
         icon={Clock}
         running={isRunning}
         pid={status?.scheduler?.pid}

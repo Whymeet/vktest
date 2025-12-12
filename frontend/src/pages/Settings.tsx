@@ -38,7 +38,22 @@ export function Settings() {
     if (settings) {
       setAnalysisForm(settings.analysis_settings);
       setTelegramForm(settings.telegram_full || settings.telegram);
-      setSchedulerForm(settings.scheduler);
+      // Добавляем дефолтные значения для reenable если их нет
+      const defaultReenable = {
+        enabled: false,
+        interval_minutes: 120,
+        lookback_hours: 24,
+        delay_after_analysis_seconds: 30,
+        dry_run: true,
+      };
+      const schedulerWithDefaults = {
+        ...settings.scheduler,
+        reenable: {
+          ...defaultReenable,
+          ...(settings.scheduler?.reenable || {})
+        }
+      };
+      setSchedulerForm(schedulerWithDefaults);
       setTriggerForm(settings.statistics_trigger);
     }
   }, [settings]);
@@ -336,6 +351,87 @@ export function Settings() {
               </div>
             </div>
           )}
+
+          {/* Re-Enable Settings */}
+          <div className="mt-6 pt-6 border-t border-slate-600">
+            <h4 className="text-lg font-medium text-white mb-4">🔄 Автовключение</h4>
+            <p className="text-sm text-slate-400 mb-4">
+              После анализа проверяет ранее отключённые объявления. Если статистика обновилась и они больше не подпадают под правила — включает обратно.
+            </p>
+            
+            <div className="flex items-center justify-between p-4 bg-slate-700/50 rounded-lg mb-4">
+              <div>
+                <p className="text-white font-medium">Включить автовключение</p>
+                <p className="text-sm text-slate-400">Запускать после каждого цикла анализа</p>
+              </div>
+              <Toggle
+                checked={schedulerForm.reenable?.enabled || false}
+                onChange={(checked) => setSchedulerForm({
+                  ...schedulerForm,
+                  reenable: { ...schedulerForm.reenable, enabled: checked },
+                })}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+              <div>
+                <label className="label">Интервал (минут)</label>
+                <input
+                  type="number"
+                  value={schedulerForm.reenable?.interval_minutes || 120}
+                  onChange={(e) => setSchedulerForm({
+                    ...schedulerForm,
+                    reenable: { ...schedulerForm.reenable, interval_minutes: parseInt(e.target.value) || 120 },
+                  })}
+                  className="input"
+                  min="1"
+                />
+                <p className="text-xs text-slate-500 mt-1">Как часто запускать автовключение</p>
+              </div>
+              <div>
+                <label className="label">Период просмотра (часов)</label>
+                <input
+                  type="number"
+                  value={schedulerForm.reenable?.lookback_hours || 24}
+                  onChange={(e) => setSchedulerForm({
+                    ...schedulerForm,
+                    reenable: { ...schedulerForm.reenable, lookback_hours: parseInt(e.target.value) || 24 },
+                  })}
+                  className="input"
+                  min="1"
+                />
+                <p className="text-xs text-slate-500 mt-1">За сколько часов смотреть отключённые</p>
+              </div>
+              <div>
+                <label className="label">Пауза перед запуском (сек)</label>
+                <input
+                  type="number"
+                  value={schedulerForm.reenable?.delay_after_analysis_seconds || 30}
+                  onChange={(e) => setSchedulerForm({
+                    ...schedulerForm,
+                    reenable: { ...schedulerForm.reenable, delay_after_analysis_seconds: parseInt(e.target.value) || 30 },
+                  })}
+                  className="input"
+                  min="0"
+                />
+                <p className="text-xs text-slate-500 mt-1">Пауза после основного анализа</p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between p-4 bg-yellow-900/20 border border-yellow-700/30 rounded-lg">
+              <div>
+                <p className="text-white font-medium">Тестовый режим (Dry Run)</p>
+                <p className="text-sm text-slate-400">Не включает баннеры реально, только логирует действия</p>
+              </div>
+              <Toggle
+                checked={schedulerForm.reenable?.dry_run ?? true}
+                onChange={(checked) => setSchedulerForm({
+                  ...schedulerForm,
+                  reenable: { ...schedulerForm.reenable, dry_run: checked },
+                })}
+              />
+            </div>
+          </div>
         </div>
         <div className="mt-4 pt-4 border-t border-slate-700">
           <button
