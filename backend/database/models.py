@@ -496,6 +496,7 @@ class DisableRuleCondition(Base):
     - ctr: CTR (click-through rate, %)
     - cpc: цена за клик (cost per click)
     - cost_per_goal: цена за результат (spent / goals)
+    - roi: ROI в процентах ((доход - потрачено) / потрачено * 100). Если дохода нет или объявление не в Leadstech - ROI = 0
     
     Available operators:
     - equals (==)

@@ -1627,7 +1627,7 @@ def check_banner_against_rules(
     Returns the first matching rule (highest priority first), or None.
     
     Args:
-        stats: Dict with keys: goals, spent, clicks, shows, ctr, cpc, cost_per_goal
+        stats: Dict with keys: goals, spent, clicks, shows, ctr, cpc, cost_per_goal, roi
         rules: List of DisableRule objects (should be pre-filtered for account)
     
     Returns:
@@ -1669,6 +1669,9 @@ def check_banner_against_rules(
                     clicks = stats.get("clicks", 0) or 0
                     spent = stats.get("spent", 0) or 0
                     actual_value = (spent / clicks) if clicks > 0 else float('inf')
+                elif metric == "roi":
+                    # ROI уже должен быть рассчитан, если нет - 0
+                    actual_value = stats.get("roi", 0.0) or 0.0
                 else:
                     actual_value = 0
             
@@ -1732,7 +1735,8 @@ def format_rule_match_reason(rule: DisableRule, stats: dict) -> str:
         "shows": "показов",
         "ctr": "CTR",
         "cpc": "цена клика",
-        "cost_per_goal": "цена результата"
+        "cost_per_goal": "цена результата",
+        "roi": "ROI"
     }
     
     operator_names = {
@@ -1759,6 +1763,8 @@ def format_rule_match_reason(rule: DisableRule, stats: dict) -> str:
                 goals = stats.get("goals", 0) or stats.get("vk_goals", 0)
                 spent = stats.get("spent", 0) or 0
                 actual = (spent / goals) if goals > 0 else "∞"
+            elif condition.metric == "roi":
+                actual = stats.get("roi", 0.0) or 0.0
             else:
                 actual = 0
         

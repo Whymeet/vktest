@@ -31,6 +31,9 @@ from database import SessionLocal, init_db
 from database import crud
 from database.models import DisableRule
 
+# Импортируем Leadstech для получения дохода
+from leadstech.analyzer import LeadstechClient, LeadstechClientConfig, aggregate_leadstech_by_banner
+
 
 # ===================== НАСТРОЙКИ ИЗ БД =====================
 
@@ -327,6 +330,15 @@ async def analyze_account(
                     f"{c.metric} {c.operator} {c.value}" for c in rule.conditions
                 ])
                 logger.info(f"   📌 Правило \"{rule.name}\": {conditions_str}")
+            
+            # Получаем конфигурацию Leadstech и кабинет для получения дохода
+            from database.models import Account
+            lt_config = crud.get_leadstech_config(db)
+            lt_cabinet = None
+            if lt_config:
+                account_obj = db.query(Account).filter(Account.name == account_name).first()
+                if account_obj:
+                    lt_cabinet = crud.get_leadstech_cabinet_by_account(db, account_obj.id)
         finally:
             db.close()
 
@@ -375,6 +387,40 @@ async def analyze_account(
             sleep_between_calls=SLEEP_BETWEEN_CALLS
         )
 
+        # Получаем доход из Leadstech для расчета ROI
+        revenue_by_bid = {}
+        if lt_config and lt_cabinet and lt_cabinet.enabled:
+            try:
+                logger.info(f"💰 [{account_name}] Получаем доход из Leadstech (label={lt_cabinet.leadstech_label})...")
+                lt_client_cfg = LeadstechClientConfig(
+                    base_url=lt_config.base_url,
+                    login=lt_config.login,
+                    password=lt_config.password
+                )
+                lt_client = LeadstechClient(lt_client_cfg)
+                
+                # Получаем данные из Leadstech
+                date_from_obj = date.fromisoformat(date_from)
+                date_to_obj = date.fromisoformat(date_to)
+                lt_rows = lt_client.get_stat_by_subid(
+                    date_from=date_from_obj,
+                    date_to=date_to_obj,
+                    sub1_value=lt_cabinet.leadstech_label,
+                    subs_field=lt_config.banner_sub_field or "sub4"
+                )
+                
+                # Агрегируем по баннерам
+                lt_by_banner = aggregate_leadstech_by_banner(lt_rows, lt_config.banner_sub_field or "sub4")
+                
+                # Создаем словарь revenue_by_bid
+                for banner_id, lt_data in lt_by_banner.items():
+                    revenue_by_bid[banner_id] = float(lt_data.get("lt_revenue", 0.0))
+                
+                logger.info(f"💰 [{account_name}] Получен доход для {len(revenue_by_bid)} баннеров из Leadstech")
+            except Exception as e:
+                logger.warning(f"⚠️ [{account_name}] Ошибка получения дохода из Leadstech: {e}")
+                revenue_by_bid = {}
+
         # Подготовка белого списка
         whitelist_set = _prepare_whitelist_set()
 
@@ -421,9 +467,22 @@ async def analyze_account(
             clicks = stats.get("clicks", 0.0)
             shows = stats.get("shows", 0.0)
             vk_goals = stats.get("vk_goals", 0.0)
+            
+            # Получаем доход из Leadstech (если есть)
+            revenue = revenue_by_bid.get(bid, 0.0)
+            
+            # Рассчитываем ROI: (доход - потрачено) / потрачено * 100
+            # Если дохода нет или объявление не в Leadstech - ROI = 0
+            roi = 0.0
+            if spent > 0:
+                roi = ((revenue - spent) / spent) * 100.0
+            elif revenue == 0:
+                # Если дохода нет и не потрачено - ROI = 0
+                roi = 0.0
 
             banner_data = {
                 "id": bid, "name": name, "spent": spent, "clicks": clicks, "shows": shows, "vk_goals": vk_goals,
+                "revenue": revenue, "roi": roi,
                 "status": status, "delivery": delivery_status, "ad_group_id": ad_group_id,
                 "moderation_status": moderation_status, "account": account_name
             }
@@ -439,6 +498,7 @@ async def analyze_account(
                 "ctr": (clicks / shows * 100) if shows > 0 else 0,
                 "cpc": (spent / clicks) if clicks > 0 else float('inf'),
                 "cost_per_goal": (spent / vk_goals) if vk_goals > 0 else float('inf'),
+                "roi": roi,  # ROI в процентах
             }
             
             # Проверяем соответствие правилам отключения
