@@ -21,6 +21,7 @@ export function Settings() {
   const queryClient = useQueryClient();
   const [showToken, setShowToken] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [chatIdInput, setChatIdInput] = useState<string>('');
 
   const { data: settings, isLoading } = useQuery({
     queryKey: ['settings'],
@@ -37,7 +38,9 @@ export function Settings() {
   useEffect(() => {
     if (settings) {
       setAnalysisForm(settings.analysis_settings);
-      setTelegramForm(settings.telegram_full || settings.telegram);
+      const telegramSettings = settings.telegram_full || settings.telegram;
+      setTelegramForm(telegramSettings);
+      setChatIdInput(telegramSettings.chat_id.join(', '));
       // Добавляем дефолтные значения для reenable если их нет
       const defaultReenable = {
         enabled: false,
@@ -203,16 +206,26 @@ export function Settings() {
           </div>
           <div>
             <label className="label">Chat IDs (через запятую)</label>
-            <input
-              type="text"
-              value={telegramForm.chat_id.join(', ')}
-              onChange={(e) => setTelegramForm({
-                ...telegramForm,
-                chat_id: e.target.value.split(',').map((s) => s.trim()).filter(Boolean),
-              })}
+            <textarea
+              value={chatIdInput}
+              onChange={(e) => setChatIdInput(e.target.value)}
+              onBlur={() => {
+                const chatIds = chatIdInput
+                  .split(',')
+                  .map((s) => s.trim())
+                  .filter(Boolean);
+                setTelegramForm({
+                  ...telegramForm,
+                  chat_id: chatIds,
+                });
+              }}
               className="input"
               placeholder="471729567, 503415345"
+              rows={2}
             />
+            <p className="text-xs text-slate-400 mt-1">
+              Можно указать несколько Chat ID через запятую
+            </p>
           </div>
         </div>
         <div className="mt-4 pt-4 border-t border-slate-700">
