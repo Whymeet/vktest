@@ -64,6 +64,7 @@ docker exec vkads-backend bash -c "tail -100 /app/logs/scheduler.log"
 # Список всех файлов логов анализа
 docker exec vkads-backend bash -c "ls -lah /app/logs/vk_ads_manager*.log | tail -10"
 
+
 # Прочитать последний лог
 docker exec vkads-backend bash -c "cat /app/logs/vk_ads_manager_*.log | tail -200"
 
