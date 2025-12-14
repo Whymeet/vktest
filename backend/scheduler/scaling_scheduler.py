@@ -53,7 +53,7 @@ def run_scaling_config(config_id: int):
             accounts = [crud.get_account_by_id(db, config.account_id)]
             accounts = [a for a in accounts if a]
         else:
-            accounts = crud.get_accounts(db)
+            accounts = crud.get_accounts(db, user_id=config.user_id)
         
         if not accounts:
             logger.warning(f"⚠️ Нет аккаунтов для обработки")
@@ -110,6 +110,7 @@ def run_scaling_config(config_id: int):
                             # Логируем операцию
                             crud.create_scaling_log(
                                 db,
+                                user_id=config.user_id,
                                 config_id=config.id,
                                 config_name=config.name,
                                 account_name=account.name,
@@ -137,6 +138,7 @@ def run_scaling_config(config_id: int):
                             
                             crud.create_scaling_log(
                                 db,
+                                user_id=config.user_id,
                                 config_id=config.id,
                                 config_name=config.name,
                                 account_name=account.name,

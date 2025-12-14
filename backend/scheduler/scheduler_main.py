@@ -143,10 +143,17 @@ class VKAdsScheduler:
         self.logger.addHandler(file_handler)
 
     def load_settings(self):
-        """Загрузка настроек из БД"""
+        """Загрузка настроек из БД для текущего пользователя"""
+        # Get user_id from environment
+        user_id = os.environ.get('VK_ADS_USER_ID')
+        if not user_id:
+            self.logger.warning("⚠️ VK_ADS_USER_ID not set, using defaults")
+            return
+        user_id = int(user_id)
+        
         db = SessionLocal()
         try:
-            settings = crud.get_setting(db, 'scheduler')
+            settings = crud.get_user_setting(db, user_id, 'scheduler')
             if settings:
                 self.settings = settings
                 # Убедимся, что reenable настройки существуют
@@ -640,6 +647,7 @@ class VKAdsScheduler:
                             if not dry_run:
                                 crud.create_banner_action(
                                     db=db,
+                                    user_id=account.user_id,  # ← добавлено
                                     banner_id=banner_id,
                                     action="enabled",
                                     account_name=account_name,

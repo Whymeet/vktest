@@ -1,5 +1,6 @@
 import asyncio
 import sys
+import os
 import json
 import argparse
 import logging
@@ -30,16 +31,28 @@ logging.basicConfig(
 logger = logging.getLogger("whitelist_worker")
 
 async def whitelist_profitable_banners(roi_threshold: float, enable_banners: bool = True):
+    # Get user_id from environment
+    user_id = os.environ.get("VK_ADS_USER_ID")
+    if not user_id:
+        logger.error("VK_ADS_USER_ID environment variable not set")
+        return
+    try:
+        user_id = int(user_id)
+    except ValueError:
+        logger.error("VK_ADS_USER_ID must be an integer")
+        return
+
     db = SessionLocal()
     try:
-        logger.info(f"🚀 Starting whitelist worker. ROI >= {roi_threshold}%, Enable: {enable_banners}")
+        logger.info(f"🚀 Starting whitelist worker for user_id={user_id}. ROI >= {roi_threshold}%, Enable: {enable_banners}")
         
-        # Get profitable banners (all, without pagination)
+        # Get profitable banners (all, without pagination) for current user
         results, total = crud.get_leadstech_analysis_results(
             db,
             cabinet_name=None,
             limit=10000,
-            offset=0
+            offset=0,
+            user_id=user_id
         )
 
         profitable = [
@@ -57,8 +70,8 @@ async def whitelist_profitable_banners(roi_threshold: float, enable_banners: boo
         added_count = 0
         for result in profitable:
             banner_id = result.banner_id
-            if not crud.is_whitelisted(db, banner_id):
-                crud.add_to_whitelist(db, banner_id, note=f"Auto-added: ROI {result.roi_percent:.1f}%")
+            if not crud.is_whitelisted(db, user_id, banner_id):
+                crud.add_to_whitelist(db, user_id, banner_id, note=f"Auto-added: ROI {result.roi_percent:.1f}%")
                 added_count += 1
         
         logger.info(f"Added {added_count} banners to whitelist")

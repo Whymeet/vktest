@@ -239,26 +239,26 @@ def disable_banner(token: str, base_url: str, banner_id: int, dry_run: bool = Tr
 def get_banner_info(token: str, base_url: str, banner_id: int):
     """
     Получает информацию о конкретном объявлении (banner)
-    
+
     Args:
         token: VK Ads API токен
         base_url: Базовый URL VK Ads API
         banner_id: ID объявления
-    
+
     Returns:
         dict: Информация о баннере или None при ошибке
     """
     url = f"{base_url}/banners/{banner_id}.json"
-    
+
     try:
-        response = requests.get(url, headers=_headers(token), timeout=20)
-        
+        response = _request_with_retries("GET", url, headers=_headers(token), timeout=20)
+
         if response.status_code == 200:
             return response.json()
         else:
             logger.error(f"❌ Ошибка получения информации о баннере {banner_id}: HTTP {response.status_code}")
             return None
-            
+
     except requests.RequestException as e:
         logger.error(f"❌ Ошибка сети при получении информации о баннере {banner_id}: {e}")
         return None
@@ -534,17 +534,17 @@ def disable_ad_group(token: str, base_url: str, group_id: int, dry_run: bool = F
 def get_campaign_full(token: str, base_url: str, campaign_id: int):
     """Получает полные данные кампании"""
     url = f"{base_url}/ad_plans/{campaign_id}.json"
-    
+
     try:
-        response = requests.get(url, headers=_headers(token), timeout=20)
-        
+        response = _request_with_retries("GET", url, headers=_headers(token), timeout=20)
+
         if response.status_code != 200:
             error_msg = f"HTTP {response.status_code}: {response.text}"
             logger.error(f"❌ Ошибка загрузки кампании {campaign_id}: {error_msg}")
             return None
-        
+
         return response.json()
-        
+
     except requests.RequestException as e:
         logger.error(f"❌ Ошибка сети при загрузке кампании {campaign_id}: {e}")
         return None
@@ -553,22 +553,22 @@ def get_campaign_full(token: str, base_url: str, campaign_id: int):
 def get_ad_group_full(token: str, base_url: str, group_id: int):
     """Получает полные данные группы объявлений со всеми полями"""
     url = f"{base_url}/ad_groups/{group_id}.json"
-    
+
     # Запрашиваем все важные поля (только разрешённые API, без read-only полей)
     params = {
         "fields": "id,name,package_id,ad_plan_id,objective,status,age_restrictions,targetings,budget_limit,budget_limit_day,autobidding_mode,pricelist_id,date_start,date_end,utm,enable_utm,enable_recombination,enable_offline_goals,price,max_price"
     }
-    
+
     try:
-        response = requests.get(url, headers=_headers(token), params=params, timeout=20)
-        
+        response = _request_with_retries("GET", url, headers=_headers(token), params=params, timeout=20)
+
         if response.status_code != 200:
             error_msg = f"HTTP {response.status_code}: {response.text}"
             logger.error(f"❌ Ошибка загрузки группы {group_id}: {error_msg}")
             return None
-        
+
         return response.json()
-        
+
     except requests.RequestException as e:
         logger.error(f"❌ Ошибка сети при загрузке группы {group_id}: {e}")
         return None

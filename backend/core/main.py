@@ -36,16 +36,22 @@ from database.models import DisableRule
 
 def load_config_from_db():
     """Загружает конфигурацию из PostgreSQL"""
+    # Получаем user_id из переменной окружения
+    user_id = os.environ.get('VK_ADS_USER_ID')
+    if not user_id:
+        raise ValueError("VK_ADS_USER_ID environment variable is required")
+    user_id = int(user_id)
+    
     db = SessionLocal()
     try:
-        # Получаем настройки
-        all_settings = crud.get_all_settings(db)
+        # Получаем настройки для пользователя
+        all_settings = crud.get_all_settings(db, user_id)
         analysis_settings = all_settings.get('analysis_settings', {})
         telegram_settings = all_settings.get('telegram', {})
         statistics_trigger = all_settings.get('statistics_trigger', {})
 
-        # Получаем аккаунты
-        accounts_db = crud.get_accounts(db)
+        # Получаем аккаунты пользователя
+        accounts_db = crud.get_accounts(db, user_id)
         accounts = {}
         for acc in accounts_db:
             accounts[acc.name] = {
@@ -81,10 +87,15 @@ def load_config_from_db():
 
 
 def load_whitelist_from_db():
-    """Загружает белый список из БД"""
+    """Загружает белый список из БД для текущего пользователя"""
+    user_id = os.environ.get('VK_ADS_USER_ID')
+    if not user_id:
+        return {"banners_whitelist": []}
+    user_id = int(user_id)
+    
     db = SessionLocal()
     try:
-        banner_ids = crud.get_whitelist(db)
+        banner_ids = crud.get_whitelist(db, user_id)
         return {"banners_whitelist": banner_ids}
     finally:
         db.close()
@@ -195,6 +206,8 @@ async def log_disabled_banners_to_db(
                 matched_rule = banner_data.get("matched_rule", "Правило не указано")
 
                 try:
+                    # Get user_id from environment
+                    user_id = int(os.environ.get('VK_ADS_USER_ID', 0)) or None
                     crud.log_disabled_banner(
                         db=db,
                         banner_data=banner_data,
@@ -204,7 +217,8 @@ async def log_disabled_banners_to_db(
                         date_to=date_to,
                         is_dry_run=is_dry_run,
                         disable_success=disable_success,
-                        reason=f"Сработало правило: {matched_rule}"
+                        reason=f"Сработало правило: {matched_rule}",
+                        user_id=user_id
                     )
                     logged_count += 1
                 except Exception as e:
@@ -247,6 +261,8 @@ async def save_account_stats_to_db(
             total_clicks = sum(b.get("clicks", 0) for b in over_limit + under_limit + no_activity)
             total_shows = sum(b.get("shows", 0) for b in over_limit + under_limit + no_activity)
 
+            # Get user_id from environment
+            user_id_stats = int(os.environ.get('VK_ADS_USER_ID', 0)) or None
             crud.save_account_stats(
                 db=db,
                 account_name=account_name,
@@ -261,7 +277,8 @@ async def save_account_stats_to_db(
                 total_shows=int(total_shows),
                 total_conversions=total_conversions,
                 lookback_days=lookback_days,
-                vk_account_id=vk_account_id
+                vk_account_id=vk_account_id,
+                user_id=user_id_stats
             )
             logger.info(f"📊 [{account_name}] Статистика сохранена в БД")
         except Exception as e:

@@ -1,5 +1,6 @@
 """
 CRUD operations for database models
+Multi-tenant architecture with user isolation
 """
 from typing import List, Optional
 from datetime import datetime
@@ -8,6 +9,8 @@ from sqlalchemy import desc, and_
 from utils.time_utils import get_moscow_time
 
 from .models import (
+    User,
+    UserSettings,
     Account,
     WhitelistBanner,
     BannerAction,
@@ -28,27 +31,206 @@ from .models import (
 )
 
 
+# ===== User Management =====
+
+def get_user_by_id(db: Session, user_id: int) -> Optional[User]:
+    """Get user by ID"""
+    return db.query(User).filter(User.id == user_id).first()
+
+
+def get_user_by_username(db: Session, username: str) -> Optional[User]:
+    """Get user by username"""
+    return db.query(User).filter(User.username == username).first()
+
+
+def get_user_by_email(db: Session, email: str) -> Optional[User]:
+    """Get user by email"""
+    return db.query(User).filter(User.email == email).first()
+
+
+def get_all_users(db: Session) -> List[User]:
+    """Get all users"""
+    return db.query(User).order_by(User.created_at.desc()).all()
+
+
+def create_user(
+    db: Session,
+    username: str,
+    password_hash: str,
+    email: Optional[str] = None,
+    is_superuser: bool = False
+) -> User:
+    """Create a new user"""
+    user = User(
+        username=username,
+        password_hash=password_hash,
+        email=email,
+        is_superuser=is_superuser,
+        is_active=True
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def update_user(
+    db: Session,
+    user_id: int,
+    **kwargs
+) -> Optional[User]:
+    """Update user fields"""
+    user = get_user_by_id(db, user_id)
+    if not user:
+        return None
+
+    for key, value in kwargs.items():
+        if hasattr(user, key):
+            setattr(user, key, value)
+
+    user.updated_at = get_moscow_time()
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def update_user_password(db: Session, user_id: int, password_hash: str) -> Optional[User]:
+    """Update user password"""
+    return update_user(db, user_id, password_hash=password_hash)
+
+
+def update_user_last_login(db: Session, user_id: int) -> Optional[User]:
+    """Update user last login time"""
+    user = get_user_by_id(db, user_id)
+    if not user:
+        return None
+
+    user.last_login = get_moscow_time()
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def delete_user(db: Session, user_id: int) -> bool:
+    """Delete user and all related data (cascade)"""
+    user = get_user_by_id(db, user_id)
+    if not user:
+        return False
+
+    db.delete(user)
+    db.commit()
+    return True
+
+
+# ===== User Settings (per-user key-value store) =====
+
+def get_user_setting(db: Session, user_id: int, key: str) -> Optional[dict]:
+    """Get user setting by key"""
+    setting = db.query(UserSettings).filter(
+        UserSettings.user_id == user_id,
+        UserSettings.key == key
+    ).first()
+    if setting:
+        return setting.value
+    return None
+
+
+def set_user_setting(
+    db: Session,
+    user_id: int,
+    key: str,
+    value: dict,
+    description: Optional[str] = None
+) -> UserSettings:
+    """Set or update user setting"""
+    setting = db.query(UserSettings).filter(
+        UserSettings.user_id == user_id,
+        UserSettings.key == key
+    ).first()
+
+    if setting:
+        setting.value = value
+        setting.updated_at = get_moscow_time()
+        if description:
+            setting.description = description
+    else:
+        setting = UserSettings(
+            user_id=user_id,
+            key=key,
+            value=value,
+            description=description
+        )
+        db.add(setting)
+
+    db.commit()
+    db.refresh(setting)
+    return setting
+
+
+def get_all_user_settings(db: Session, user_id: int) -> dict:
+    """Get all settings for a user as dict"""
+    settings = db.query(UserSettings).filter(UserSettings.user_id == user_id).all()
+    return {s.key: s.value for s in settings}
+
+
+def delete_user_setting(db: Session, user_id: int, key: str) -> bool:
+    """Delete user setting"""
+    setting = db.query(UserSettings).filter(
+        UserSettings.user_id == user_id,
+        UserSettings.key == key
+    ).first()
+    if not setting:
+        return False
+
+    db.delete(setting)
+    db.commit()
+    return True
+
+
 # ===== Accounts =====
 
-def get_accounts(db: Session) -> List[Account]:
-    """Get all accounts"""
-    return db.query(Account).all()
+def get_accounts(db: Session, user_id: Optional[int] = None) -> List[Account]:
+    """Get all accounts for a user (or all accounts if user_id is None)"""
+    if user_id is None:
+        return db.query(Account).all()
+    return db.query(Account).filter(Account.user_id == user_id).all()
 
 
-def get_account_by_id(db: Session, account_id: int) -> Optional[Account]:
-    """Get account by VK account ID"""
-    return db.query(Account).filter(Account.account_id == account_id).first()
+def get_account_by_id(db: Session, user_id: int, account_id: int) -> Optional[Account]:
+    """Get account by VK account ID for a user"""
+    return db.query(Account).filter(
+        Account.user_id == user_id,
+        Account.account_id == account_id
+    ).first()
+
+
+def get_account_by_db_id(db: Session, user_id: int, db_id: int) -> Optional[Account]:
+    """Get account by database ID for a user"""
+    return db.query(Account).filter(
+        Account.user_id == user_id,
+        Account.id == db_id
+    ).first()
+
+
+def get_account_by_name(db: Session, user_id: int, name: str) -> Optional[Account]:
+    """Get account by name for a user"""
+    return db.query(Account).filter(
+        Account.user_id == user_id,
+        Account.name == name
+    ).first()
 
 
 def create_account(
     db: Session,
+    user_id: int,
     account_id: int,
     name: str,
     api_token: str,
     client_id: int
 ) -> Account:
-    """Create new account"""
+    """Create new account for a user"""
     db_account = Account(
+        user_id=user_id,
         account_id=account_id,
         name=name,
         api_token=api_token,
@@ -62,13 +244,14 @@ def create_account(
 
 def update_account(
     db: Session,
+    user_id: int,
     account_id: int,
     name: Optional[str] = None,
     api_token: Optional[str] = None,
     client_id: Optional[int] = None
 ) -> Optional[Account]:
-    """Update account"""
-    account = get_account_by_id(db, account_id)
+    """Update account for a user"""
+    account = get_account_by_id(db, user_id, account_id)
     if not account:
         return None
 
@@ -85,15 +268,15 @@ def update_account(
     return account
 
 
-def delete_account(db: Session, account_id: int) -> bool:
-    """Delete account"""
-    account = get_account_by_id(db, account_id)
+def delete_account(db: Session, user_id: int, account_id: int) -> bool:
+    """Delete account for a user"""
+    account = get_account_by_id(db, user_id, account_id)
     if not account:
         return False
 
     # Сначала удаляем связанные записи LeadsTechCabinet
     db.query(LeadsTechCabinet).filter(LeadsTechCabinet.account_id == account.id).delete()
-    
+
     # Теперь удаляем сам аккаунт (остальные связи удалятся каскадно)
     db.delete(account)
     db.commit()
@@ -102,29 +285,35 @@ def delete_account(db: Session, account_id: int) -> bool:
 
 # ===== Whitelist =====
 
-def get_whitelist(db: Session) -> List[int]:
-    """Get all whitelisted banner IDs"""
-    banners = db.query(WhitelistBanner).all()
+def get_whitelist(db: Session, user_id: int) -> List[int]:
+    """Get all whitelisted banner IDs for a user"""
+    banners = db.query(WhitelistBanner).filter(WhitelistBanner.user_id == user_id).all()
     return [b.banner_id for b in banners]
 
 
-def add_to_whitelist(db: Session, banner_id: int, note: Optional[str] = None) -> WhitelistBanner:
-    """Add banner to whitelist"""
+def add_to_whitelist(db: Session, user_id: int, banner_id: int, note: Optional[str] = None) -> WhitelistBanner:
+    """Add banner to whitelist for a user"""
     # Check if already exists
-    existing = db.query(WhitelistBanner).filter(WhitelistBanner.banner_id == banner_id).first()
+    existing = db.query(WhitelistBanner).filter(
+        WhitelistBanner.user_id == user_id,
+        WhitelistBanner.banner_id == banner_id
+    ).first()
     if existing:
         return existing
 
-    db_banner = WhitelistBanner(banner_id=banner_id, note=note)
+    db_banner = WhitelistBanner(user_id=user_id, banner_id=banner_id, note=note)
     db.add(db_banner)
     db.commit()
     db.refresh(db_banner)
     return db_banner
 
 
-def remove_from_whitelist(db: Session, banner_id: int) -> bool:
-    """Remove banner from whitelist"""
-    banner = db.query(WhitelistBanner).filter(WhitelistBanner.banner_id == banner_id).first()
+def remove_from_whitelist(db: Session, user_id: int, banner_id: int) -> bool:
+    """Remove banner from whitelist for a user"""
+    banner = db.query(WhitelistBanner).filter(
+        WhitelistBanner.user_id == user_id,
+        WhitelistBanner.banner_id == banner_id
+    ).first()
     if not banner:
         return False
 
@@ -133,39 +322,45 @@ def remove_from_whitelist(db: Session, banner_id: int) -> bool:
     return True
 
 
-def is_whitelisted(db: Session, banner_id: int) -> bool:
-    """Check if banner is whitelisted"""
-    return db.query(WhitelistBanner).filter(WhitelistBanner.banner_id == banner_id).first() is not None
+def is_whitelisted(db: Session, user_id: int, banner_id: int) -> bool:
+    """Check if banner is whitelisted for a user"""
+    return db.query(WhitelistBanner).filter(
+        WhitelistBanner.user_id == user_id,
+        WhitelistBanner.banner_id == banner_id
+    ).first() is not None
 
 
-def replace_whitelist(db: Session, banner_ids: List[int]) -> List[int]:
-    """Replace entire whitelist"""
-    # Delete all existing
-    db.query(WhitelistBanner).delete()
+def replace_whitelist(db: Session, user_id: int, banner_ids: List[int]) -> List[int]:
+    """Replace entire whitelist for a user"""
+    # Delete all existing for this user
+    db.query(WhitelistBanner).filter(WhitelistBanner.user_id == user_id).delete()
 
     # Add new ones
     for banner_id in banner_ids:
-        db.add(WhitelistBanner(banner_id=banner_id))
+        db.add(WhitelistBanner(user_id=user_id, banner_id=banner_id))
 
     db.commit()
     return banner_ids
 
 
-def bulk_add_to_whitelist(db: Session, banner_ids: List[int]) -> dict:
-    """Add multiple banners to whitelist (without removing existing ones)"""
+def bulk_add_to_whitelist(db: Session, user_id: int, banner_ids: List[int]) -> dict:
+    """Add multiple banners to whitelist for a user (without removing existing ones)"""
     added_count = 0
     skipped_count = 0
-    
+
     for banner_id in banner_ids:
         # Check if already exists
-        existing = db.query(WhitelistBanner).filter(WhitelistBanner.banner_id == banner_id).first()
+        existing = db.query(WhitelistBanner).filter(
+            WhitelistBanner.user_id == user_id,
+            WhitelistBanner.banner_id == banner_id
+        ).first()
         if existing:
             skipped_count += 1
             continue
-        
-        db.add(WhitelistBanner(banner_id=banner_id))
+
+        db.add(WhitelistBanner(user_id=user_id, banner_id=banner_id))
         added_count += 1
-    
+
     db.commit()
     return {
         "added": added_count,
@@ -174,16 +369,19 @@ def bulk_add_to_whitelist(db: Session, banner_ids: List[int]) -> dict:
     }
 
 
-def bulk_remove_from_whitelist(db: Session, banner_ids: List[int]) -> dict:
-    """Remove multiple banners from whitelist"""
+def bulk_remove_from_whitelist(db: Session, user_id: int, banner_ids: List[int]) -> dict:
+    """Remove multiple banners from whitelist for a user"""
     removed_count = 0
-    
+
     for banner_id in banner_ids:
-        banner = db.query(WhitelistBanner).filter(WhitelistBanner.banner_id == banner_id).first()
+        banner = db.query(WhitelistBanner).filter(
+            WhitelistBanner.user_id == user_id,
+            WhitelistBanner.banner_id == banner_id
+        ).first()
         if banner:
             db.delete(banner)
             removed_count += 1
-    
+
     db.commit()
     return {
         "removed": removed_count,
@@ -197,6 +395,8 @@ def create_banner_action(
     db: Session,
     banner_id: int,
     action: str,  # 'disabled' or 'enabled'
+    # User
+    user_id: Optional[int] = None,
     # Account info
     account_name: Optional[str] = None,
     vk_account_id: Optional[int] = None,
@@ -230,14 +430,15 @@ def create_banner_action(
     is_dry_run: bool = False
 ) -> BannerAction:
     """Log a banner action (enable/disable) with full details"""
-    # Try to get account DB ID if vk_account_id provided
+    # Try to get account DB ID if vk_account_id and user_id provided
     account_db_id = None
-    if vk_account_id:
-        account = get_account_by_id(db, vk_account_id)
+    if vk_account_id and user_id:
+        account = get_account_by_id(db, user_id, vk_account_id)
         if account:
             account_db_id = account.id
 
     db_action = BannerAction(
+        user_id=user_id,
         banner_id=banner_id,
         banner_name=banner_name,
         ad_group_id=ad_group_id,
@@ -281,7 +482,8 @@ def log_disabled_banner(
     date_to: str,
     is_dry_run: bool = False,
     disable_success: bool = True,
-    reason: Optional[str] = None
+    reason: Optional[str] = None,
+    user_id: Optional[int] = None
 ) -> BannerAction:
     """
     Удобная функция для логирования отключённого баннера.
@@ -309,6 +511,7 @@ def log_disabled_banner(
         db=db,
         banner_id=banner_data.get("id"),
         action="disabled",
+        user_id=user_id,
         account_name=account_name,
         banner_name=banner_data.get("name"),
         ad_group_id=banner_data.get("ad_group_id"),
@@ -333,6 +536,7 @@ def log_disabled_banner(
 
 def get_banner_history(
     db: Session,
+    user_id: Optional[int] = None,
     banner_id: Optional[int] = None,
     vk_account_id: Optional[int] = None,
     action: Optional[str] = None,
@@ -344,6 +548,8 @@ def get_banner_history(
     """Get banner action history with filters, pagination and sorting"""
     query = db.query(BannerAction)
 
+    if user_id is not None:
+        query = query.filter(BannerAction.user_id == user_id)
     if banner_id is not None:
         query = query.filter(BannerAction.banner_id == banner_id)
     if vk_account_id is not None:
@@ -377,14 +583,15 @@ def get_banner_history(
 
 
 def get_disabled_banners(
-    db: Session, 
+    db: Session,
+    user_id: int = None,
     limit: int = 500, 
     offset: int = 0,
     sort_by: str = 'created_at',
     sort_order: str = 'desc'
 ) -> tuple[List[BannerAction], int]:
-    """Get recently disabled banners with sorting"""
-    return get_banner_history(db, action='disabled', limit=limit, offset=offset, sort_by=sort_by, sort_order=sort_order)
+    """Get recently disabled banners with sorting for a user"""
+    return get_banner_history(db, user_id=user_id, action='disabled', limit=limit, offset=offset, sort_by=sort_by, sort_order=sort_order)
 
 
 # ===== Active Banners =====
@@ -498,10 +705,15 @@ def set_setting(db: Session, key: str, value: dict, description: Optional[str] =
     return setting
 
 
-def get_all_settings(db: Session) -> dict:
-    """Get all settings as dict"""
-    settings = db.query(Settings).all()
-    return {s.key: s.value for s in settings}
+def get_all_settings(db: Session, user_id: int = None) -> dict:
+    """Get all settings as dict for user"""
+    if user_id:
+        # Use UserSettings for per-user settings
+        return get_all_user_settings(db, user_id)
+    else:
+        # Use global Settings
+        settings = db.query(Settings).all()
+        return {s.key: s.value for s in settings}
 
 
 def delete_setting(db: Session, key: str) -> bool:
@@ -531,7 +743,8 @@ def set_process_running(
     db: Session,
     name: str,
     pid: int,
-    script_path: Optional[str] = None
+    script_path: Optional[str] = None,
+    user_id: Optional[int] = None
 ) -> ProcessState:
     """Mark process as running with PID"""
     state = get_process_state(db, name)
@@ -545,13 +758,16 @@ def set_process_running(
         state.stopped_at = None
         state.last_error = None
         state.updated_at = now
+        if user_id:
+            state.user_id = user_id
     else:
         state = ProcessState(
             name=name,
             pid=pid,
             script_path=script_path,
             status='running',
-            started_at=now
+            started_at=now,
+            user_id=user_id
         )
         db.add(state)
 
@@ -616,10 +832,12 @@ def save_account_stats(
     total_conversions: int = 0,
     spent_limit: Optional[float] = None,
     lookback_days: Optional[int] = None,
-    vk_account_id: Optional[int] = None
+    vk_account_id: Optional[int] = None,
+    user_id: Optional[int] = None
 ) -> DailyAccountStats:
     """Save daily account statistics"""
     stats = DailyAccountStats(
+        user_id=user_id,
         account_name=account_name,
         vk_account_id=vk_account_id,
         stats_date=stats_date,
@@ -738,10 +956,12 @@ def create_or_update_leadstech_config(
     password: str,
     base_url: str = "https://api.leads.tech",
     lookback_days: int = 10,
-    banner_sub_field: str = "sub4"
+    banner_sub_field: str = "sub4",
+    user_id: int = None
 ) -> LeadsTechConfig:
-    """Create or update LeadsTech configuration"""
-    config = get_leadstech_config(db)
+    """Create or update LeadsTech configuration for user"""
+    # Find config for this user
+    config = db.query(LeadsTechConfig).filter(LeadsTechConfig.user_id == user_id).first() if user_id else get_leadstech_config(db)
 
     if config:
         config.login = login
@@ -752,6 +972,7 @@ def create_or_update_leadstech_config(
         config.updated_at = get_moscow_time()
     else:
         config = LeadsTechConfig(
+            user_id=user_id,
             login=login,
             password=password,
             base_url=base_url,
@@ -794,7 +1015,8 @@ def create_leadstech_cabinet(
     db: Session,
     account_id: int,
     leadstech_label: str,
-    enabled: bool = True
+    enabled: bool = True,
+    user_id: int = None
 ) -> LeadsTechCabinet:
     """Create LeadsTech cabinet mapping"""
     # Check if already exists
@@ -809,6 +1031,7 @@ def create_leadstech_cabinet(
         return existing
 
     cabinet = LeadsTechCabinet(
+        user_id=user_id,
         account_id=account_id,
         leadstech_label=leadstech_label,
         enabled=enabled
@@ -897,16 +1120,21 @@ def save_leadstech_analysis_result(
 
 def replace_leadstech_analysis_results(
     db: Session,
-    results: List[dict]
+    results: List[dict],
+    user_id: int = None
 ) -> int:
-    """Clear all existing results and save new ones"""
-    # Delete all existing results
-    db.query(LeadsTechAnalysisResult).delete()
+    """Clear all existing results for user and save new ones"""
+    # Delete existing results for this user
+    if user_id:
+        db.query(LeadsTechAnalysisResult).filter(LeadsTechAnalysisResult.user_id == user_id).delete()
+    else:
+        db.query(LeadsTechAnalysisResult).delete()
     
     # Add new results
     count = 0
     for r in results:
         result = LeadsTechAnalysisResult(
+            user_id=user_id,
             cabinet_name=r['cabinet_name'],
             leadstech_label=r['leadstech_label'],
             banner_id=r['banner_id'],
@@ -934,10 +1162,14 @@ def get_leadstech_analysis_results(
     limit: int = 500,
     offset: int = 0,
     sort_by: str = 'created_at',
-    sort_order: str = 'desc'
+    sort_order: str = 'desc',
+    user_id: int = None
 ) -> tuple[List[LeadsTechAnalysisResult], int]:
     """Get LeadsTech analysis results with pagination and sorting"""
     query = db.query(LeadsTechAnalysisResult)
+
+    if user_id:
+        query = query.filter(LeadsTechAnalysisResult.user_id == user_id)
 
     if cabinet_name:
         query = query.filter(LeadsTechAnalysisResult.cabinet_name == cabinet_name)
@@ -981,9 +1213,9 @@ def get_disabled_banners_account_names(db: Session) -> List[str]:
 
 # ===== Auto-Scaling =====
 
-def get_scaling_configs(db: Session) -> List[ScalingConfig]:
-    """Get all scaling configurations"""
-    return db.query(ScalingConfig).order_by(ScalingConfig.created_at.desc()).all()
+def get_scaling_configs(db: Session, user_id: int) -> List[ScalingConfig]:
+    """Get all scaling configurations for a user"""
+    return db.query(ScalingConfig).filter(ScalingConfig.user_id == user_id).order_by(ScalingConfig.created_at.desc()).all()
 
 
 def get_scaling_config_by_id(db: Session, config_id: int) -> Optional[ScalingConfig]:
@@ -1006,21 +1238,31 @@ def get_scaling_config_account_ids(db: Session, config_id: int) -> List[int]:
 
 def set_scaling_config_accounts(db: Session, config_id: int, account_ids: List[int]) -> None:
     """Set accounts for a scaling config (replaces existing links)"""
+    # Get config to retrieve user_id
+    config = get_scaling_config_by_id(db, config_id)
+    if not config:
+        return
+
     # Delete existing links
     db.query(ScalingConfigAccount).filter(
         ScalingConfigAccount.config_id == config_id
     ).delete()
-    
+
     # Create new links
     for account_id in account_ids:
-        link = ScalingConfigAccount(config_id=config_id, account_id=account_id)
+        link = ScalingConfigAccount(
+            user_id=config.user_id,
+            config_id=config_id,
+            account_id=account_id
+        )
         db.add(link)
-    
+
     db.commit()
 
 
 def create_scaling_config(
     db: Session,
+    user_id: int,
     name: str,
     schedule_time: str = "08:00",
     account_id: Optional[int] = None,
@@ -1033,6 +1275,7 @@ def create_scaling_config(
 ) -> ScalingConfig:
     """Create new scaling configuration"""
     config = ScalingConfig(
+        user_id=user_id,
         name=name,
         schedule_time=schedule_time,
         account_id=account_id,
@@ -1225,24 +1468,26 @@ def set_scaling_conditions(
 
 def get_scaling_logs(
     db: Session,
+    user_id: int,
     config_id: Optional[int] = None,
     limit: int = 100,
     offset: int = 0
 ) -> tuple[List[ScalingLog], int]:
     """Get scaling logs with pagination"""
-    query = db.query(ScalingLog)
-    
+    query = db.query(ScalingLog).filter(ScalingLog.user_id == user_id)
+
     if config_id:
         query = query.filter(ScalingLog.config_id == config_id)
-    
+
     total = query.count()
     items = query.order_by(ScalingLog.created_at.desc()).offset(offset).limit(limit).all()
-    
+
     return items, total
 
 
 def create_scaling_log(
     db: Session,
+    user_id: int,
     config_id: Optional[int],
     config_name: Optional[str],
     account_name: Optional[str],
@@ -1258,6 +1503,7 @@ def create_scaling_log(
 ) -> ScalingLog:
     """Create new scaling log entry"""
     log = ScalingLog(
+        user_id=user_id,
         config_id=config_id,
         config_name=config_name,
         account_name=account_name,
@@ -1350,13 +1596,15 @@ def get_disable_rule_by_id(db: Session, rule_id: int) -> Optional[DisableRule]:
 
 def create_disable_rule(
     db: Session,
+    user_id: int,
     name: str,
     description: Optional[str] = None,
     enabled: bool = True,
     priority: int = 0
 ) -> DisableRule:
-    """Create a new disable rule"""
+    """Create a new disable rule for user"""
     rule = DisableRule(
+        user_id=user_id,
         name=name,
         description=description,
         enabled=enabled,
@@ -1565,7 +1813,7 @@ def remove_rule_account(db: Session, rule_id: int, account_id: int) -> bool:
     return True
 
 
-def replace_rule_accounts(db: Session, rule_id: int, account_ids: List[int]) -> List[int]:
+def replace_rule_accounts(db: Session, rule_id: int, account_ids: List[int], user_id: int = None) -> List[int]:
     """Replace all account links for a rule"""
     # Delete existing links
     db.query(DisableRuleAccount).filter(
@@ -1574,7 +1822,7 @@ def replace_rule_accounts(db: Session, rule_id: int, account_ids: List[int]) -> 
     
     # Add new links
     for account_id in account_ids:
-        link = DisableRuleAccount(rule_id=rule_id, account_id=account_id)
+        link = DisableRuleAccount(rule_id=rule_id, account_id=account_id, user_id=user_id)
         db.add(link)
     
     db.commit()

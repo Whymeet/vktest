@@ -390,6 +390,18 @@ def run_analysis():
     setup_logging()
     logger.info("=== LeadsTech Analysis Starting ===")
 
+    # Get user_id from environment
+    user_id = os.environ.get("VK_ADS_USER_ID")
+    if not user_id:
+        logger.error("VK_ADS_USER_ID environment variable not set")
+        return
+    try:
+        user_id = int(user_id)
+    except ValueError:
+        logger.error("VK_ADS_USER_ID must be an integer")
+        return
+    logger.info("Running analysis for user_id=%d", user_id)
+
     db = SessionLocal()
 
     try:
@@ -516,8 +528,11 @@ def run_analysis():
 
         # 4. Clear old results and save new ones
         if all_results:
+            # Set user_id for all results
+            for result in all_results:
+                result['user_id'] = user_id
             logger.info("Clearing old results and saving %d new results...", len(all_results))
-            count = crud.replace_leadstech_analysis_results(db, all_results)
+            count = crud.replace_leadstech_analysis_results(db, all_results, user_id=user_id)
             logger.info("✅ Saved %d results to database (replaced all previous)", count)
         else:
             logger.warning("⚠️ No results to save")

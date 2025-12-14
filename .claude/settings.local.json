@@ -30,7 +30,10 @@
       "Bash(start \"\" \"C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe\")",
       "Bash(docker-compose logs:*)",
       "Bash(cat:*)",
-      "Bash(npx tsc --noEmit)"
+      "Bash(npx tsc --noEmit)",
+      "Bash(find:*)",
+      "Bash(python:*)",
+      "Bash(grep:*)"
     ],
     "deny": [],
     "ask": []

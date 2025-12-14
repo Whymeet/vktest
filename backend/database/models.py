@@ -1,9 +1,10 @@
 """
 Database models for VK Ads Manager
+Multi-tenant architecture with user isolation
 """
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import Column, Integer, BigInteger, String, Boolean, Float, DateTime, Text, ForeignKey, JSON
+from sqlalchemy import Column, Integer, BigInteger, String, Boolean, Float, DateTime, Text, ForeignKey, JSON, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from utils.time_utils import get_moscow_time
@@ -11,21 +12,89 @@ from utils.time_utils import get_moscow_time
 Base = declarative_base()
 
 
+# ===== User Models (Multi-tenancy) =====
+
+class User(Base):
+    """User model for multi-tenant architecture"""
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String(100), unique=True, nullable=False, index=True)
+    email = Column(String(255), unique=True, nullable=True)
+    password_hash = Column(String(255), nullable=False)
+
+    # Status
+    is_active = Column(Boolean, default=True)
+    is_superuser = Column(Boolean, default=False)  # Admin privileges
+
+    # Timestamps
+    created_at = Column(DateTime, default=get_moscow_time, nullable=False)
+    updated_at = Column(DateTime, default=get_moscow_time, onupdate=get_moscow_time, nullable=False)
+    last_login = Column(DateTime, nullable=True)
+
+    # Relationships - all user data
+    accounts = relationship("Account", back_populates="user", cascade="all, delete-orphan")
+    settings = relationship("UserSettings", back_populates="user", cascade="all, delete-orphan")
+    whitelist_banners = relationship("WhitelistBanner", back_populates="user", cascade="all, delete-orphan")
+    disable_rules = relationship("DisableRule", back_populates="user", cascade="all, delete-orphan")
+    scaling_configs = relationship("ScalingConfig", back_populates="user", cascade="all, delete-orphan")
+    process_states = relationship("ProcessState", back_populates="user", cascade="all, delete-orphan")
+    leadstech_config = relationship("LeadsTechConfig", back_populates="user", cascade="all, delete-orphan", uselist=False)
+
+    def __repr__(self):
+        return f"<User(id={self.id}, username='{self.username}')>"
+
+
+class UserSettings(Base):
+    """Per-user settings (key-value store) - replaces global Settings"""
+    __tablename__ = "user_settings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    key = Column(String(100), nullable=False, index=True)
+    value = Column(JSON, nullable=False)
+
+    # Description
+    description = Column(Text, nullable=True)
+
+    # Unique constraint: one key per user
+    __table_args__ = (
+        UniqueConstraint('user_id', 'key', name='uix_user_settings_key'),
+    )
+
+    # Timestamps
+    created_at = Column(DateTime, default=get_moscow_time, nullable=False)
+    updated_at = Column(DateTime, default=get_moscow_time, onupdate=get_moscow_time, nullable=False)
+
+    # Relationship
+    user = relationship("User", back_populates="settings")
+
+    def __repr__(self):
+        return f"<UserSettings(user_id={self.user_id}, key='{self.key}')>"
+
+
 class Account(Base):
     """VK Ads account model"""
     __tablename__ = "accounts"
 
     id = Column(Integer, primary_key=True, index=True)
-    account_id = Column(Integer, unique=True, nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    account_id = Column(Integer, nullable=False, index=True)  # VK account ID
     name = Column(String(255), nullable=False)
     api_token = Column(String(255), nullable=False)
     client_id = Column(Integer, nullable=False)
+
+    # Unique constraint: account_id unique per user
+    __table_args__ = (
+        UniqueConstraint('user_id', 'account_id', name='uix_user_account'),
+    )
 
     # Timestamps
     created_at = Column(DateTime, default=get_moscow_time, nullable=False)
     updated_at = Column(DateTime, default=get_moscow_time, onupdate=get_moscow_time, nullable=False)
 
     # Relationships
+    user = relationship("User", back_populates="accounts")
     banner_actions = relationship("BannerAction", back_populates="account", cascade="all, delete-orphan")
 
     def __repr__(self):
@@ -37,7 +106,13 @@ class WhitelistBanner(Base):
     __tablename__ = "whitelist_banners"
 
     id = Column(Integer, primary_key=True, index=True)
-    banner_id = Column(BigInteger, unique=True, nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    banner_id = Column(BigInteger, nullable=False, index=True)
+
+    # Unique constraint: banner_id unique per user
+    __table_args__ = (
+        UniqueConstraint('user_id', 'banner_id', name='uix_user_whitelist_banner'),
+    )
 
     # Optional metadata
     note = Column(Text, nullable=True)
@@ -45,6 +120,9 @@ class WhitelistBanner(Base):
 
     # Timestamps
     created_at = Column(DateTime, default=get_moscow_time, nullable=False)
+
+    # Relationship
+    user = relationship("User", back_populates="whitelist_banners")
 
     def __repr__(self):
         return f"<WhitelistBanner(banner_id={self.banner_id})>"
@@ -55,6 +133,7 @@ class BannerAction(Base):
     __tablename__ = "banner_actions"
 
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
 
     # Banner info
     banner_id = Column(BigInteger, nullable=False, index=True)
@@ -122,9 +201,15 @@ class ActiveBanner(Base):
     __tablename__ = "active_banners"
 
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
 
     # Banner info
-    banner_id = Column(BigInteger, unique=True, nullable=False, index=True)
+    banner_id = Column(BigInteger, nullable=False, index=True)
+
+    # Unique constraint: banner_id unique per user
+    __table_args__ = (
+        UniqueConstraint('user_id', 'banner_id', name='uix_user_active_banner'),
+    )
     banner_name = Column(String(500), nullable=True)
 
     # Account
@@ -174,6 +259,7 @@ class DailyAccountStats(Base):
     __tablename__ = "daily_account_stats"
 
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
 
     # Account info
     account_name = Column(String(255), nullable=False, index=True)
@@ -211,10 +297,16 @@ class ProcessState(Base):
     __tablename__ = "process_states"
 
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
 
     # Process identification
-    name = Column(String(50), unique=True, nullable=False, index=True)  # 'scheduler', 'analysis', 'bot'
+    name = Column(String(50), nullable=False, index=True)  # 'scheduler', 'analysis', 'bot'
     pid = Column(Integer, nullable=True)  # OS process ID
+
+    # Unique constraint: one process type per user
+    __table_args__ = (
+        UniqueConstraint('user_id', 'name', name='uix_user_process'),
+    )
 
     # Process info
     script_path = Column(String(500), nullable=True)
@@ -231,15 +323,19 @@ class ProcessState(Base):
     created_at = Column(DateTime, default=get_moscow_time, nullable=False)
     updated_at = Column(DateTime, default=get_moscow_time, onupdate=get_moscow_time, nullable=False)
 
+    # Relationship
+    user = relationship("User", back_populates="process_states")
+
     def __repr__(self):
         return f"<ProcessState(name='{self.name}', pid={self.pid}, status='{self.status}')>"
 
 
 class LeadsTechConfig(Base):
-    """LeadsTech global configuration"""
+    """LeadsTech per-user configuration"""
     __tablename__ = "leadstech_config"
 
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
 
     # LeadsTech API credentials
     login = Column(String(255), nullable=False)
@@ -254,6 +350,9 @@ class LeadsTechConfig(Base):
     created_at = Column(DateTime, default=get_moscow_time, nullable=False)
     updated_at = Column(DateTime, default=get_moscow_time, onupdate=get_moscow_time, nullable=False)
 
+    # Relationship
+    user = relationship("User", back_populates="leadstech_config")
+
     def __repr__(self):
         return f"<LeadsTechConfig(login='{self.login}', lookback_days={self.lookback_days})>"
 
@@ -263,6 +362,7 @@ class LeadsTechCabinet(Base):
     __tablename__ = "leadstech_cabinets"
 
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
 
     # Link to VK Ads account
     account_id = Column(Integer, ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False)
@@ -289,6 +389,7 @@ class LeadsTechAnalysisResult(Base):
     __tablename__ = "leadstech_analysis_results"
 
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
 
     # Cabinet info
     cabinet_name = Column(String(255), nullable=False, index=True)
@@ -328,6 +429,7 @@ class ScalingConfigAccount(Base):
     __tablename__ = "scaling_config_accounts"
 
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     config_id = Column(Integer, ForeignKey("scaling_configs.id", ondelete="CASCADE"), nullable=False)
     account_id = Column(Integer, ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False)
     created_at = Column(DateTime, default=get_moscow_time, nullable=False)
@@ -341,31 +443,33 @@ class ScalingConfig(Base):
     __tablename__ = "scaling_configs"
 
     id = Column(Integer, primary_key=True, index=True)
-    
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+
     # Basic settings
     name = Column(String(255), nullable=False)  # Name of this scaling config
     enabled = Column(Boolean, default=False)
-    
+
     # Schedule settings
     schedule_time = Column(String(10), nullable=False, default="08:00")  # HH:MM format (MSK)
-    
+
     # Target account (deprecated - use scaling_config_accounts for multiple accounts)
     account_id = Column(Integer, ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True)
-    
+
     # Scaling options
     new_budget = Column(Float, nullable=True)  # New budget for duplicated groups (NULL = same as original)
     auto_activate = Column(Boolean, default=False)  # Activate duplicated groups immediately
     lookback_days = Column(Integer, default=7)  # Period for statistics analysis
     duplicates_count = Column(Integer, default=1)  # Number of duplicates to create per group
-    
+
     # Timestamps
     created_at = Column(DateTime, default=get_moscow_time, nullable=False)
     updated_at = Column(DateTime, default=get_moscow_time, onupdate=get_moscow_time, nullable=False)
     last_run_at = Column(DateTime, nullable=True)  # Last execution time
-    
+
     # Relationships
+    user = relationship("User", back_populates="scaling_configs")
     conditions = relationship("ScalingCondition", back_populates="config", cascade="all, delete-orphan")
-    account = relationship("Account", backref="scaling_configs", foreign_keys=[account_id])
+    account = relationship("Account", backref="scaling_configs_legacy", foreign_keys=[account_id])
     config_accounts = relationship("ScalingConfigAccount", backref="config", cascade="all, delete-orphan")
 
     def __repr__(self):
@@ -404,11 +508,12 @@ class ScalingLog(Base):
     __tablename__ = "scaling_logs"
 
     id = Column(Integer, primary_key=True, index=True)
-    
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+
     # Reference to config
     config_id = Column(Integer, ForeignKey("scaling_configs.id", ondelete="SET NULL"), nullable=True)
     config_name = Column(String(255), nullable=True)
-    
+
     # Account info
     account_name = Column(String(255), nullable=True)
     
@@ -445,6 +550,7 @@ class DisableRuleAccount(Base):
     __tablename__ = "disable_rule_accounts"
 
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     rule_id = Column(Integer, ForeignKey("disable_rules.id", ondelete="CASCADE"), nullable=False)
     account_id = Column(Integer, ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False)
     created_at = Column(DateTime, default=get_moscow_time, nullable=False)
@@ -462,20 +568,22 @@ class DisableRule(Base):
     __tablename__ = "disable_rules"
 
     id = Column(Integer, primary_key=True, index=True)
-    
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+
     # Rule identification
     name = Column(String(255), nullable=False)  # Human-readable name
     description = Column(Text, nullable=True)  # Optional description
-    
+
     # Rule status
     enabled = Column(Boolean, default=True)
     priority = Column(Integer, default=0)  # Higher priority rules checked first
-    
+
     # Timestamps
     created_at = Column(DateTime, default=get_moscow_time, nullable=False)
     updated_at = Column(DateTime, default=get_moscow_time, onupdate=get_moscow_time, nullable=False)
-    
+
     # Relationships
+    user = relationship("User", back_populates="disable_rules")
     conditions = relationship("DisableRuleCondition", back_populates="rule", cascade="all, delete-orphan")
     rule_accounts = relationship("DisableRuleAccount", backref="rule", cascade="all, delete-orphan")
 
