@@ -12,7 +12,19 @@ from pydantic import BaseModel
 
 
 # Configuration from environment variables
-SECRET_KEY = os.getenv("JWT_SECRET_KEY", "vkads-secret-key-change-in-production-12345")
+# ВАЖНО: В production обязательно установите JWT_SECRET_KEY через переменную окружения!
+_default_key = "dev-only-key-not-for-production-use"
+SECRET_KEY = os.getenv("JWT_SECRET_KEY", _default_key)
+
+# Предупреждение при использовании дефолтного ключа
+if SECRET_KEY == _default_key:
+    import warnings
+    warnings.warn(
+        "WARNING: Using default JWT secret key! "
+        "Set JWT_SECRET_KEY environment variable for production.",
+        RuntimeWarning
+    )
+
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))  # 24 hours
 REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "7"))

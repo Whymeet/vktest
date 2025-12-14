@@ -9,15 +9,15 @@ services:
     ports:
       - "5432:5432"
     environment:
-      - POSTGRES_USER=vkads
-      - POSTGRES_PASSWORD=vkads_password
-      - POSTGRES_DB=vkads
+      - POSTGRES_USER=${POSTGRES_USER:-vkads}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-vkads_password}
+      - POSTGRES_DB=${POSTGRES_DB:-vkads}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
       - vkads-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U vkads"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vkads}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -32,12 +32,16 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      # Только логи - всё остальное в БД
       - ./logs:/app/logs
     environment:
       - PYTHONUNBUFFERED=1
       - IN_DOCKER=true
-      - DATABASE_URL=postgresql://vkads:vkads_password@postgres:5432/vkads
+      - DATABASE_URL=${DATABASE_URL:-postgresql://vkads:vkads_password@postgres:5432/vkads}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-}
+      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES:-1440}
+      - REFRESH_TOKEN_EXPIRE_DAYS=${REFRESH_TOKEN_EXPIRE_DAYS:-7}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:5173}
+      - RATE_LIMIT_PER_MINUTE=${RATE_LIMIT_PER_MINUTE:-60}
     depends_on:
       postgres:
         condition: service_healthy
@@ -48,6 +52,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 40s
 
   # Frontend (nginx + React)
   frontend:

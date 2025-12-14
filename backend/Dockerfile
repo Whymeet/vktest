@@ -2,9 +2,10 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Установка зависимостей системы
+# Установка зависимостей системы (gcc для сборки, curl для healthcheck)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Копирование и установка Python зависимостей
