@@ -1581,9 +1581,11 @@ def check_group_conditions(stats: dict, conditions: List[ScalingCondition]) -> b
 
 # ===== Disable Rules (правила автоотключения объявлений) =====
 
-def get_disable_rules(db: Session, enabled_only: bool = False) -> List[DisableRule]:
-    """Get all disable rules, optionally filtered by enabled status"""
+def get_disable_rules(db: Session, user_id: int = None, enabled_only: bool = False) -> List[DisableRule]:
+    """Get all disable rules, optionally filtered by user_id and enabled status"""
     query = db.query(DisableRule)
+    if user_id is not None:
+        query = query.filter(DisableRule.user_id == user_id)
     if enabled_only:
         query = query.filter(DisableRule.enabled == True)
     return query.order_by(desc(DisableRule.priority), DisableRule.id).all()

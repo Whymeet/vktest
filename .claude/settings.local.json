@@ -33,7 +33,8 @@
       "Bash(npx tsc --noEmit)",
       "Bash(find:*)",
       "Bash(python:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(docker-compose restart:*)"
     ],
     "deny": [],
     "ask": []
