@@ -53,11 +53,14 @@ export const isAuthenticated = (): boolean => {
   return getAccessToken() !== null;
 };
 
+// Базовый URL API берём из Vite env, в проде это '/api' за nginx
+const API_URL = import.meta.env.VITE_API_URL || '/api';
+
 /**
  * Login with username and password
  */
 export const login = async (username: string, password: string): Promise<AuthTokens> => {
-  const response = await fetch('http://localhost:8000/api/auth/login', {
+  const response = await fetch(`${API_URL}/auth/login`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -93,7 +96,7 @@ export const refreshAccessToken = async (): Promise<AuthTokens> => {
     throw new Error('No refresh token available');
   }
 
-  const response = await fetch('http://localhost:8000/api/auth/refresh', {
+  const response = await fetch(`${API_URL}/auth/refresh`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -122,7 +125,7 @@ export const getCurrentUser = async (): Promise<User> => {
     throw new Error('Not authenticated');
   }
 
-  const response = await fetch('http://localhost:8000/api/auth/me', {
+  const response = await fetch(`${API_URL}/auth/me`, {
     headers: {
       'Authorization': `Bearer ${token}`,
     },
@@ -157,7 +160,7 @@ export const changePassword = async (currentPassword: string, newPassword: strin
     throw new Error('Not authenticated');
   }
 
-  const response = await fetch('http://localhost:8000/api/auth/change-password', {
+  const response = await fetch(`${API_URL}/auth/change-password`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${token}`,
