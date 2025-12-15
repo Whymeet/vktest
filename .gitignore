@@ -148,3 +148,5 @@ vpr/
 # Миграционные скрипты (можно удалить после миграции)
 migrate_data_to_db.py
 DATABASE_MIGRATION.md
+
+.gitignore
