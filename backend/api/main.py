@@ -1318,10 +1318,11 @@ async def delete_leadstech_config(db: Session = Depends(get_db)):
 @app.get("/api/leadstech/cabinets")
 async def get_leadstech_cabinets(
     enabled_only: bool = False,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Get all LeadsTech cabinets with their linked accounts"""
-    cabinets = crud.get_leadstech_cabinets(db, enabled_only=enabled_only)
+    cabinets = crud.get_leadstech_cabinets(db, user_id=current_user.id, enabled_only=enabled_only)
 
     result = []
     for cab in cabinets:
@@ -1450,9 +1451,12 @@ async def get_leadstech_analysis_results(
 
 
 @app.get("/api/leadstech/analysis/cabinets")
-async def get_leadstech_analysis_cabinets(db: Session = Depends(get_db)):
+async def get_leadstech_analysis_cabinets(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """Get all unique cabinet names from analysis results for filter dropdown"""
-    cabinet_names = crud.get_leadstech_analysis_cabinet_names(db)
+    cabinet_names = crud.get_leadstech_analysis_cabinet_names(db, user_id=current_user.id)
     return {"cabinets": cabinet_names}
 
 
@@ -1467,8 +1471,8 @@ async def start_leadstech_analysis(
     if not config:
         raise HTTPException(status_code=400, detail="LeadsTech not configured. Please configure login/password first.")
 
-    # Check if there are enabled cabinets
-    cabinets = crud.get_leadstech_cabinets(db, enabled_only=True)
+    # Check if there are enabled cabinets for this user
+    cabinets = crud.get_leadstech_cabinets(db, user_id=current_user.id, enabled_only=True)
     if not cabinets:
         raise HTTPException(status_code=400, detail="No enabled LeadsTech cabinets. Please configure at least one cabinet.")
 

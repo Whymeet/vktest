@@ -411,10 +411,10 @@ def run_analysis():
             logger.error("LeadsTech not configured")
             return
 
-        # Get enabled cabinets
-        cabinets = crud.get_leadstech_cabinets(db, enabled_only=True)
+        # Get enabled cabinets for this user
+        cabinets = crud.get_leadstech_cabinets(db, user_id=user_id, enabled_only=True)
         if not cabinets:
-            logger.error("No enabled LeadsTech cabinets")
+            logger.error("No enabled LeadsTech cabinets for user %d", user_id)
             return
         
         logger.info("Found %d enabled cabinet(s)", len(cabinets))
