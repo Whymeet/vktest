@@ -35,11 +35,11 @@ echo "✅ Docker is installed"
 
 # Остановить старые контейнеры если есть
 echo "🛑 Stopping old containers..."
-docker-compose down 2>/dev/null || true
+docker compose down 2>/dev/null || true
 
 # Запуск контейнеров
 echo "🚀 Building and starting containers..."
-docker-compose up -d --build
+docker compose up -d --build
 
 # Ожидание запуска
 echo "⏳ Waiting for services to start..."
@@ -50,7 +50,7 @@ echo ""
 echo "=========================================="
 echo "Container Status:"
 echo "=========================================="
-docker-compose ps
+docker compose ps
 
 echo ""
 echo "=========================================="
@@ -63,6 +63,6 @@ echo "2. Setup DNS: kybyshka-dev.ru -> 45.129.2.158"
 echo "3. Get SSL: ./init-ssl.sh"
 echo ""
 echo "View logs:"
-echo "  docker-compose logs -f backend"
-echo "  docker-compose logs -f frontend"
+echo "  docker compose logs -f backend"
+echo "  docker compose logs -f frontend"
 echo ""

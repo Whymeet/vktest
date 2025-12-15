@@ -34,14 +34,14 @@ cp nginx/conf.d/default.conf.initial nginx/conf.d/default.conf
 
 # Step 2: Start nginx with HTTP only (frontend builds inside Docker)
 echo "[2/4] Starting nginx..."
-docker-compose -f docker-compose.prod.yml up -d nginx backend
+docker compose -f docker-compose.prod.yml up -d nginx backend
 
 # Wait for nginx to start
 sleep 5
 
 # Step 3: Get SSL certificate
 echo "[3/4] Obtaining SSL certificate..."
-docker-compose -f docker-compose.prod.yml run --rm certbot certonly \
+docker compose -f docker-compose.prod.yml run --rm certbot certonly \
     --webroot \
     --webroot-path=/var/www/certbot \
     --email $CERTBOT_EMAIL \
@@ -121,7 +121,7 @@ server {
 EOF
 
 # Restart nginx with SSL
-docker-compose -f docker-compose.prod.yml restart nginx
+docker compose -f docker-compose.prod.yml restart nginx
 
 echo "==================================="
 echo "SSL Certificate obtained successfully!"
