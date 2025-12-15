@@ -78,7 +78,7 @@ async def whitelist_profitable_banners(roi_threshold: float, enable_banners: boo
 
         # Enable banners
         if enable_banners:
-            cabinets = crud.get_leadstech_cabinets(db, enabled_only=True)
+            cabinets = crud.get_leadstech_cabinets(db, user_id=user_id, enabled_only=True)
             cabinet_tokens = {cab.leadstech_label: cab.account.api_token for cab in cabinets if cab.account}
             
             enabled_count = 0

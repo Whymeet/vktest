@@ -998,9 +998,9 @@ def delete_leadstech_config(db: Session) -> bool:
 
 # ===== LeadsTech Cabinets =====
 
-def get_leadstech_cabinets(db: Session, enabled_only: bool = False) -> List[LeadsTechCabinet]:
-    """Get all LeadsTech cabinets with their linked accounts"""
-    query = db.query(LeadsTechCabinet)
+def get_leadstech_cabinets(db: Session, user_id: int, enabled_only: bool = False) -> List[LeadsTechCabinet]:
+    """Get all LeadsTech cabinets with their linked accounts for a specific user"""
+    query = db.query(LeadsTechCabinet).filter(LeadsTechCabinet.user_id == user_id)
     if enabled_only:
         query = query.filter(LeadsTechCabinet.enabled == True)
     return query.all()
@@ -1197,9 +1197,11 @@ def get_leadstech_analysis_results(
     return items, total
 
 
-def get_leadstech_analysis_cabinet_names(db: Session) -> List[str]:
-    """Get all unique cabinet names from analysis results"""
-    results = db.query(LeadsTechAnalysisResult.cabinet_name).distinct().all()
+def get_leadstech_analysis_cabinet_names(db: Session, user_id: int) -> List[str]:
+    """Get all unique cabinet names from analysis results for a specific user"""
+    results = db.query(LeadsTechAnalysisResult.cabinet_name).filter(
+        LeadsTechAnalysisResult.user_id == user_id
+    ).distinct().all()
     return sorted([r[0] for r in results if r[0]])
 
 
