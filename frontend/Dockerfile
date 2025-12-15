@@ -12,6 +12,9 @@ RUN npm ci
 # Копирование исходников
 COPY . .
 
+# Set production API URL
+ENV VITE_API_URL=/api
+
 # Сборка
 RUN npm run build
 
