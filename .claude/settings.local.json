@@ -34,7 +34,8 @@
       "Bash(find:*)",
       "Bash(python:*)",
       "Bash(grep:*)",
-      "Bash(docker-compose restart:*)"
+      "Bash(docker-compose restart:*)",
+      "Bash(openssl rand:*)"
     ],
     "deny": [],
     "ask": []
