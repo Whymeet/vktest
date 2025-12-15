@@ -32,19 +32,15 @@ mkdir -p certbot/conf certbot/www
 echo "[1/4] Setting up initial nginx config..."
 cp nginx/conf.d/default.conf.initial nginx/conf.d/default.conf
 
-# Step 2: Build frontend first
-echo "[2/4] Building frontend..."
-cd frontend && npm ci && npm run build && cd ..
-
-# Step 3: Start nginx with HTTP only
-echo "[3/4] Starting nginx..."
-docker-compose -f docker-compose.prod.yml up -d nginx
+# Step 2: Start nginx with HTTP only (frontend builds inside Docker)
+echo "[2/4] Starting nginx..."
+docker-compose -f docker-compose.prod.yml up -d nginx backend
 
 # Wait for nginx to start
 sleep 5
 
-# Step 4: Get SSL certificate
-echo "[4/4] Obtaining SSL certificate..."
+# Step 3: Get SSL certificate
+echo "[3/4] Obtaining SSL certificate..."
 docker-compose -f docker-compose.prod.yml run --rm certbot certonly \
     --webroot \
     --webroot-path=/var/www/certbot \
@@ -53,8 +49,8 @@ docker-compose -f docker-compose.prod.yml run --rm certbot certonly \
     --no-eff-email \
     -d $DOMAIN
 
-# Step 5: Switch to SSL config
-echo "[5/5] Switching to SSL configuration..."
+# Step 4: Switch to SSL config
+echo "[4/4] Switching to SSL configuration..."
 
 # Create SSL config from template
 cat > nginx/conf.d/default.conf << EOF
