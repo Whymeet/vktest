@@ -170,6 +170,9 @@ async def get_banners_stats_day(
     """
     Получает статистику по объявлениям асинхронно.
     Возвращает словарь: { banner_id: {"spent": float, "clicks": float, "shows": float, "vk_goals": int} }
+
+    УСТАРЕВШИЙ метод - загружает всю статистику сразу.
+    Для потоковой обработки используйте get_banners_stats_batched().
     """
     if banner_ids:
         logger.info(
@@ -259,6 +262,154 @@ async def get_banners_stats_day(
 
     logger.info(f"✅ Итого агрегировано статистики для {len(aggregated_stats)} объявлений")
     return aggregated_stats
+
+
+async def get_banners_stats_batched(
+    session: aiohttp.ClientSession,
+    token: str,
+    base_url: str,
+    date_from: str,
+    date_to: str,
+    banner_ids: list,
+    banners_info: dict[int, dict],
+    metrics: str = "base",
+    batch_size: int = 50,
+    sleep_between_calls: float = 0.25,
+):
+    """
+    Асинхронный генератор: загружает статистику батчами и yield'ит каждый батч.
+
+    Преимущества:
+    - Равномерная нагрузка на сервер (нет пиков)
+    - Меньше памяти (не хранит все данные сразу)
+    - Можно начинать обработку сразу после первого батча
+
+    Args:
+        session: aiohttp сессия
+        token: API токен
+        base_url: базовый URL API
+        date_from: начало периода
+        date_to: конец периода
+        banner_ids: список ID баннеров
+        banners_info: словарь {banner_id: banner_data} с информацией о баннерах
+        metrics: тип метрик
+        batch_size: размер батча
+        sleep_between_calls: пауза между запросами
+
+    Yields:
+        dict с ключами:
+            - batch_num: номер батча
+            - total_batches: всего батчей
+            - banners: список баннеров с данными и статистикой
+            - stats_map: словарь {banner_id: stats} для этого батча
+    """
+    if not banner_ids:
+        logger.info("📊 Нет объявлений для загрузки статистики")
+        return
+
+    url = f"{base_url}/statistics/banners/day.json"
+    total = len(banner_ids)
+    num_batches = (total + batch_size - 1) // batch_size
+
+    logger.info(f"📊 Потоковая загрузка статистики за {date_from} — {date_to}")
+    logger.info(f"🔁 {total} объявлений → {num_batches} батчей по {batch_size}")
+
+    async def _fetch_batch_stats(ids_chunk: list) -> dict:
+        """Загружает статистику для одного батча"""
+        params = {
+            "date_from": date_from,
+            "date_to": date_to,
+            "metrics": metrics,
+            "id": ",".join(str(i) for i in ids_chunk)
+        }
+
+        resp = await _request_with_retries(
+            session,
+            "GET",
+            url,
+            headers=_headers(token),
+            params=params,
+            timeout=aiohttp.ClientTimeout(total=30),
+        )
+
+        if resp.status != 200:
+            text = await resp.text()
+            logger.error(f"❌ Ошибка HTTP {resp.status} при загрузке статистики: {text[:200]}")
+            raise RuntimeError(f"[stats day] HTTP {resp.status}: {text}")
+
+        payload = await resp.json()
+        items = payload.get("items", [])
+
+        # Преобразуем в словарь
+        stats_map = {}
+        for item in items:
+            bid = item.get("id")
+            if bid is None:
+                continue
+
+            total_stats = item.get("total", {}).get("base", {})
+            vk_data = total_stats.get("vk", {}) if isinstance(total_stats.get("vk"), dict) else {}
+            vk_goals = vk_data.get("goals", 0.0)
+
+            stats_map[bid] = {
+                "spent": float(total_stats.get("spent", 0.0)),
+                "clicks": float(total_stats.get("clicks", 0.0)),
+                "shows": float(total_stats.get("impressions", 0.0)),
+                "vk_goals": float(vk_goals)
+            }
+
+        return stats_map
+
+    processed_total = 0
+
+    for batch_num, start in enumerate(range(0, total, batch_size), 1):
+        chunk_ids = banner_ids[start:start + batch_size]
+
+        try:
+            # Загружаем статистику для батча
+            stats_map = await _fetch_batch_stats(chunk_ids)
+
+            # Собираем баннеры с их статистикой
+            banners_with_stats = []
+            for bid in chunk_ids:
+                banner_info = banners_info.get(bid, {})
+                stats = stats_map.get(bid, {"spent": 0.0, "clicks": 0.0, "shows": 0.0, "vk_goals": 0.0})
+
+                banners_with_stats.append({
+                    **banner_info,
+                    "id": bid,
+                    "spent": stats["spent"],
+                    "clicks": stats["clicks"],
+                    "shows": stats["shows"],
+                    "vk_goals": stats["vk_goals"],
+                })
+
+            processed_total += len(chunk_ids)
+
+            logger.info(
+                f"  ✓ Батч {batch_num}/{num_batches}: загружено {len(stats_map)} записей "
+                f"(всего: {processed_total}/{total})"
+            )
+
+            yield {
+                "batch_num": batch_num,
+                "total_batches": num_batches,
+                "banners": banners_with_stats,
+                "stats_map": stats_map,
+                "processed_total": processed_total,
+                "total_banners": total
+            }
+
+        except Exception as e:
+            logger.error(f"❌ Ошибка в батче {batch_num}: {e}")
+            # Продолжаем со следующим батчем
+            continue
+
+        # Пауза между батчами для соблюдения rate limit
+        if batch_num < num_batches:
+            await asyncio.sleep(sleep_between_calls)
+
+    logger.info(f"✅ Потоковая загрузка завершена: обработано {processed_total} объявлений")
 
 
 async def disable_banner(

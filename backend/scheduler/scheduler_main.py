@@ -14,6 +14,7 @@ import subprocess
 import logging
 import signal
 import random
+import json
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Dict, Optional
@@ -90,6 +91,10 @@ class VKAdsScheduler:
 
     def __init__(self):
         """Инициализация планировщика"""
+        # Получаем user_id и username до настройки логирования
+        self.user_id = os.environ.get('VK_ADS_USER_ID')
+        self.username = os.environ.get('VK_ADS_USERNAME', 'unknown')
+
         self.setup_logging()
         self.load_settings()
 
@@ -107,20 +112,39 @@ class VKAdsScheduler:
         signal.signal(signal.SIGINT, self.handle_signal)
 
         self.logger.info("🔧 VK Ads Scheduler инициализирован")
+        self.logger.info(f"👤 Пользователь: {self.username} (ID: {self.user_id})")
         self.logger.info(f"📂 Основной скрипт: {MAIN_SCRIPT}")
+
+        # Логируем старт планировщика в отдельный файл событий
+        self._log_scheduler_event("STARTED", "Планировщик запущен")
 
     def handle_signal(self, signum, frame):
         """Обработка сигналов для корректного завершения"""
-        self.logger.info(f"⚠️ Получен сигнал {signum}, завершение работы...")
+        signal_names = {
+            signal.SIGTERM: "SIGTERM",
+            signal.SIGINT: "SIGINT",
+            9: "SIGKILL"
+        }
+        signal_name = signal_names.get(signum, f"SIGNAL_{signum}")
+
+        self.logger.warning(f"⚠️ Получен сигнал {signal_name} ({signum}), завершение работы...")
+        self._log_scheduler_event("SIGNAL_RECEIVED", f"Получен сигнал {signal_name} ({signum})")
+
         self.should_stop = True
         if self.current_process:
+            self.logger.warning(f"🛑 Остановка текущего процесса (PID: {self.current_process.pid})")
             self.current_process.terminate()
+            self._log_scheduler_event("PROCESS_TERMINATED", f"Процесс {self.current_process.pid} остановлен")
 
     def setup_logging(self):
-        """Настройка логирования"""
+        """Настройка логирования с файлами по пользователям"""
         LOGS_DIR.mkdir(exist_ok=True)
 
-        self.logger = logging.getLogger("vk_ads_scheduler")
+        # Создаем директорию для логов планировщика
+        scheduler_logs_dir = LOGS_DIR / "scheduler"
+        scheduler_logs_dir.mkdir(exist_ok=True)
+
+        self.logger = logging.getLogger(f"vk_ads_scheduler_{self.username}")
         self.logger.setLevel(logging.DEBUG)
         self.logger.handlers.clear()
 
@@ -135,12 +159,22 @@ class VKAdsScheduler:
         console_handler.setFormatter(formatter)
         self.logger.addHandler(console_handler)
 
-        # Файловый хендлер
-        log_file = LOGS_DIR / "scheduler.log"
+        # Файловый хендлер для конкретного пользователя
+        timestamp = get_moscow_time().strftime("%Y%m%d")
+        log_file = scheduler_logs_dir / f"scheduler_{self.username}_{timestamp}.log"
         file_handler = logging.FileHandler(log_file, encoding='utf-8')
         file_handler.setLevel(logging.DEBUG)
         file_handler.setFormatter(formatter)
         self.logger.addHandler(file_handler)
+
+        # Хендлер для критических событий (общий файл для всех пользователей)
+        events_log = scheduler_logs_dir / "scheduler_events.log"
+        events_handler = logging.FileHandler(events_log, encoding='utf-8')
+        events_handler.setLevel(logging.ERROR)
+        events_handler.setFormatter(formatter)
+        self.logger.addHandler(events_handler)
+
+        self.logger.info(f"📝 Логирование в файл: {log_file}")
 
     def load_settings(self):
         """Загрузка настроек из БД для текущего пользователя"""
@@ -201,6 +235,29 @@ class VKAdsScheduler:
         self.load_settings()
         self.logger.debug("🔄 Настройки перезагружены")
 
+    def _log_scheduler_event(self, event_type: str, message: str, extra_data: dict = None):
+        """Логирование событий планировщика в отдельный файл для отслеживания"""
+        try:
+            scheduler_logs_dir = LOGS_DIR / "scheduler"
+            events_file = scheduler_logs_dir / f"events_{self.username}.jsonl"
+
+            event = {
+                "timestamp": get_moscow_time().isoformat(),
+                "username": self.username,
+                "user_id": self.user_id,
+                "event_type": event_type,
+                "message": message,
+                "run_count": self.run_count,
+            }
+            if extra_data:
+                event.update(extra_data)
+
+            with open(events_file, 'a', encoding='utf-8') as f:
+                f.write(json.dumps(event, ensure_ascii=False) + '\n')
+
+        except Exception as e:
+            self.logger.error(f"❌ Ошибка записи события: {e}")
+
     def is_quiet_hours(self):
         """Проверка тихих часов"""
         quiet_hours = self.settings.get("quiet_hours", {})
@@ -224,31 +281,41 @@ class VKAdsScheduler:
 
     def run_analysis(self, extra_lookback_days: int = 0, run_type: str = "основной"):
         """Запуск анализа объявлений
-        
+
         Args:
             extra_lookback_days: Дополнительные дни к lookback_days (передаётся через переменную окружения)
             run_type: Тип запуска для логирования
         """
         if not MAIN_SCRIPT.exists():
             self.logger.error(f"❌ Скрипт не найден: {MAIN_SCRIPT}")
+            self._log_scheduler_event("ANALYSIS_ERROR", "Скрипт не найден", {
+                "run_type": run_type,
+                "script_path": str(MAIN_SCRIPT)
+            })
             return False
 
         extra_info = f" (+{extra_lookback_days} дней)" if extra_lookback_days > 0 else "..."
-        
+
         self.logger.info(f"🚀 Запуск {run_type} анализа VK Ads Manager{extra_info}")
         self.logger.debug(f"   Команда: {sys.executable} {MAIN_SCRIPT}")
         self.logger.debug(f"   Рабочая директория: {PROJECT_ROOT}")
         if extra_lookback_days > 0:
             self.logger.debug(f"   VK_EXTRA_LOOKBACK_DAYS={extra_lookback_days}")
 
+        # Логируем начало анализа
+        self._log_scheduler_event("ANALYSIS_STARTED", f"Запуск {run_type} анализа", {
+            "run_type": run_type,
+            "extra_lookback_days": extra_lookback_days
+        })
+
         try:
             start_time = time.time()
-            
+
             # Подготавливаем окружение с дополнительными днями
             env = os.environ.copy()
             if extra_lookback_days > 0:
                 env["VK_EXTRA_LOOKBACK_DAYS"] = str(extra_lookback_days)
-            
+
             self.current_process = subprocess.Popen(
                 [sys.executable, str(MAIN_SCRIPT)],
                 stdout=subprocess.PIPE,
@@ -257,40 +324,145 @@ class VKAdsScheduler:
                 env=env
             )
 
+            process_pid = self.current_process.pid
+            self.logger.debug(f"   PID процесса: {process_pid}")
+
             # Ждем завершения
             stdout, stderr = self.current_process.communicate()
             return_code = self.current_process.returncode
             elapsed = time.time() - start_time
             self.current_process = None
 
+            # Сохраняем полные логи stdout и stderr в отдельные файлы
+            self._save_process_logs(run_type, stdout, stderr, return_code, elapsed, extra_lookback_days)
+
             if return_code == 0:
                 self.logger.info(f"✅ {run_type.capitalize()} анализ завершен успешно за {elapsed:.1f} сек")
+
                 # Логируем stdout если есть важные сообщения
                 if stdout:
                     stdout_text = stdout.decode('utf-8', errors='ignore')
-                    # Ищем ключевые строки в выводе
+                    important_lines = []
                     for line in stdout_text.split('\n'):
                         if any(kw in line for kw in ['УБЫТОЧНОЕ', 'отключено', 'disabled', 'ERROR', 'ОШИБКА']):
+                            important_lines.append(line.strip())
                             self.logger.info(f"   📋 {line.strip()}")
+
+                    # Логируем успех в события
+                    self._log_scheduler_event("ANALYSIS_SUCCESS", f"{run_type.capitalize()} анализ успешен", {
+                        "run_type": run_type,
+                        "elapsed_seconds": round(elapsed, 1),
+                        "return_code": return_code,
+                        "important_lines_count": len(important_lines),
+                        "pid": process_pid
+                    })
                 return True
             else:
+                # Определяем тип ошибки
+                error_type = self._determine_error_type(return_code, stderr)
+
                 self.logger.error(f"❌ {run_type.capitalize()} анализ завершен с ошибкой (код {return_code}) за {elapsed:.1f} сек")
+                self.logger.error(f"   Тип ошибки: {error_type}")
+
                 if stderr:
                     stderr_text = stderr.decode('utf-8', errors='ignore')
-                    self.logger.error(f"Stderr:\n{stderr_text[:2000]}")
+                    self.logger.error(f"Stderr (первые 2000 символов):\n{stderr_text[:2000]}")
                 if stdout:
                     stdout_text = stdout.decode('utf-8', errors='ignore')
                     # Показываем последние 50 строк stdout
                     lines = stdout_text.strip().split('\n')
-                    self.logger.error(f"Stdout (последние 50 строк):\n{'...'.join(lines[-50:])}")
+                    last_lines = lines[-50:] if len(lines) > 50 else lines
+                    self.logger.error(f"Stdout (последние {len(last_lines)} строк):\n" + '\n'.join(last_lines))
+
+                # Логируем ошибку в события
+                self._log_scheduler_event("ANALYSIS_FAILED", f"{run_type.capitalize()} анализ провален", {
+                    "run_type": run_type,
+                    "elapsed_seconds": round(elapsed, 1),
+                    "return_code": return_code,
+                    "error_type": error_type,
+                    "pid": process_pid,
+                    "stderr_preview": stderr.decode('utf-8', errors='ignore')[:500] if stderr else None
+                })
+
                 return False
 
         except Exception as e:
             self.logger.error(f"❌ Ошибка запуска {run_type} анализа: {e}")
             import traceback
-            self.logger.error(traceback.format_exc())
+            error_trace = traceback.format_exc()
+            self.logger.error(error_trace)
+
+            # Логируем критическую ошибку
+            self._log_scheduler_event("ANALYSIS_EXCEPTION", f"Исключение при запуске {run_type} анализа", {
+                "run_type": run_type,
+                "exception": str(e),
+                "traceback": error_trace[:1000]
+            })
+
             self.current_process = None
             return False
+
+    def _determine_error_type(self, return_code: int, stderr: bytes) -> str:
+        """Определение типа ошибки по коду возврата и stderr"""
+        if return_code == -9 or return_code == 137:
+            return "SIGKILL (вероятно OOM - нехватка памяти)"
+        elif return_code == -15 or return_code == 143:
+            return "SIGTERM (принудительное завершение)"
+        elif return_code == -2 or return_code == 130:
+            return "SIGINT (прерывание пользователем)"
+        elif stderr:
+            stderr_text = stderr.decode('utf-8', errors='ignore').lower()
+            if 'memory' in stderr_text or 'oom' in stderr_text:
+                return "Out of Memory (OOM)"
+            elif 'timeout' in stderr_text:
+                return "Timeout (превышено время выполнения)"
+            elif 'connection' in stderr_text:
+                return "Connection Error (ошибка подключения)"
+            elif 'api' in stderr_text:
+                return "API Error (ошибка API)"
+            elif 'database' in stderr_text or 'postgres' in stderr_text:
+                return "Database Error (ошибка БД)"
+
+        return f"Unknown Error (код {return_code})"
+
+    def _save_process_logs(self, run_type: str, stdout: bytes, stderr: bytes, return_code: int, elapsed: float, extra_days: int):
+        """Сохранение полных логов процесса в отдельные файлы"""
+        try:
+            # Создаем директорию для логов процессов
+            process_logs_dir = LOGS_DIR / "scheduler" / "process_logs" / self.username
+            process_logs_dir.mkdir(parents=True, exist_ok=True)
+
+            timestamp = get_moscow_time().strftime("%Y%m%d_%H%M%S")
+            extra_suffix = f"_plus{extra_days}d" if extra_days > 0 else ""
+            base_name = f"{timestamp}_{run_type}{extra_suffix}_rc{return_code}"
+
+            # Сохраняем stdout
+            if stdout:
+                stdout_file = process_logs_dir / f"{base_name}_stdout.log"
+                with open(stdout_file, 'wb') as f:
+                    f.write(stdout)
+                self.logger.debug(f"   📄 Stdout сохранён: {stdout_file}")
+
+            # Сохраняем stderr (если есть)
+            if stderr:
+                stderr_file = process_logs_dir / f"{base_name}_stderr.log"
+                with open(stderr_file, 'wb') as f:
+                    f.write(stderr)
+                self.logger.debug(f"   📄 Stderr сохранён: {stderr_file}")
+
+            # Сохраняем метаданные
+            meta_file = process_logs_dir / f"{base_name}_meta.txt"
+            with open(meta_file, 'w', encoding='utf-8') as f:
+                f.write(f"Пользователь: {self.username} (ID: {self.user_id})\n")
+                f.write(f"Тип анализа: {run_type}\n")
+                f.write(f"Дополнительные дни: {extra_days}\n")
+                f.write(f"Код возврата: {return_code}\n")
+                f.write(f"Время выполнения: {elapsed:.1f} сек\n")
+                f.write(f"Timestamp: {timestamp}\n")
+                f.write(f"Тип ошибки: {self._determine_error_type(return_code, stderr)}\n")
+
+        except Exception as e:
+            self.logger.error(f"❌ Ошибка сохранения логов процесса: {e}")
 
     def run_double_analysis(self):
         """Запуск двойного анализа: основной + со случайной прибавкой дней + автовключение (по интервалу)"""
@@ -789,6 +961,13 @@ class VKAdsScheduler:
         self.logger.info(f"   Макс. запусков: {max_runs if max_runs > 0 else 'без ограничений'}")
         self.logger.info("=" * 60)
 
+        # Логируем начало цикла
+        self._log_scheduler_event("SCHEDULER_LOOP_STARTED", "Основной цикл запущен", {
+            "interval_minutes": self.settings.get('interval_minutes', 60),
+            "max_runs": max_runs,
+            "start_delay_seconds": start_delay
+        })
+
         # Начальная задержка
         if start_delay > 0:
             self.logger.info(f"⏳ Начальная задержка {start_delay} сек...")
@@ -798,9 +977,20 @@ class VKAdsScheduler:
             # Перезагружаем настройки перед каждым запуском
             self.reload_settings()
 
+            # Проверяем, не отключен ли планировщик в настройках
+            if not self.settings.get("enabled", True):
+                self.logger.warning("⚠️ Планировщик отключен в настройках!")
+                self._log_scheduler_event("SCHEDULER_DISABLED", "Планировщик отключен пользователем в настройках", {
+                    "run_count": self.run_count,
+                    "settings": self.settings
+                })
+                self.should_stop = True
+                break
+
             # Проверяем лимит запусков
             if max_runs > 0 and self.run_count >= max_runs:
                 self.logger.info(f"🏁 Достигнут лимит запусков ({max_runs})")
+                self._log_scheduler_event("MAX_RUNS_REACHED", f"Достигнут лимит запусков: {max_runs}")
                 break
 
             # Проверяем тихие часы
@@ -822,6 +1012,8 @@ class VKAdsScheduler:
                 max_retries = self.settings.get("max_retries", 3)
                 retry_delay = self.settings.get("retry_delay_minutes", 5)
 
+                self._log_scheduler_event("RETRY_STARTED", f"Начало повторных попыток (макс: {max_retries})")
+
                 for retry in range(1, max_retries + 1):
                     if self.should_stop:
                         break
@@ -829,7 +1021,10 @@ class VKAdsScheduler:
                     time.sleep(retry_delay * 60)
 
                     if self.run_analysis():
+                        self._log_scheduler_event("RETRY_SUCCESS", f"Успешная повторная попытка {retry}/{max_retries}")
                         break
+                else:
+                    self._log_scheduler_event("RETRY_FAILED", f"Все {max_retries} повторных попыток провалены")
 
             # Вычисляем следующий запуск
             self.calculate_next_run()
@@ -839,7 +1034,18 @@ class VKAdsScheduler:
             self._sleep_until_next_run()
 
         self.is_running = False
-        self.logger.info("🛑 Планировщик остановлен")
+        self.logger.warning("🛑 Планировщик остановлен")
+
+        # Логируем остановку планировщика
+        stop_reason = "disabled_by_user" if not self.settings.get("enabled", True) else (
+            "max_runs_reached" if max_runs > 0 and self.run_count >= max_runs else
+            "signal_received" if self.should_stop else "unknown"
+        )
+        self._log_scheduler_event("SCHEDULER_STOPPED", f"Планировщик остановлен. Причина: {stop_reason}", {
+            "stop_reason": stop_reason,
+            "total_runs": self.run_count,
+            "was_forced": self.should_stop
+        })
 
     def _sleep_until_next_run(self):
         """Ожидание до следующего запуска с проверкой should_stop"""
