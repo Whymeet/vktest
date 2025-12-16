@@ -977,15 +977,9 @@ class VKAdsScheduler:
             # Перезагружаем настройки перед каждым запуском
             self.reload_settings()
 
-            # Проверяем, не отключен ли планировщик в настройках
-            if not self.settings.get("enabled", True):
-                self.logger.warning("⚠️ Планировщик отключен в настройках!")
-                self._log_scheduler_event("SCHEDULER_DISABLED", "Планировщик отключен пользователем в настройках", {
-                    "run_count": self.run_count,
-                    "settings": self.settings
-                })
-                self.should_stop = True
-                break
+            # Примечание: проверка settings.get("enabled") убрана
+            # Теперь планировщик работает если он был запущен вручную,
+            # независимо от настройки "enabled" в БД
 
             # Проверяем лимит запусков
             if max_runs > 0 and self.run_count >= max_runs:
