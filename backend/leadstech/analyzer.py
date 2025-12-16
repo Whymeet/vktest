@@ -405,10 +405,10 @@ def run_analysis():
     db = SessionLocal()
 
     try:
-        # Get LeadsTech config
-        lt_config = crud.get_leadstech_config(db)
+        # Get LeadsTech config for this user
+        lt_config = crud.get_leadstech_config(db, user_id=user_id)
         if not lt_config:
-            logger.error("LeadsTech not configured")
+            logger.error("LeadsTech not configured for user %d", user_id)
             return
 
         # Get enabled cabinets for this user

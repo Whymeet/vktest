@@ -1259,9 +1259,12 @@ async def get_log_content(log_type: str, filename: str, tail: int = 500):
 # === LeadsTech Config ===
 
 @app.get("/api/leadstech/config")
-async def get_leadstech_config(db: Session = Depends(get_db)):
+async def get_leadstech_config(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """Get LeadsTech configuration"""
-    config = crud.get_leadstech_config(db)
+    config = crud.get_leadstech_config(db, user_id=current_user.id)
     if not config:
         return {"configured": False}
 
@@ -1306,9 +1309,12 @@ async def update_leadstech_config(
 
 
 @app.delete("/api/leadstech/config")
-async def delete_leadstech_config(db: Session = Depends(get_db)):
+async def delete_leadstech_config(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """Delete LeadsTech configuration"""
-    if crud.delete_leadstech_config(db):
+    if crud.delete_leadstech_config(db, user_id=current_user.id):
         return {"message": "LeadsTech configuration deleted"}
     raise HTTPException(status_code=404, detail="LeadsTech configuration not found")
 

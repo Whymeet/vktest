@@ -945,9 +945,12 @@ def get_account_stats_summary(db: Session, days: int = 7) -> dict:
 
 # ===== LeadsTech Config =====
 
-def get_leadstech_config(db: Session) -> Optional[LeadsTechConfig]:
-    """Get LeadsTech configuration (singleton)"""
-    return db.query(LeadsTechConfig).first()
+def get_leadstech_config(db: Session, user_id: int = None) -> Optional[LeadsTechConfig]:
+    """Get LeadsTech configuration for user"""
+    if user_id is None:
+        # Fallback: return first config (for backwards compatibility)
+        return db.query(LeadsTechConfig).first()
+    return db.query(LeadsTechConfig).filter(LeadsTechConfig.user_id == user_id).first()
 
 
 def create_or_update_leadstech_config(
@@ -986,9 +989,9 @@ def create_or_update_leadstech_config(
     return config
 
 
-def delete_leadstech_config(db: Session) -> bool:
-    """Delete LeadsTech configuration"""
-    config = get_leadstech_config(db)
+def delete_leadstech_config(db: Session, user_id: int = None) -> bool:
+    """Delete LeadsTech configuration for user"""
+    config = get_leadstech_config(db, user_id=user_id)
     if not config:
         return False
     db.delete(config)
