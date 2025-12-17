@@ -15,6 +15,8 @@ import {
   Save,
   Target,
   BarChart3,
+  AlertTriangle,
+  Timer,
 } from 'lucide-react';
 import {
   getAccounts,
@@ -52,6 +54,49 @@ const OPERATORS = [
   { value: '<=', label: 'меньше или равно' },
   { value: '==', label: 'равно' },
 ];
+
+// Error parsing helper
+function parseErrorMessage(error: string): { type: 'rate_limit' | 'timeout' | 'network' | 'api' | 'unknown'; message: string; suggestion: string } {
+  const lowerError = error.toLowerCase();
+
+  if (lowerError.includes('429') || lowerError.includes('too many') || lowerError.includes('rate limit') || lowerError.includes('лимит')) {
+    return {
+      type: 'rate_limit',
+      message: 'Превышен лимит запросов к VK API',
+      suggestion: 'Подождите 1-2 минуты и попробуйте снова с меньшим количеством групп'
+    };
+  }
+
+  if (lowerError.includes('timeout') || lowerError.includes('timed out') || lowerError.includes('таймаут')) {
+    return {
+      type: 'timeout',
+      message: 'Превышено время ожидания ответа от VK API',
+      suggestion: 'VK API не ответил вовремя. Попробуйте позже или уменьшите количество дублей'
+    };
+  }
+
+  if (lowerError.includes('network') || lowerError.includes('сетевая') || lowerError.includes('connection') || lowerError.includes('econnrefused')) {
+    return {
+      type: 'network',
+      message: 'Ошибка сетевого подключения',
+      suggestion: 'Проверьте интернет-соединение и попробуйте снова'
+    };
+  }
+
+  if (lowerError.includes('500') || lowerError.includes('502') || lowerError.includes('503') || lowerError.includes('504')) {
+    return {
+      type: 'api',
+      message: 'Временная ошибка VK API',
+      suggestion: 'VK API временно недоступен. Попробуйте через несколько минут'
+    };
+  }
+
+  return {
+    type: 'unknown',
+    message: error.length > 150 ? error.substring(0, 150) + '...' : error,
+    suggestion: 'Попробуйте повторить операцию позже'
+  };
+}
 
 // Condition Editor Component
 function ConditionEditor({
@@ -348,10 +393,10 @@ function ConfigFormModal({
             <input
               type="number"
               value={duplicatesCount}
-              onChange={(e) => setDuplicatesCount(Math.max(1, Math.min(10, parseInt(e.target.value) || 1)))}
+              onChange={(e) => setDuplicatesCount(Math.max(1, Math.min(100, parseInt(e.target.value) || 1)))}
               className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white"
               min="1"
-              max="10"
+              max="100"
             />
           </div>
         </div>
@@ -514,13 +559,13 @@ function ManualDuplicateModal({
                 <input
                   type="number"
                   value={duplicatesCount}
-                  onChange={(e) => setDuplicatesCount(Math.max(1, Math.min(10, parseInt(e.target.value) || 1)))}
+                  onChange={(e) => setDuplicatesCount(Math.max(1, Math.min(100, parseInt(e.target.value) || 1)))}
                   className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white"
                   min="1"
-                  max="10"
+                  max="100"
                   disabled={isProcessing}
                 />
-                <p className="text-xs text-slate-500 mt-1">От 1 до 10</p>
+                <p className="text-xs text-slate-500 mt-1">От 1 до 100</p>
               </div>
 
               <div>
@@ -547,13 +592,34 @@ function ManualDuplicateModal({
 
             {/* Summary */}
             {groupIds.length > 0 && (
-              <div className="p-3 bg-slate-800 rounded-lg border border-slate-700">
+              <div className="p-3 bg-slate-800 rounded-lg border border-slate-700 space-y-2">
                 <p className="text-sm text-slate-300">
                   Будет создано: <span className="text-white font-medium">{totalOperations}</span> копий
                   {groupIds.length > 1 && (
                     <span className="text-slate-400"> ({groupIds.length} групп × {duplicatesCount} дублей)</span>
                   )}
                 </p>
+
+                {/* Warning for large operations */}
+                {totalOperations > 20 && (
+                  <div className={`flex items-start gap-2 p-2 rounded ${
+                    totalOperations > 50 ? 'bg-orange-900/30 border border-orange-700' : 'bg-yellow-900/20 border border-yellow-800'
+                  }`}>
+                    <AlertTriangle className={`w-4 h-4 mt-0.5 flex-shrink-0 ${
+                      totalOperations > 50 ? 'text-orange-400' : 'text-yellow-400'
+                    }`} />
+                    <div className="text-xs">
+                      <p className={totalOperations > 50 ? 'text-orange-300' : 'text-yellow-300'}>
+                        {totalOperations > 50
+                          ? 'Большое количество операций. Возможны задержки из-за лимитов VK API.'
+                          : 'Операция может занять некоторое время.'}
+                      </p>
+                      <p className="text-slate-400 mt-0.5">
+                        Примерное время: {Math.ceil(totalOperations * 0.5)} - {Math.ceil(totalOperations * 2)} сек
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </>
@@ -561,19 +627,41 @@ function ManualDuplicateModal({
 
         {/* Processing Indicator */}
         {isProcessing && (
-          <div className="p-4 bg-blue-900/30 border border-blue-700 rounded-lg">
-            <div className="flex items-center gap-3 mb-3">
+          <div className="p-4 bg-blue-900/30 border border-blue-700 rounded-lg space-y-3">
+            <div className="flex items-center gap-3">
               <RefreshCw className="w-5 h-5 text-blue-400 animate-spin" />
               <span className="text-blue-400 font-medium">Создание дублей...</span>
             </div>
-            <div className="w-full bg-slate-700 rounded-full h-2">
-              <div 
-                className="bg-blue-500 h-2 rounded-full transition-all duration-300"
-                style={{ width: '100%' }}
-              />
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs text-slate-400">
+                <span>Обработка {totalOperations} операций</span>
+                <span>~{Math.ceil(totalOperations * 0.5)} - {Math.ceil(totalOperations * 2)} сек</span>
+              </div>
+              <div className="w-full bg-slate-700 rounded-full h-2 overflow-hidden">
+                <div
+                  className="bg-blue-500 h-2 rounded-full animate-pulse"
+                  style={{
+                    width: '100%',
+                    animation: 'pulse 1.5s ease-in-out infinite'
+                  }}
+                />
+              </div>
             </div>
-            <p className="text-xs text-slate-400 mt-2">
-              Пожалуйста, подождите. Операция может занять несколько минут.
+
+            <div className="p-2 bg-slate-800/50 rounded text-xs text-slate-400 space-y-1">
+              <p className="flex items-center gap-2">
+                <Timer className="w-3 h-3" />
+                <span>VK API имеет ограничения на количество запросов в минуту</span>
+              </p>
+              <p className="flex items-center gap-2">
+                <RefreshCw className="w-3 h-3" />
+                <span>При лимитах система автоматически делает паузу и повторяет запрос</span>
+              </p>
+            </div>
+
+            <p className="text-xs text-slate-500">
+              Не закрывайте это окно до завершения операции
             </p>
           </div>
         )}
@@ -603,21 +691,59 @@ function ManualDuplicateModal({
             )}
             
             {result.errors?.length > 0 && (
-              <div className="p-3 bg-red-900/30 border border-red-700 rounded">
-                <div className="flex items-center gap-2 text-red-400 mb-2">
+              <div className="p-3 bg-red-900/30 border border-red-700 rounded space-y-3">
+                <div className="flex items-center gap-2 text-red-400">
                   <XCircle className="w-4 h-4" />
                   <span className="font-medium">Ошибки: {result.errors.length}</span>
                 </div>
-                <div className="max-h-32 overflow-y-auto space-y-1">
-                  {result.errors.slice(0, 5).map((e: any, i: number) => (
-                    <p key={i} className="text-xs text-red-300">
-                      ID {e.original_group_id}: {e.error}
-                    </p>
-                  ))}
-                  {result.errors.length > 5 && (
-                    <p className="text-xs text-slate-400">...и ещё {result.errors.length - 5}</p>
-                  )}
-                </div>
+
+                {/* Group errors by type */}
+                {(() => {
+                  const errorsByType = result.errors.reduce((acc: any, e: any) => {
+                    const parsed = parseErrorMessage(e.error || 'Unknown error');
+                    if (!acc[parsed.type]) {
+                      acc[parsed.type] = { ...parsed, count: 0, items: [] };
+                    }
+                    acc[parsed.type].count++;
+                    acc[parsed.type].items.push(e);
+                    return acc;
+                  }, {});
+
+                  return Object.entries(errorsByType).map(([type, data]: [string, any]) => (
+                    <div key={type} className={`p-2 rounded ${
+                      type === 'rate_limit' ? 'bg-orange-900/30 border border-orange-700' :
+                      type === 'timeout' ? 'bg-yellow-900/30 border border-yellow-700' :
+                      type === 'network' ? 'bg-purple-900/30 border border-purple-700' :
+                      'bg-red-900/20 border border-red-800'
+                    }`}>
+                      <div className="flex items-center gap-2 mb-1">
+                        {type === 'rate_limit' && <Timer className="w-4 h-4 text-orange-400" />}
+                        {type === 'timeout' && <Clock className="w-4 h-4 text-yellow-400" />}
+                        {type === 'network' && <AlertTriangle className="w-4 h-4 text-purple-400" />}
+                        {(type === 'api' || type === 'unknown') && <XCircle className="w-4 h-4 text-red-400" />}
+                        <span className={`text-sm font-medium ${
+                          type === 'rate_limit' ? 'text-orange-300' :
+                          type === 'timeout' ? 'text-yellow-300' :
+                          type === 'network' ? 'text-purple-300' :
+                          'text-red-300'
+                        }`}>
+                          {data.message} ({data.count})
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-400 mb-2">{data.suggestion}</p>
+                      <div className="max-h-20 overflow-y-auto space-y-0.5">
+                        {data.items.slice(0, 3).map((e: any, i: number) => (
+                          <p key={i} className="text-xs text-slate-400">
+                            ID {e.original_group_id}{e.copy_number ? ` (копия ${e.copy_number})` : ''}
+                          </p>
+                        ))}
+                        {data.items.length > 3 && (
+                          <p className="text-xs text-slate-500">...и ещё {data.items.length - 3}</p>
+                        )}
+                      </div>
+                    </div>
+                  ));
+                })()}
               </div>
             )}
           </div>
@@ -948,11 +1074,23 @@ export function Scaling() {
                     </td>
                     <td className="px-4 py-3 text-slate-300">{log.config_name || '—'}</td>
                     <td className="px-4 py-3 text-slate-300">{log.account_name || '—'}</td>
-                    <td className="px-4 py-3 text-white">
-                      {log.original_group_name || log.original_group_id}
+                    <td className="px-4 py-3">
+                      <div>
+                        <span className="text-white">{log.original_group_name || 'Без названия'}</span>
+                        {log.original_group_id && (
+                          <span className="block text-xs text-slate-400 font-mono">ID: {log.original_group_id}</span>
+                        )}
+                      </div>
                     </td>
-                    <td className="px-4 py-3 text-white">
-                      {log.new_group_name || log.new_group_id || '—'}
+                    <td className="px-4 py-3">
+                      {log.new_group_id ? (
+                        <div>
+                          <span className="text-white">{log.new_group_name || 'Без названия'}</span>
+                          <span className="block text-xs text-slate-400 font-mono">ID: {log.new_group_id}</span>
+                        </div>
+                      ) : (
+                        <span className="text-slate-500">—</span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-center text-slate-300">
                       {log.duplicated_banners} / {log.total_banners}
