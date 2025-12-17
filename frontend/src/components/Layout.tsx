@@ -15,6 +15,7 @@ import {
   User as UserIcon,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
+import { SchedulerStatusIndicator } from './SchedulerStatusIndicator';
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
@@ -35,7 +36,7 @@ export function Layout() {
   return (
     <div className="flex min-h-screen">
       {/* Sidebar */}
-      <aside className="w-64 bg-slate-800 border-r border-slate-700 flex flex-col">
+      <aside className="w-64 bg-slate-800 border-r border-slate-700 flex flex-col fixed h-screen">
         {/* Logo */}
         <div className="p-6 border-b border-slate-700">
           <div className="flex items-center gap-3">
@@ -50,7 +51,7 @@ export function Layout() {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 p-4">
+        <nav className="flex-1 p-4 overflow-y-auto">
           <ul className="space-y-1">
             {navItems.map((item) => (
               <li key={item.to}>
@@ -67,6 +68,9 @@ export function Layout() {
             ))}
           </ul>
         </nav>
+
+        {/* Scheduler Status */}
+        <SchedulerStatusIndicator />
 
         {/* User Info & Logout */}
         <div className="p-4 border-t border-slate-700">
@@ -110,7 +114,7 @@ export function Layout() {
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1 overflow-auto ml-64">
         <div className="p-8">
           <Outlet />
         </div>
