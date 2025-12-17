@@ -19,7 +19,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from utils.vk_api_async import (
     get_banners_active,
     get_banners_stats_day,
+    get_banners_stats_batched,
     disable_banners_batch,
+    disable_banner,
     trigger_statistics_refresh,
 )
 
@@ -311,7 +313,20 @@ async def analyze_account(
     access_token: str,
     account_config: dict,
 ) -> dict | None:
-    """Анализирует один кабинет VK Ads асинхронно"""
+    """
+    Анализирует один кабинет VK Ads асинхронно.
+
+    ПОТОКОВАЯ ОБРАБОТКА:
+    - Загружаем список активных баннеров
+    - Батчами по 50 загружаем статистику
+    - Сразу анализируем и отключаем убыточные
+    - Переходим к следующему батчу
+
+    Преимущества:
+    - Равномерная нагрузка на сервер (нет пиков)
+    - Быстрее начинается реальная работа
+    - Меньше памяти (не хранит все данные сразу)
+    """
 
     logger.info("=" * 100)
     logger.info(f"📊 НАЧИНАЕМ АНАЛИЗ КАБИНЕТА: {account_name}")
@@ -381,115 +396,178 @@ async def analyze_account(
 
         if len(banners) == 0:
             logger.warning(f"⚠️ [{account_name}] Не найдено активных объявлений!")
+            return {
+                "account_name": account_name,
+                "over_limit": [],
+                "under_limit": [],
+                "no_activity": [],
+                "total_spent": 0.0,
+                "total_vk_goals": 0,
+                "rules_count": len(account_rules),
+                "disable_results": None,
+                "date_from": date_from,
+                "date_to": date_to
+            }
 
-        # Извлекаем ID активных объявлений
-        banner_ids = [b.get("id") for b in banners if b.get("id")]
+        # Подготовка: создаём словарь информации о баннерах
+        banner_ids = []
+        banners_info = {}
+        for b in banners:
+            bid = b.get("id")
+            if bid:
+                banner_ids.append(bid)
+                # Извлекаем delivery статус
+                delivery = b.get("delivery")
+                if isinstance(delivery, dict):
+                    delivery_status = delivery.get("status", "N/A")
+                elif isinstance(delivery, str):
+                    delivery_status = delivery
+                else:
+                    delivery_status = "N/A"
 
-        # Загружаем статистику параллельно
-        stats_by_bid = await get_banners_stats_day(
-            session, access_token, BASE_URL, date_from, date_to,
-            banner_ids=banner_ids, metrics="base",
-            sleep_between_calls=SLEEP_BETWEEN_CALLS
-        )
+                banners_info[bid] = {
+                    "name": b.get("name", "Unknown"),
+                    "status": b.get("status", "N/A"),
+                    "ad_group_id": b.get("ad_group_id", "N/A"),
+                    "moderation_status": b.get("moderation_status", "N/A"),
+                    "delivery": delivery_status,
+                }
 
         # Подготовка белого списка
         whitelist_set = _prepare_whitelist_set()
 
         # Анализируем объявления
-        logger.info(f"📊 АНАЛИЗ РАСХОДОВ ПО АКТИВНЫМ ОБЪЯВЛЕНИЯМ КАБИНЕТА: {account_name}")
+        logger.info(f"📊 ПОТОКОВЫЙ АНАЛИЗ КАБИНЕТА: {account_name}")
         logger.info("=" * 80)
 
+        # Аккумуляторы для результатов
         over_limit = []
         under_limit = []
         no_activity = []
         whitelisted = []
+        all_disable_results = []
 
-        for b in banners:
-            bid = b.get("id")
-            name = b.get("name", "Unknown")
-            status = b.get("status", "N/A")
-            ad_group_id = b.get("ad_group_id", "N/A")
-            moderation_status = b.get("moderation_status", "N/A")
+        # ========== ПОТОКОВАЯ ОБРАБОТКА ПО БАТЧАМ ==========
+        async for batch_data in get_banners_stats_batched(
+            session, access_token, BASE_URL, date_from, date_to,
+            banner_ids=banner_ids,
+            banners_info=banners_info,
+            metrics="base",
+            batch_size=50,
+            sleep_between_calls=SLEEP_BETWEEN_CALLS
+        ):
+            batch_num = batch_data["batch_num"]
+            total_batches = batch_data["total_batches"]
+            batch_banners = batch_data["banners"]
 
-            delivery = b.get("delivery")
-            if isinstance(delivery, dict):
-                delivery_status = delivery.get("status", "N/A")
-            elif isinstance(delivery, str):
-                delivery_status = delivery
-            else:
-                delivery_status = "N/A"
+            logger.info(f"🔄 [{account_name}] Обработка батча {batch_num}/{total_batches}...")
 
-            # Проверяем белый список
-            if bid in whitelist_set:
-                whitelisted.append({
-                    "id": bid, "name": name, "spent": stats_by_bid.get(bid, {}).get('spent', 0.0),
-                    "clicks": stats_by_bid.get(bid, {}).get('clicks', 0.0),
-                    "shows": stats_by_bid.get(bid, {}).get('shows', 0.0),
-                    "vk_goals": stats_by_bid.get(bid, {}).get('vk_goals', 0.0),
+            # Списки для текущего батча
+            batch_over_limit = []
+
+            for b in batch_banners:
+                bid = b.get("id")
+                name = b.get("name", "Unknown")
+                status = b.get("status", "N/A")
+                ad_group_id = b.get("ad_group_id", "N/A")
+                moderation_status = b.get("moderation_status", "N/A")
+                delivery_status = b.get("delivery", "N/A")
+
+                spent = b.get("spent", 0.0)
+                clicks = b.get("clicks", 0.0)
+                shows = b.get("shows", 0.0)
+                vk_goals = b.get("vk_goals", 0.0)
+
+                # Проверяем белый список
+                if bid in whitelist_set:
+                    whitelisted.append({
+                        "id": bid, "name": name, "spent": spent,
+                        "clicks": clicks, "shows": shows, "vk_goals": vk_goals,
+                        "status": status, "delivery": delivery_status, "ad_group_id": ad_group_id,
+                        "moderation_status": moderation_status, "account": account_name
+                    })
+                    logger.debug(f"🔔 [{account_name}] Пропускаем {bid} — в белом списке")
+                    continue
+
+                banner_data = {
+                    "id": bid, "name": name, "spent": spent, "clicks": clicks, "shows": shows, "vk_goals": vk_goals,
                     "status": status, "delivery": delivery_status, "ad_group_id": ad_group_id,
                     "moderation_status": moderation_status, "account": account_name
-                })
-                logger.info(f"🔔 [{account_name}] Пропускаем объявление {bid} — в белом списке")
-                continue
+                }
 
-            # Получаем статистику по объявлению
-            stats = stats_by_bid.get(bid, {"spent": 0.0, "clicks": 0.0, "shows": 0.0, "vk_goals": 0.0})
-            spent = stats.get("spent", 0.0)
-            clicks = stats.get("clicks", 0.0)
-            shows = stats.get("shows", 0.0)
-            vk_goals = stats.get("vk_goals", 0.0)
+                # Подготавливаем stats для проверки правил
+                rule_stats = {
+                    "goals": vk_goals,
+                    "vk_goals": vk_goals,
+                    "spent": spent,
+                    "clicks": clicks,
+                    "shows": shows,
+                    "ctr": (clicks / shows * 100) if shows > 0 else 0,
+                    "cpc": (spent / clicks) if clicks > 0 else float('inf'),
+                    "cost_per_goal": (spent / vk_goals) if vk_goals > 0 else float('inf'),
+                }
 
-            banner_data = {
-                "id": bid, "name": name, "spent": spent, "clicks": clicks, "shows": shows, "vk_goals": vk_goals,
-                "status": status, "delivery": delivery_status, "ad_group_id": ad_group_id,
-                "moderation_status": moderation_status, "account": account_name
-            }
+                # Проверяем соответствие правилам отключения
+                matched_rule = crud.check_banner_against_rules(rule_stats, account_rules)
 
-            # Категоризируем объявления с помощью системы правил
-            # Подготавливаем stats для проверки правил (нормализуем поля)
-            rule_stats = {
-                "goals": vk_goals,
-                "vk_goals": vk_goals,
-                "spent": spent,
-                "clicks": clicks,
-                "shows": shows,
-                "ctr": (clicks / shows * 100) if shows > 0 else 0,
-                "cpc": (spent / clicks) if clicks > 0 else float('inf'),
-                "cost_per_goal": (spent / vk_goals) if vk_goals > 0 else float('inf'),
-            }
-            
-            # Проверяем соответствие правилам отключения
-            matched_rule = crud.check_banner_against_rules(rule_stats, account_rules)
-            
-            if matched_rule:
-                # Объявление подпадает под правило отключения
-                banner_data["matched_rule"] = matched_rule.name
-                banner_data["matched_rule_id"] = matched_rule.id
-                over_limit.append(banner_data)
-                reason = crud.format_rule_match_reason(matched_rule, rule_stats)
-                logger.info(f"🔴 [{account_name}] УБЫТОЧНОЕ: [{bid}] {name}")
-                logger.info(f"   {reason.replace(chr(10), chr(10) + '   ')}")
+                if matched_rule:
+                    # Объявление подпадает под правило отключения
+                    banner_data["matched_rule"] = matched_rule.name
+                    banner_data["matched_rule_id"] = matched_rule.id
+                    batch_over_limit.append(banner_data)
+                    over_limit.append(banner_data)
+                    reason = crud.format_rule_match_reason(matched_rule, rule_stats)
+                    logger.info(f"🔴 [{account_name}] УБЫТОЧНОЕ: [{bid}] {name}")
+                    logger.info(f"   {reason.replace(chr(10), chr(10) + '   ')}")
 
-            elif vk_goals >= 1:
-                under_limit.append(banner_data)
-                logger.info(f"🟢 [{account_name}] ЭФФЕКТИВНОЕ: [{bid}] {name} ({int(vk_goals)} VK целей)")
+                elif vk_goals >= 1:
+                    under_limit.append(banner_data)
+                    logger.debug(f"🟢 [{account_name}] ЭФФЕКТИВНОЕ: [{bid}] {name} ({int(vk_goals)} VK целей)")
 
-            elif spent > 0:
-                no_activity.append(banner_data)
-                # Логируем почему не подпало под правило
-                logger.debug(f"⚠️ [{account_name}] ТЕСТИРУЕТСЯ: [{bid}] {name}")
-                logger.debug(f"   spent={spent:.2f}₽, goals={vk_goals}, clicks={clicks}, shows={shows}")
-                logger.info(f"⚠️ [{account_name}] ТЕСТИРУЕТСЯ: [{bid}] {name} ({spent:.2f}₽)")
+                elif spent > 0:
+                    no_activity.append(banner_data)
+                    logger.debug(f"⚠️ [{account_name}] ТЕСТИРУЕТСЯ: [{bid}] {name} ({spent:.2f}₽)")
 
-            else:
-                no_activity.append(banner_data)
+                else:
+                    no_activity.append(banner_data)
 
-        # Итоговая статистика
+            # ========== СРАЗУ ОТКЛЮЧАЕМ УБЫТОЧНЫЕ ИЗ ЭТОГО БАТЧА ==========
+            if batch_over_limit:
+                logger.info(f"🛠 [{account_name}] Отключаем {len(batch_over_limit)} убыточных из батча {batch_num}...")
+
+                # Отключаем баннеры из текущего батча
+                batch_disable_results = await disable_banners_batch(
+                    session, access_token, BASE_URL, batch_over_limit,
+                    dry_run=DRY_RUN,
+                    whitelist_ids=whitelist_set,
+                    concurrency=5
+                )
+                all_disable_results.append(batch_disable_results)
+
+                # Логируем в БД сразу
+                await log_disabled_banners_to_db(
+                    over_limit=batch_over_limit,
+                    disable_results=batch_disable_results,
+                    account_name=account_name,
+                    lookback_days=LOOKBACK_DAYS,
+                    date_from=date_from,
+                    date_to=date_to,
+                    is_dry_run=DRY_RUN
+                )
+
+            logger.info(
+                f"  ✓ Батч {batch_num}/{total_batches} завершён: "
+                f"убыточных={len(batch_over_limit)}, "
+                f"всего отключено={len(over_limit)}"
+            )
+
+        # ========== ИТОГОВАЯ СТАТИСТИКА ==========
         logger.info("=" * 80)
         logger.info(f"📈 ИТОГОВАЯ СТАТИСТИКА ПО КАБИНЕТУ: {account_name}")
         logger.info(f"🔴 Убыточных (по правилам): {len(over_limit)}")
         logger.info(f"🟢 Эффективных: {len(under_limit)}")
         logger.info(f"⚠️ Тестируемых/неактивных: {len(no_activity)}")
+        logger.info(f"🔔 В белом списке: {len(whitelisted)}")
         logger.info(f"📊 Всего активных: {len(banners)}")
 
         total_spent = sum(b["spent"] for b in over_limit + under_limit + no_activity)
@@ -498,34 +576,22 @@ async def analyze_account(
         logger.info(f"💰 [{account_name}] Общие расходы: {total_spent:.2f}₽")
         logger.info(f"🎯 [{account_name}] Общие VK цели: {int(total_vk_goals)}")
 
-        # Отключаем убыточные объявления ПАРАЛЛЕЛЬНО
-        disable_results = None
-        if over_limit:
-            logger.info(f"🛠 ОТКЛЮЧЕНИЕ УБЫТОЧНЫХ ОБЪЯВЛЕНИЙ КАБИНЕТА: {account_name}")
-            logger.info("=" * 80)
-
-            disable_results = await disable_banners_batch(
-                session, access_token, BASE_URL, over_limit,
-                dry_run=DRY_RUN,
-                whitelist_ids=whitelist_set,
-                concurrency=5  # До 5 параллельных отключений
-            )
-
-            # Логируем отключённые баннеры в БД
-            await log_disabled_banners_to_db(
-                over_limit=over_limit,
-                disable_results=disable_results,
-                account_name=account_name,
-                lookback_days=LOOKBACK_DAYS,
-                date_from=date_from,
-                date_to=date_to,
-                is_dry_run=DRY_RUN
-            )
+        # Объединяем результаты отключения
+        combined_disable_results = {
+            "disabled": sum(r.get("disabled", 0) for r in all_disable_results),
+            "failed": sum(r.get("failed", 0) for r in all_disable_results),
+            "skipped": sum(r.get("skipped", 0) for r in all_disable_results),
+            "total": sum(r.get("total", 0) for r in all_disable_results),
+            "dry_run": DRY_RUN,
+            "results": []
+        }
+        for r in all_disable_results:
+            combined_disable_results["results"].extend(r.get("results", []))
 
         # Сохраняем статистику по кабинету в БД
         await save_account_stats_to_db(
             account_name=account_name,
-            stats_date=date_to,  # Дата = последний день периода
+            stats_date=date_to,
             over_limit=over_limit,
             under_limit=under_limit,
             no_activity=no_activity,
@@ -544,7 +610,7 @@ async def analyze_account(
             "total_spent": total_spent,
             "total_vk_goals": int(total_vk_goals),
             "rules_count": len(account_rules),
-            "disable_results": disable_results,
+            "disable_results": combined_disable_results if over_limit else None,
             "date_from": date_from,
             "date_to": date_to
         }
