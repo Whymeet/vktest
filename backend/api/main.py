@@ -1881,6 +1881,7 @@ async def get_scaling_logs_endpoint(
                 "error_message": log.error_message,
                 "total_banners": log.total_banners,
                 "duplicated_banners": log.duplicated_banners,
+                "duplicated_banner_ids": log.duplicated_banner_ids,
                 "created_at": log.created_at.isoformat()
             }
             for log in logs
@@ -1982,6 +1983,18 @@ async def manual_duplicate_ad_group(
                 )
                 
                 # Log the operation
+                # Extract banner IDs for logging
+                banner_ids_data = None
+                if result.get("duplicated_banners"):
+                    banner_ids_data = [
+                        {
+                            "original_id": b.get("original_id"),
+                            "new_id": b.get("new_id"),
+                            "name": b.get("name")
+                        }
+                        for b in result.get("duplicated_banners", [])
+                    ]
+
                 crud.create_scaling_log(
                     db,
                     user_id=current_user.id,
@@ -1996,7 +2009,8 @@ async def manual_duplicate_ad_group(
                     success=result.get("success", False),
                     error_message=result.get("error"),
                     total_banners=result.get("total_banners", 0),
-                    duplicated_banners=len(result.get("duplicated_banners", []))
+                    duplicated_banners=len(result.get("duplicated_banners", [])),
+                    duplicated_banner_ids=banner_ids_data
                 )
                 
                 if result.get("success"):
@@ -2141,6 +2155,18 @@ async def run_scaling_config(
                             )
                             
                             # Log the operation
+                            # Extract banner IDs for logging
+                            banner_ids_data = None
+                            if result.get("duplicated_banners"):
+                                banner_ids_data = [
+                                    {
+                                        "original_id": b.get("original_id"),
+                                        "new_id": b.get("new_id"),
+                                        "name": b.get("name")
+                                    }
+                                    for b in result.get("duplicated_banners", [])
+                                ]
+
                             crud.create_scaling_log(
                                 db,
                                 user_id=current_user.id,
@@ -2155,7 +2181,8 @@ async def run_scaling_config(
                                 success=result.get("success", False),
                                 error_message=result.get("error"),
                                 total_banners=result.get("total_banners", 0),
-                                duplicated_banners=len(result.get("duplicated_banners", []))
+                                duplicated_banners=len(result.get("duplicated_banners", [])),
+                                duplicated_banner_ids=banner_ids_data
                             )
                             
                             if result.get("success"):

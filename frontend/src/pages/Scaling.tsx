@@ -33,6 +33,7 @@ import type {
   ScalingConfig,
   ScalingCondition,
   ScalingLog,
+  DuplicatedBannerInfo,
 } from '../api/client';
 import { Card } from '../components/Card';
 import { Toggle } from '../components/Toggle';
@@ -1092,8 +1093,15 @@ export function Scaling() {
                         <span className="text-slate-500">—</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-center text-slate-300">
-                      {log.duplicated_banners} / {log.total_banners}
+                    <td className="px-4 py-3 text-center">
+                      <div className="text-slate-300">
+                        {log.duplicated_banners} / {log.total_banners}
+                      </div>
+                      {log.duplicated_banner_ids && log.duplicated_banner_ids.length > 0 && (
+                        <div className="text-xs text-slate-500 mt-1 font-mono">
+                          ({log.duplicated_banner_ids.map((b: DuplicatedBannerInfo) => b.new_id).join(', ')})
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-center">
                       {log.success ? (

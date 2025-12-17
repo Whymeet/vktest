@@ -542,6 +542,12 @@ export interface ScalingConfigCreate {
   conditions?: ScalingCondition[];
 }
 
+export interface DuplicatedBannerInfo {
+  original_id: number;
+  new_id: number;
+  name: string | null;
+}
+
 export interface ScalingLog {
   id: number;
   config_id: number | null;
@@ -556,6 +562,7 @@ export interface ScalingLog {
   error_message: string | null;
   total_banners: number;
   duplicated_banners: number;
+  duplicated_banner_ids: DuplicatedBannerInfo[] | null;
   created_at: string;
 }
 

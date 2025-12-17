@@ -1504,7 +1504,8 @@ def create_scaling_log(
     success: bool = False,
     error_message: Optional[str] = None,
     total_banners: int = 0,
-    duplicated_banners: int = 0
+    duplicated_banners: int = 0,
+    duplicated_banner_ids: Optional[list] = None
 ) -> ScalingLog:
     """Create new scaling log entry"""
     log = ScalingLog(
@@ -1520,7 +1521,8 @@ def create_scaling_log(
         success=success,
         error_message=error_message,
         total_banners=total_banners,
-        duplicated_banners=duplicated_banners
+        duplicated_banners=duplicated_banners,
+        duplicated_banner_ids=duplicated_banner_ids
     )
     db.add(log)
     db.commit()

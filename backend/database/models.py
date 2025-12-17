@@ -535,7 +535,8 @@ class ScalingLog(Base):
     # Banners info
     total_banners = Column(Integer, default=0)
     duplicated_banners = Column(Integer, default=0)
-    
+    duplicated_banner_ids = Column(JSON, nullable=True)  # List of {original_id, new_id, name}
+
     # Timestamp
     created_at = Column(DateTime, default=get_moscow_time, nullable=False, index=True)
 

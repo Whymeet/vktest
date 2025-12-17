@@ -108,6 +108,18 @@ def run_scaling_config(config_id: int):
                             )
                             
                             # Логируем операцию
+                            # Extract banner IDs for logging
+                            banner_ids_data = None
+                            if result.get("duplicated_banners"):
+                                banner_ids_data = [
+                                    {
+                                        "original_id": b.get("original_id"),
+                                        "new_id": b.get("new_id"),
+                                        "name": b.get("name")
+                                    }
+                                    for b in result.get("duplicated_banners", [])
+                                ]
+
                             crud.create_scaling_log(
                                 db,
                                 user_id=config.user_id,
@@ -122,7 +134,8 @@ def run_scaling_config(config_id: int):
                                 success=result.get("success", False),
                                 error_message=result.get("error"),
                                 total_banners=result.get("total_banners", 0),
-                                duplicated_banners=len(result.get("duplicated_banners", []))
+                                duplicated_banners=len(result.get("duplicated_banners", [])),
+                                duplicated_banner_ids=banner_ids_data
                             )
                             
                             if result.get("success"):
