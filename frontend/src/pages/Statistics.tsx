@@ -134,91 +134,91 @@ export function Statistics() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 lg:space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-white">Статистика отключённых объявлений</h1>
-          <p className="text-slate-400 mt-1">История отключённых объявлений из всех кабинетов</p>
+          <h1 className="text-xl lg:text-2xl font-bold text-white">Статистика отключённых</h1>
+          <p className="text-slate-400 text-sm mt-1 hidden sm:block">История отключённых объявлений из всех кабинетов</p>
         </div>
         <div className="flex items-center gap-3">
-          <button onClick={handleRefresh} className="btn btn-secondary">
+          <button onClick={handleRefresh} className="btn btn-secondary text-sm">
             <RefreshCw className="w-4 h-4" />
-            Обновить
+            <span className="hidden sm:inline">Обновить</span>
           </button>
         </div>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
-        <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-red-900/30 rounded-lg">
-              <TrendingDown className="w-5 h-5 text-red-400" />
+      {/* Summary Cards - 2 columns on mobile, 3 on tablet, 6 on desktop */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-4">
+        <div className="bg-slate-800/50 rounded-lg p-3 sm:p-4 border border-slate-700">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="p-1.5 sm:p-2 bg-red-900/30 rounded-lg">
+              <TrendingDown className="w-4 h-4 sm:w-5 sm:h-5 text-red-400" />
             </div>
-            <div>
-              <p className="text-sm text-slate-400">Отключено</p>
-              <p className="text-xl font-bold text-white">{summary.count}</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-orange-900/30 rounded-lg">
-              <DollarSign className="w-5 h-5 text-orange-400" />
-            </div>
-            <div>
-              <p className="text-sm text-slate-400">Потрачено</p>
-              <p className="text-xl font-bold text-white">{formatMoney(summary.totalSpend)}</p>
+            <div className="min-w-0">
+              <p className="text-xs sm:text-sm text-slate-400 truncate">Отключено</p>
+              <p className="text-base sm:text-xl font-bold text-white">{summary.count}</p>
             </div>
           </div>
         </div>
 
-        <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-blue-900/30 rounded-lg">
-              <MousePointerClick className="w-5 h-5 text-blue-400" />
+        <div className="bg-slate-800/50 rounded-lg p-3 sm:p-4 border border-slate-700">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="p-1.5 sm:p-2 bg-orange-900/30 rounded-lg">
+              <DollarSign className="w-4 h-4 sm:w-5 sm:h-5 text-orange-400" />
             </div>
-            <div>
-              <p className="text-sm text-slate-400">Клики</p>
-              <p className="text-xl font-bold text-white">{summary.totalClicks.toLocaleString()}</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-purple-900/30 rounded-lg">
-              <Eye className="w-5 h-5 text-purple-400" />
-            </div>
-            <div>
-              <p className="text-sm text-slate-400">Показы</p>
-              <p className="text-xl font-bold text-white">{summary.totalShows.toLocaleString()}</p>
+            <div className="min-w-0">
+              <p className="text-xs sm:text-sm text-slate-400 truncate">Потрачено</p>
+              <p className="text-base sm:text-xl font-bold text-white truncate">{formatMoney(summary.totalSpend)}</p>
             </div>
           </div>
         </div>
 
-        <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-green-900/30 rounded-lg">
-              <Percent className="w-5 h-5 text-green-400" />
+        <div className="bg-slate-800/50 rounded-lg p-3 sm:p-4 border border-slate-700">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="p-1.5 sm:p-2 bg-blue-900/30 rounded-lg">
+              <MousePointerClick className="w-4 h-4 sm:w-5 sm:h-5 text-blue-400" />
             </div>
-            <div>
-              <p className="text-sm text-slate-400">Средний CTR</p>
-              <p className="text-xl font-bold text-white">{summary.avgCtr.toFixed(2)}%</p>
+            <div className="min-w-0">
+              <p className="text-xs sm:text-sm text-slate-400 truncate">Клики</p>
+              <p className="text-base sm:text-xl font-bold text-white">{summary.totalClicks.toLocaleString()}</p>
             </div>
           </div>
         </div>
 
-        <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-yellow-900/30 rounded-lg">
-              <TrendingDown className="w-5 h-5 text-yellow-400" />
+        <div className="bg-slate-800/50 rounded-lg p-3 sm:p-4 border border-slate-700">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="p-1.5 sm:p-2 bg-purple-900/30 rounded-lg">
+              <Eye className="w-4 h-4 sm:w-5 sm:h-5 text-purple-400" />
             </div>
-            <div>
-              <p className="text-sm text-slate-400">Конверсии</p>
-              <p className="text-xl font-bold text-white">{summary.totalConversions}</p>
+            <div className="min-w-0">
+              <p className="text-xs sm:text-sm text-slate-400 truncate">Показы</p>
+              <p className="text-base sm:text-xl font-bold text-white">{summary.totalShows.toLocaleString()}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-slate-800/50 rounded-lg p-3 sm:p-4 border border-slate-700">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="p-1.5 sm:p-2 bg-green-900/30 rounded-lg">
+              <Percent className="w-4 h-4 sm:w-5 sm:h-5 text-green-400" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs sm:text-sm text-slate-400 truncate">Средний CTR</p>
+              <p className="text-base sm:text-xl font-bold text-white">{summary.avgCtr.toFixed(2)}%</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-slate-800/50 rounded-lg p-3 sm:p-4 border border-slate-700">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="p-1.5 sm:p-2 bg-yellow-900/30 rounded-lg">
+              <TrendingDown className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-400" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs sm:text-sm text-slate-400 truncate">Конверсии</p>
+              <p className="text-base sm:text-xl font-bold text-white">{summary.totalConversions}</p>
             </div>
           </div>
         </div>
@@ -257,125 +257,203 @@ export function Statistics() {
             <p>Нет данных об отключённых объявлениях.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="text-left text-sm text-slate-400 border-b border-slate-700">
-                  <th className="pb-3 pr-4">
-                    <button
-                      onClick={() => handleSort('created_at')}
-                      className="flex items-center gap-1 hover:text-white"
-                    >
-                      Дата отключения
-                      <SortIcon field="created_at" />
-                    </button>
-                  </th>
-                  <th className="pb-3 pr-4">
-                    <button
-                      onClick={() => handleSort('banner_id')}
-                      className="flex items-center gap-1 hover:text-white"
-                    >
-                      ID объявления
-                      <SortIcon field="banner_id" />
-                    </button>
-                  </th>
-                  <th className="pb-3 pr-4">Название</th>
-                  <th className="pb-3 pr-4">Кабинет</th>
-                  <th className="pb-3 pr-4">Правило</th>
-                  <th className="pb-3 pr-4 text-right">
-                    <button
-                      onClick={() => handleSort('spend')}
-                      className="flex items-center gap-1 hover:text-white ml-auto"
-                    >
-                      Траты
-                      <SortIcon field="spend" />
-                    </button>
-                  </th>
-                  <th className="pb-3 pr-4 text-right">
-                    <button
-                      onClick={() => handleSort('clicks')}
-                      className="flex items-center gap-1 hover:text-white ml-auto"
-                    >
-                      Клики
-                      <SortIcon field="clicks" />
-                    </button>
-                  </th>
-                  <th className="pb-3 pr-4 text-right">
-                    <button
-                      onClick={() => handleSort('shows')}
-                      className="flex items-center gap-1 hover:text-white ml-auto"
-                    >
-                      Показы
-                      <SortIcon field="shows" />
-                    </button>
-                  </th>
-                  <th className="pb-3 pr-4 text-right">
-                    <button
-                      onClick={() => handleSort('ctr')}
-                      className="flex items-center gap-1 hover:text-white ml-auto"
-                    >
-                      CTR
-                      <SortIcon field="ctr" />
-                    </button>
-                  </th>
-                  <th className="pb-3 text-right">
-                    <button
-                      onClick={() => handleSort('conversions')}
-                      className="flex items-center gap-1 hover:text-white ml-auto"
-                    >
-                      Конверсии
-                      <SortIcon field="conversions" />
-                    </button>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedBanners.map((banner: any) => (
-                  <tr
-                    key={banner.id}
-                    className="border-b border-slate-700/50 hover:bg-slate-700/30 transition-colors"
-                  >
-                    <td className="py-3 pr-4 whitespace-nowrap">
-                      <span className="text-sm text-slate-300">{formatDate(banner.created_at)}</span>
-                    </td>
-                    <td className="py-3 pr-4 whitespace-nowrap">
-                      <span className="text-white font-mono">{banner.banner_id}</span>
-                    </td>
-                    <td className="py-3 pr-4">
-                      <span className="text-sm text-slate-300">{banner.banner_name || 'Unknown'}</span>
-                    </td>
-                    <td className="py-3 pr-4 whitespace-nowrap">
-                      <span className="text-sm text-slate-300">{banner.account_name || '-'}</span>
-                    </td>
-                    <td className="py-3 pr-4 max-w-xs">
-                      <span className="text-xs text-slate-400 line-clamp-2" title={banner.reason || 'Не указано'}>
-                        {banner.reason || '-'}
-                      </span>
-                    </td>
-                    <td className="py-3 pr-4 text-right whitespace-nowrap">
-                      <span className="text-orange-400">{formatMoney(banner.spend)}</span>
-                    </td>
-                    <td className="py-3 pr-4 text-right whitespace-nowrap">
-                      <span className="text-blue-400">{banner.clicks.toLocaleString()}</span>
-                    </td>
-                    <td className="py-3 pr-4 text-right whitespace-nowrap">
-                      <span className="text-purple-400">{banner.shows.toLocaleString()}</span>
-                    </td>
-                    <td className="py-3 pr-4 text-right whitespace-nowrap">
-                      <span className="text-green-400">
-                        {banner.ctr !== null ? `${banner.ctr.toFixed(2)}%` : '-'}
-                      </span>
-                    </td>
-                    <td className="py-3 text-right whitespace-nowrap">
-                      <span className={banner.conversions > 0 ? 'text-green-400' : 'text-slate-400'}>
-                        {banner.conversions}
-                      </span>
-                    </td>
+          <>
+            {/* Mobile: Card view */}
+            <div className="lg:hidden space-y-3">
+              {/* Mobile sort controls */}
+              <div className="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1">
+                <button
+                  onClick={() => handleSort('created_at')}
+                  className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition-colors ${
+                    sortField === 'created_at' ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                  }`}
+                >
+                  Дата <SortIcon field="created_at" />
+                </button>
+                <button
+                  onClick={() => handleSort('spend')}
+                  className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition-colors ${
+                    sortField === 'spend' ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                  }`}
+                >
+                  Траты <SortIcon field="spend" />
+                </button>
+                <button
+                  onClick={() => handleSort('clicks')}
+                  className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition-colors ${
+                    sortField === 'clicks' ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                  }`}
+                >
+                  Клики <SortIcon field="clicks" />
+                </button>
+              </div>
+
+              {/* Mobile cards */}
+              {sortedBanners.map((banner: any) => (
+                <div
+                  key={banner.id}
+                  className="bg-slate-700/30 rounded-lg p-3 border border-slate-700/50 space-y-2"
+                >
+                  {/* Top row: Date and Spend */}
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-slate-400">{formatDate(banner.created_at)}</span>
+                    <span className="text-orange-400 font-semibold">{formatMoney(banner.spend)}</span>
+                  </div>
+
+                  {/* Banner ID and Account */}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <span className="text-white font-mono text-sm">ID: {banner.banner_id}</span>
+                    </div>
+                    <span className="text-xs text-slate-300 truncate max-w-[120px]">{banner.account_name || '-'}</span>
+                  </div>
+
+                  {/* Stats row */}
+                  <div className="flex items-center gap-4 text-xs">
+                    <span className="text-blue-400">
+                      <MousePointerClick className="w-3 h-3 inline mr-1" />
+                      {banner.clicks.toLocaleString()}
+                    </span>
+                    <span className="text-purple-400">
+                      <Eye className="w-3 h-3 inline mr-1" />
+                      {banner.shows.toLocaleString()}
+                    </span>
+                    <span className="text-green-400">
+                      CTR: {banner.ctr !== null ? `${banner.ctr.toFixed(2)}%` : '-'}
+                    </span>
+                  </div>
+
+                  {/* Reason (if exists) */}
+                  {banner.reason && (
+                    <p className="text-xs text-slate-400 line-clamp-1" title={banner.reason}>
+                      {banner.reason}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Desktop: Table view */}
+            <div className="hidden lg:block overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="text-left text-sm text-slate-400 border-b border-slate-700">
+                    <th className="pb-3 pr-4">
+                      <button
+                        onClick={() => handleSort('created_at')}
+                        className="flex items-center gap-1 hover:text-white"
+                      >
+                        Дата отключения
+                        <SortIcon field="created_at" />
+                      </button>
+                    </th>
+                    <th className="pb-3 pr-4">
+                      <button
+                        onClick={() => handleSort('banner_id')}
+                        className="flex items-center gap-1 hover:text-white"
+                      >
+                        ID объявления
+                        <SortIcon field="banner_id" />
+                      </button>
+                    </th>
+                    <th className="pb-3 pr-4">Название</th>
+                    <th className="pb-3 pr-4">Кабинет</th>
+                    <th className="pb-3 pr-4">Правило</th>
+                    <th className="pb-3 pr-4 text-right">
+                      <button
+                        onClick={() => handleSort('spend')}
+                        className="flex items-center gap-1 hover:text-white ml-auto"
+                      >
+                        Траты
+                        <SortIcon field="spend" />
+                      </button>
+                    </th>
+                    <th className="pb-3 pr-4 text-right">
+                      <button
+                        onClick={() => handleSort('clicks')}
+                        className="flex items-center gap-1 hover:text-white ml-auto"
+                      >
+                        Клики
+                        <SortIcon field="clicks" />
+                      </button>
+                    </th>
+                    <th className="pb-3 pr-4 text-right">
+                      <button
+                        onClick={() => handleSort('shows')}
+                        className="flex items-center gap-1 hover:text-white ml-auto"
+                      >
+                        Показы
+                        <SortIcon field="shows" />
+                      </button>
+                    </th>
+                    <th className="pb-3 pr-4 text-right">
+                      <button
+                        onClick={() => handleSort('ctr')}
+                        className="flex items-center gap-1 hover:text-white ml-auto"
+                      >
+                        CTR
+                        <SortIcon field="ctr" />
+                      </button>
+                    </th>
+                    <th className="pb-3 text-right">
+                      <button
+                        onClick={() => handleSort('conversions')}
+                        className="flex items-center gap-1 hover:text-white ml-auto"
+                      >
+                        Конверсии
+                        <SortIcon field="conversions" />
+                      </button>
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {sortedBanners.map((banner: any) => (
+                    <tr
+                      key={banner.id}
+                      className="border-b border-slate-700/50 hover:bg-slate-700/30 transition-colors"
+                    >
+                      <td className="py-3 pr-4 whitespace-nowrap">
+                        <span className="text-sm text-slate-300">{formatDate(banner.created_at)}</span>
+                      </td>
+                      <td className="py-3 pr-4 whitespace-nowrap">
+                        <span className="text-white font-mono">{banner.banner_id}</span>
+                      </td>
+                      <td className="py-3 pr-4">
+                        <span className="text-sm text-slate-300">{banner.banner_name || 'Unknown'}</span>
+                      </td>
+                      <td className="py-3 pr-4 whitespace-nowrap">
+                        <span className="text-sm text-slate-300">{banner.account_name || '-'}</span>
+                      </td>
+                      <td className="py-3 pr-4 max-w-xs">
+                        <span className="text-xs text-slate-400 line-clamp-2" title={banner.reason || 'Не указано'}>
+                          {banner.reason || '-'}
+                        </span>
+                      </td>
+                      <td className="py-3 pr-4 text-right whitespace-nowrap">
+                        <span className="text-orange-400">{formatMoney(banner.spend)}</span>
+                      </td>
+                      <td className="py-3 pr-4 text-right whitespace-nowrap">
+                        <span className="text-blue-400">{banner.clicks.toLocaleString()}</span>
+                      </td>
+                      <td className="py-3 pr-4 text-right whitespace-nowrap">
+                        <span className="text-purple-400">{banner.shows.toLocaleString()}</span>
+                      </td>
+                      <td className="py-3 pr-4 text-right whitespace-nowrap">
+                        <span className="text-green-400">
+                          {banner.ctr !== null ? `${banner.ctr.toFixed(2)}%` : '-'}
+                        </span>
+                      </td>
+                      <td className="py-3 text-right whitespace-nowrap">
+                        <span className={banner.conversions > 0 ? 'text-green-400' : 'text-slate-400'}>
+                          {banner.conversions}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
         
         {/* Pagination */}

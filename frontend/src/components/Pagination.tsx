@@ -59,34 +59,39 @@ export function Pagination({ currentPage, totalPages, totalItems, pageSize, onPa
   }
 
   return (
-    <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-      <div className="text-sm text-slate-400">
+    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-4">
+      <div className="text-xs sm:text-sm text-slate-400">
         Показано {startItem}–{endItem} из {totalItems}
       </div>
-      
+
       <div className="flex items-center gap-1">
         {/* First page */}
         <button
           onClick={() => onPageChange(1)}
           disabled={currentPage === 1}
-          className="p-1.5 rounded hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-slate-400 hover:text-white"
+          className="p-1.5 sm:p-1.5 rounded hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-slate-400 hover:text-white"
           title="Первая страница"
         >
-          <ChevronsLeft className="w-4 h-4" />
+          <ChevronsLeft className="w-5 h-5 sm:w-4 sm:h-4" />
         </button>
-        
+
         {/* Previous page */}
         <button
           onClick={() => onPageChange(currentPage - 1)}
           disabled={currentPage === 1}
-          className="p-1.5 rounded hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-slate-400 hover:text-white"
+          className="p-1.5 sm:p-1.5 rounded hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-slate-400 hover:text-white"
           title="Предыдущая страница"
         >
-          <ChevronLeft className="w-4 h-4" />
+          <ChevronLeft className="w-5 h-5 sm:w-4 sm:h-4" />
         </button>
-        
-        {/* Page numbers */}
-        <div className="flex items-center gap-1">
+
+        {/* Mobile: Simple page indicator */}
+        <div className="sm:hidden px-3 py-1 text-sm text-white">
+          {currentPage} / {totalPages}
+        </div>
+
+        {/* Desktop: Page numbers */}
+        <div className="hidden sm:flex items-center gap-1">
           {getPageNumbers().map((page, index) => (
             typeof page === 'number' ? (
               <button
@@ -105,25 +110,25 @@ export function Pagination({ currentPage, totalPages, totalItems, pageSize, onPa
             )
           ))}
         </div>
-        
+
         {/* Next page */}
         <button
           onClick={() => onPageChange(currentPage + 1)}
           disabled={currentPage === totalPages}
-          className="p-1.5 rounded hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-slate-400 hover:text-white"
+          className="p-1.5 sm:p-1.5 rounded hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-slate-400 hover:text-white"
           title="Следующая страница"
         >
-          <ChevronRight className="w-4 h-4" />
+          <ChevronRight className="w-5 h-5 sm:w-4 sm:h-4" />
         </button>
-        
+
         {/* Last page */}
         <button
           onClick={() => onPageChange(totalPages)}
           disabled={currentPage === totalPages}
-          className="p-1.5 rounded hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-slate-400 hover:text-white"
+          className="p-1.5 sm:p-1.5 rounded hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-slate-400 hover:text-white"
           title="Последняя страница"
         >
-          <ChevronsRight className="w-4 h-4" />
+          <ChevronsRight className="w-5 h-5 sm:w-4 sm:h-4" />
         </button>
       </div>
     </div>
