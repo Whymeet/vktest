@@ -840,35 +840,35 @@ async def get_disabled_banners(
     """
     Get recently disabled banners with full details, pagination and sorting for current user.
     Это главный endpoint для просмотра логов отключённых групп.
+
+    Optimized: account_name filtering now happens in SQL, not Python.
     """
     page_size = min(page_size, 500)  # Max 500 per page
     offset = (page - 1) * page_size
-    
+
     # Validate sort parameters
     valid_sort_fields = ['created_at', 'spend', 'clicks', 'shows', 'ctr', 'conversions', 'cost_per_conversion', 'banner_id']
     if sort_by not in valid_sort_fields:
         sort_by = 'created_at'
     if sort_order not in ['asc', 'desc']:
         sort_order = 'desc'
-    
+
+    # All filtering now happens in SQL (including account_name)
     history, total = crud.get_disabled_banners(
         db,
-        current_user.id,
-        page_size, 
-        offset,
+        user_id=current_user.id,
+        account_name=account_name,  # Filter in SQL, not Python!
+        limit=page_size,
+        offset=offset,
         sort_by=sort_by,
         sort_order=sort_order
     )
 
-    # Filter by account name if provided
-    if account_name:
-        history = [h for h in history if h.account_name == account_name]
-
-    # Calculate summary statistics
+    # Calculate summary statistics from the filtered results
     total_spend = sum(h.spend or 0 for h in history)
     total_clicks = sum(h.clicks or 0 for h in history)
     total_shows = sum(h.shows or 0 for h in history)
-    
+
     total_pages = (total + page_size - 1) // page_size if total > 0 else 1
 
     return {

@@ -344,43 +344,52 @@ def replace_whitelist(db: Session, user_id: int, banner_ids: List[int]) -> List[
 
 
 def bulk_add_to_whitelist(db: Session, user_id: int, banner_ids: List[int]) -> dict:
-    """Add multiple banners to whitelist for a user (without removing existing ones)"""
-    added_count = 0
-    skipped_count = 0
+    """Add multiple banners to whitelist for a user (without removing existing ones)
 
-    for banner_id in banner_ids:
-        # Check if already exists
-        existing = db.query(WhitelistBanner).filter(
-            WhitelistBanner.user_id == user_id,
-            WhitelistBanner.banner_id == banner_id
-        ).first()
-        if existing:
-            skipped_count += 1
-            continue
+    Optimized: Uses single query to check existing + bulk insert
+    """
+    if not banner_ids:
+        return {"added": 0, "skipped": 0, "total": 0}
 
-        db.add(WhitelistBanner(user_id=user_id, banner_id=banner_id))
-        added_count += 1
+    # Get all existing banner_ids in ONE query instead of N queries
+    existing_records = db.query(WhitelistBanner.banner_id).filter(
+        WhitelistBanner.user_id == user_id,
+        WhitelistBanner.banner_id.in_(banner_ids)
+    ).all()
+    existing_ids = {record[0] for record in existing_records}
 
-    db.commit()
+    # Filter out already existing banners
+    new_banner_ids = [bid for bid in banner_ids if bid not in existing_ids]
+
+    # Bulk insert all new banners at once
+    if new_banner_ids:
+        new_banners = [
+            WhitelistBanner(user_id=user_id, banner_id=banner_id)
+            for banner_id in new_banner_ids
+        ]
+        db.bulk_save_objects(new_banners)
+        db.commit()
+
     return {
-        "added": added_count,
-        "skipped": skipped_count,
+        "added": len(new_banner_ids),
+        "skipped": len(existing_ids),
         "total": len(banner_ids)
     }
 
 
 def bulk_remove_from_whitelist(db: Session, user_id: int, banner_ids: List[int]) -> dict:
-    """Remove multiple banners from whitelist for a user"""
-    removed_count = 0
+    """Remove multiple banners from whitelist for a user
 
-    for banner_id in banner_ids:
-        banner = db.query(WhitelistBanner).filter(
-            WhitelistBanner.user_id == user_id,
-            WhitelistBanner.banner_id == banner_id
-        ).first()
-        if banner:
-            db.delete(banner)
-            removed_count += 1
+    Optimized: Uses single DELETE query instead of N queries
+    """
+    if not banner_ids:
+        return {"removed": 0, "total": 0}
+
+    # Delete all matching banners in ONE query instead of N queries
+    removed_count = db.query(WhitelistBanner).filter(
+        WhitelistBanner.user_id == user_id,
+        WhitelistBanner.banner_id.in_(banner_ids)
+    ).delete(synchronize_session='fetch')
 
     db.commit()
     return {
@@ -539,26 +548,33 @@ def get_banner_history(
     user_id: Optional[int] = None,
     banner_id: Optional[int] = None,
     vk_account_id: Optional[int] = None,
+    account_name: Optional[str] = None,
     action: Optional[str] = None,
     limit: int = 500,
     offset: int = 0,
     sort_by: str = 'created_at',
     sort_order: str = 'desc'
 ) -> tuple[List[BannerAction], int]:
-    """Get banner action history with filters, pagination and sorting"""
+    """Get banner action history with filters, pagination and sorting
+
+    Optimized: All filtering done in SQL, not Python
+    """
     query = db.query(BannerAction)
 
+    # Apply all filters in SQL
     if user_id is not None:
         query = query.filter(BannerAction.user_id == user_id)
     if banner_id is not None:
         query = query.filter(BannerAction.banner_id == banner_id)
     if vk_account_id is not None:
         query = query.filter(BannerAction.vk_account_id == vk_account_id)
+    if account_name is not None:
+        query = query.filter(BannerAction.account_name == account_name)
     if action is not None:
         query = query.filter(BannerAction.action == action)
 
     total = query.count()
-    
+
     # Determine sort column
     sort_columns = {
         'created_at': BannerAction.created_at,
@@ -570,14 +586,14 @@ def get_banner_history(
         'cost_per_conversion': BannerAction.cost_per_conversion,
         'banner_id': BannerAction.banner_id,
     }
-    
+
     sort_column = sort_columns.get(sort_by, BannerAction.created_at)
-    
+
     if sort_order == 'asc':
         query = query.order_by(sort_column.asc().nullslast())
     else:
         query = query.order_by(sort_column.desc().nullslast())
-    
+
     items = query.offset(offset).limit(limit).all()
     return items, total
 
@@ -585,13 +601,26 @@ def get_banner_history(
 def get_disabled_banners(
     db: Session,
     user_id: int = None,
-    limit: int = 500, 
+    account_name: Optional[str] = None,
+    limit: int = 500,
     offset: int = 0,
     sort_by: str = 'created_at',
     sort_order: str = 'desc'
 ) -> tuple[List[BannerAction], int]:
-    """Get recently disabled banners with sorting for a user"""
-    return get_banner_history(db, user_id=user_id, action='disabled', limit=limit, offset=offset, sort_by=sort_by, sort_order=sort_order)
+    """Get recently disabled banners with sorting for a user
+
+    Optimized: account_name filter is now in SQL, not Python
+    """
+    return get_banner_history(
+        db,
+        user_id=user_id,
+        account_name=account_name,
+        action='disabled',
+        limit=limit,
+        offset=offset,
+        sort_by=sort_by,
+        sort_order=sort_order
+    )
 
 
 # ===== Active Banners =====
