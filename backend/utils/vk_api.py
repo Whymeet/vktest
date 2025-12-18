@@ -821,7 +821,7 @@ def duplicate_ad_group_full(
         
         # Устанавливаем новый бюджет если указан
         if new_budget is not None:
-            new_group_data['day_limit'] = str(int(new_budget * 100))  # В копейках
+            new_group_data['budget_limit_day'] = str(int(new_budget * 100))  # В копейках
             logger.info(f"💰 Установлен новый дневной бюджет: {new_budget} руб")
         
         # Статус
@@ -1020,10 +1020,16 @@ def get_ad_groups_with_stats(token: str, base_url: str, date_from: str, date_to:
         groups = get_ad_groups_all(token, base_url, fields="id,name,status,budget_limit_day", limit=limit, include_deleted=False)
     else:
         groups = get_ad_groups_active(token, base_url, fields="id,name,status,budget_limit_day", limit=limit)
-    
+
     if not groups:
         return []
-    
+
+    # Дополнительно фильтруем deleted группы (на случай если API вернул их)
+    groups = [g for g in groups if g.get('status') != 'deleted']
+
+    if not groups:
+        return []
+
     group_ids = [g['id'] for g in groups]
     
     logger.info(f"📊 Получаем статистику для {len(group_ids)} групп за период {date_from} — {date_to}")

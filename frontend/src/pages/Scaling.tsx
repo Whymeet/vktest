@@ -27,6 +27,7 @@ import {
   getScalingLogs,
   duplicateAdGroup,
   runScalingConfig,
+  getDisableRuleMetrics,
 } from '../api/client';
 import type {
   Account,
@@ -38,22 +39,26 @@ import type {
 import { Card } from '../components/Card';
 import { Toggle } from '../components/Toggle';
 import { Modal } from '../components/Modal';
+import { ScalingSchedulerStatusIndicator } from '../components/ScalingSchedulerStatusIndicator';
 
-// Available metrics for conditions
-const METRICS = [
-  { value: 'goals', label: 'Лиды (конверсии)', unit: 'шт' },
-  { value: 'shows', label: 'Показы', unit: 'шт' },
-  { value: 'clicks', label: 'Клики', unit: 'шт' },
-  { value: 'spent', label: 'Расход', unit: '₽' },
-  { value: 'cost_per_goal', label: 'Стоимость лида', unit: '₽' },
+// Fallback metrics and operators (will be loaded from API)
+const FALLBACK_METRICS = [
+  { value: 'goals', label: 'Результаты (goals)', description: 'Количество конверсий/целей VK' },
+  { value: 'spent', label: 'Потрачено (₽)', description: 'Сумма потраченных денег в рублях' },
+  { value: 'clicks', label: 'Клики', description: 'Количество кликов по объявлению' },
+  { value: 'shows', label: 'Показы', description: 'Количество показов объявления' },
+  { value: 'ctr', label: 'CTR (%)', description: 'Click-through rate (клики/показы * 100)' },
+  { value: 'cpc', label: 'CPC (₽)', description: 'Cost per click (цена за клик)' },
+  { value: 'cost_per_goal', label: 'Цена результата (₽)', description: 'Стоимость одной конверсии' },
 ];
 
-const OPERATORS = [
-  { value: '>', label: 'больше' },
-  { value: '>=', label: 'больше или равно' },
-  { value: '<', label: 'меньше' },
-  { value: '<=', label: 'меньше или равно' },
-  { value: '==', label: 'равно' },
+const FALLBACK_OPERATORS = [
+  { value: 'equals', label: '=', description: 'Равно' },
+  { value: 'not_equals', label: '≠', description: 'Не равно' },
+  { value: 'greater_than', label: '>', description: 'Больше' },
+  { value: 'less_than', label: '<', description: 'Меньше' },
+  { value: 'greater_or_equal', label: '≥', description: 'Больше или равно' },
+  { value: 'less_or_equal', label: '≤', description: 'Меньше или равно' },
 ];
 
 // Error parsing helper
@@ -99,18 +104,22 @@ function parseErrorMessage(error: string): { type: 'rate_limit' | 'timeout' | 'n
   };
 }
 
-// Condition Editor Component
+// Condition Editor Component (same as DisableRules)
 function ConditionEditor({
   conditions,
   onChange,
+  metrics,
+  operators,
 }: {
   conditions: ScalingCondition[];
   onChange: (conditions: ScalingCondition[]) => void;
+  metrics: Array<{ value: string; label: string; description: string }>;
+  operators: Array<{ value: string; label: string; description: string }>;
 }) {
   const addCondition = () => {
     onChange([
       ...conditions,
-      { metric: 'goals', operator: '>', value: 2 },
+      { metric: 'spent', operator: 'greater_or_equal', value: 100 },
     ]);
   };
 
@@ -126,12 +135,14 @@ function ConditionEditor({
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <label className="text-sm font-medium text-slate-300">Условия масштабирования</label>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+        <label className="text-sm font-medium text-slate-300">
+          Условия (все должны выполняться - AND)
+        </label>
         <button
           type="button"
           onClick={addCondition}
-          className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-600 hover:bg-blue-700 rounded text-white transition-colors"
+          className="flex items-center justify-center gap-1 px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 rounded text-white transition-colors w-full sm:w-auto"
         >
           <Plus className="w-3 h-3" />
           Добавить условие
@@ -147,14 +158,14 @@ function ConditionEditor({
           {conditions.map((condition, index) => (
             <div
               key={index}
-              className="flex items-center gap-2 p-3 bg-slate-800 rounded-lg border border-slate-700"
+              className="flex flex-col sm:flex-row sm:items-center gap-2 p-3 bg-slate-800 rounded-lg border border-slate-700"
             >
               <select
                 value={condition.metric}
                 onChange={(e) => updateCondition(index, 'metric', e.target.value)}
                 className="flex-1 px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm"
               >
-                {METRICS.map((m) => (
+                {metrics.map((m) => (
                   <option key={m.value} value={m.value}>
                     {m.label}
                   </option>
@@ -164,9 +175,9 @@ function ConditionEditor({
               <select
                 value={condition.operator}
                 onChange={(e) => updateCondition(index, 'operator', e.target.value)}
-                className="w-40 px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm"
+                className="sm:w-32 px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm"
               >
-                {OPERATORS.map((op) => (
+                {operators.map((op) => (
                   <option key={op.value} value={op.value}>
                     {op.label}
                   </option>
@@ -177,18 +188,14 @@ function ConditionEditor({
                 type="number"
                 value={condition.value}
                 onChange={(e) => updateCondition(index, 'value', parseFloat(e.target.value) || 0)}
-                className="w-24 px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm"
+                className="sm:w-28 px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm"
                 step="any"
               />
-
-              <span className="text-sm text-slate-400 w-8">
-                {METRICS.find((m) => m.value === condition.metric)?.unit}
-              </span>
 
               <button
                 type="button"
                 onClick={() => removeCondition(index)}
-                className="p-2 text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded transition-colors"
+                className="p-2 text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded transition-colors sm:flex-shrink-0"
               >
                 <Trash2 className="w-4 h-4" />
               </button>
@@ -213,12 +220,16 @@ function ConfigFormModal({
   config,
   accounts,
   onSave,
+  metrics,
+  operators,
 }: {
   isOpen: boolean;
   onClose: () => void;
   config?: ScalingConfig | null;
   accounts: Account[];
   onSave: (data: Partial<ScalingConfig>) => void;
+  metrics: Array<{ value: string; label: string; description: string }>;
+  operators: Array<{ value: string; label: string; description: string }>;
 }) {
   const [name, setName] = useState('');
   const [scheduleTime, setScheduleTime] = useState('08:00');
@@ -247,7 +258,7 @@ function ConfigFormModal({
       setAutoActivate(false);
       setLookbackDays(7);
       setDuplicatesCount(1);
-      setConditions([{ metric: 'goals', operator: '>', value: 2 }]);
+      setConditions([{ metric: 'goals', operator: 'greater_than', value: 2 }]);
     }
   }, [config, isOpen]);
 
@@ -407,7 +418,12 @@ function ConfigFormModal({
           <span className="text-sm text-slate-300">Автоматически активировать после создания</span>
         </div>
 
-        <ConditionEditor conditions={conditions} onChange={setConditions} />
+        <ConditionEditor
+          conditions={conditions}
+          onChange={setConditions}
+          metrics={metrics}
+          operators={operators}
+        />
 
         <div className="flex justify-end gap-3 pt-4 border-t border-slate-700">
           <button
@@ -807,6 +823,15 @@ export function Scaling() {
     queryFn: () => getScalingLogs(undefined, 50).then((r: any) => r.data),
   });
 
+  // Load metrics and operators from API (same as DisableRules)
+  const { data: metricsData } = useQuery({
+    queryKey: ['disableRuleMetrics'],
+    queryFn: () => getDisableRuleMetrics().then((r) => r.data),
+  });
+
+  const metrics = metricsData?.metrics || FALLBACK_METRICS;
+  const operators = metricsData?.operators || FALLBACK_OPERATORS;
+
   // Mutations
   const createMutation = useMutation({
     mutationFn: createScalingConfig,
@@ -856,9 +881,9 @@ export function Scaling() {
   };
 
   const formatCondition = (condition: ScalingCondition) => {
-    const metric = METRICS.find((m) => m.value === condition.metric);
-    const operator = OPERATORS.find((op) => op.value === condition.operator);
-    return `${metric?.label || condition.metric} ${operator?.label || condition.operator} ${condition.value} ${metric?.unit || ''}`;
+    const metric = metrics.find((m) => m.value === condition.metric);
+    const operator = operators.find((op) => op.value === condition.operator);
+    return `${metric?.label || condition.metric} ${operator?.label || condition.operator} ${condition.value}`;
   };
 
   return (
@@ -891,6 +916,11 @@ export function Scaling() {
           </button>
         </div>
       </div>
+
+      {/* Scaling Scheduler Status */}
+      <Card>
+        <ScalingSchedulerStatusIndicator />
+      </Card>
 
       {/* Configurations */}
       <Card
@@ -1138,6 +1168,8 @@ export function Scaling() {
         config={editingConfig}
         accounts={accounts}
         onSave={handleSaveConfig}
+        metrics={metrics}
+        operators={operators}
       />
 
       <ManualDuplicateModal

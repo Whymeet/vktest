@@ -487,7 +487,7 @@ class ScalingCondition(Base):
     
     # Condition definition
     metric = Column(String(50), nullable=False)  # spent, shows, clicks, goals, cost_per_goal
-    operator = Column(String(10), nullable=False)  # >, <, >=, <=, ==
+    operator = Column(String(20), nullable=False)  # greater_than, less_than, greater_or_equal, etc.
     value = Column(Float, nullable=False)  # Threshold value
     
     # Order for display

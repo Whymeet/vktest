@@ -75,6 +75,7 @@ export interface ProcessStatus {
   scheduler: ProcessStatusItem;
   analysis: ProcessStatusItem;
   bot: ProcessStatusItem;
+  scaling_scheduler: ProcessStatusItem;
 }
 
 export interface DashboardData {
@@ -264,6 +265,8 @@ export const startAnalysis = () => api.post('/control/analysis/start');
 export const stopAnalysis = () => api.post('/control/analysis/stop');
 export const startBot = () => api.post('/control/bot/start');
 export const stopBot = () => api.post('/control/bot/stop');
+export const startScalingScheduler = () => api.post('/control/scaling_scheduler/start');
+export const stopScalingScheduler = () => api.post('/control/scaling_scheduler/stop');
 export const killAllProcesses = () => api.post('/control/kill-all');
 
 // Health

@@ -3,6 +3,7 @@ Auto-Scaling Scheduler
 Запускает автомасштабирование по расписанию (в указанное время по МСК)
 """
 
+import os
 import sys
 import time
 import schedule
@@ -20,6 +21,11 @@ from utils.logging_setup import setup_logging
 from utils.time_utils import get_moscow_time
 
 logger = getLogger("scaling_scheduler")
+
+# Get user_id from environment variable (set by API when starting the scheduler)
+USER_ID = os.environ.get("VK_ADS_USER_ID")
+if USER_ID:
+    USER_ID = int(USER_ID)
 
 
 def run_scaling_config(config_id: int):
@@ -192,16 +198,16 @@ def check_and_run_scheduled_configs():
     Проверяет и запускает конфигурации по расписанию
     """
     db = SessionLocal()
-    
+
     try:
-        configs = crud.get_enabled_scaling_configs(db)
+        configs = crud.get_enabled_scaling_configs(db, user_id=USER_ID)
         current_time = get_moscow_time().strftime("%H:%M")
-        
+
         for config in configs:
             if config.schedule_time == current_time:
                 logger.info(f"⏰ Время запуска конфигурации: {config.name}")
                 run_scaling_config(config.id)
-                
+
     except Exception as e:
         logger.error(f"❌ Ошибка при проверке расписания: {e}")
     finally:
@@ -212,13 +218,14 @@ def main():
     """
     Основной цикл планировщика автомасштабирования
     """
-    setup_logging("scaling_scheduler")
-    
+    setup_logging()
+
     logger.info(f"")
     logger.info(f"{'='*80}")
     logger.info(f"🚀 ЗАПУСК ПЛАНИРОВЩИКА АВТОМАСШТАБИРОВАНИЯ")
     logger.info(f"{'='*80}")
     logger.info(f"Время: {get_moscow_time().strftime('%Y-%m-%d %H:%M:%S')} МСК")
+    logger.info(f"User ID: {USER_ID if USER_ID else 'All users'}")
     logger.info(f"Проверка каждую минуту")
     logger.info(f"{'='*80}")
     

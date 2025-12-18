@@ -1228,9 +1228,12 @@ def get_scaling_config_by_id(db: Session, config_id: int) -> Optional[ScalingCon
     return db.query(ScalingConfig).filter(ScalingConfig.id == config_id).first()
 
 
-def get_enabled_scaling_configs(db: Session) -> List[ScalingConfig]:
-    """Get all enabled scaling configurations"""
-    return db.query(ScalingConfig).filter(ScalingConfig.enabled == True).all()
+def get_enabled_scaling_configs(db: Session, user_id: Optional[int] = None) -> List[ScalingConfig]:
+    """Get all enabled scaling configurations, optionally filtered by user_id"""
+    query = db.query(ScalingConfig).filter(ScalingConfig.enabled == True)
+    if user_id is not None:
+        query = query.filter(ScalingConfig.user_id == user_id)
+    return query.all()
 
 
 def get_scaling_config_account_ids(db: Session, config_id: int) -> List[int]:
@@ -1532,57 +1535,102 @@ def create_scaling_log(
 
 def check_group_conditions(stats: dict, conditions: List[ScalingCondition]) -> bool:
     """
-    Check if ad group stats match all conditions
-    
+    Check if ad group stats match all conditions.
+    Uses the same logic as check_banner_against_rules for consistency.
+
     Args:
-        stats: Dict with keys: spent, shows, clicks, goals, cost_per_goal
+        stats: Dict with keys: spent, shows, clicks, goals, cost_per_goal, ctr, cpc
         conditions: List of ScalingCondition objects
-    
+
     Returns:
         True if ALL conditions are satisfied
     """
     if not conditions:
+        print(f"         ⚠️  Нет условий для проверки")
         return False  # No conditions = don't match anything
-    
-    for condition in conditions:
+
+    for idx, condition in enumerate(conditions):
         metric = condition.metric
         operator = condition.operator
         threshold = condition.value
-        
+
         # Get metric value from stats
         actual_value = stats.get(metric)
-        
-        # Handle None values
+        print(f"         [{idx+1}] Проверяем: {metric} {operator} {threshold} (начальное значение: {actual_value})")
+
+        # Handle None and special cases (same logic as check_banner_against_rules)
         if actual_value is None:
             if metric == "cost_per_goal":
                 # If no goals, cost_per_goal is infinite
-                actual_value = float('inf')
+                goals = stats.get("goals", 0) or stats.get("vk_goals", 0)
+                if goals == 0:
+                    actual_value = float('inf')
+                    print(f"            → cost_per_goal = ∞ (нет целей)")
+                else:
+                    spent = stats.get("spent", 0) or 0
+                    actual_value = spent / goals if goals > 0 else float('inf')
+                    print(f"            → cost_per_goal = {actual_value:.2f} (spent={spent}, goals={goals})")
+            elif metric == "ctr":
+                shows = stats.get("shows", 0) or 0
+                clicks = stats.get("clicks", 0) or 0
+                actual_value = (clicks / shows * 100) if shows > 0 else 0
+                print(f"            → ctr = {actual_value:.2f}% (clicks={clicks}, shows={shows})")
+            elif metric == "cpc":
+                clicks = stats.get("clicks", 0) or 0
+                spent = stats.get("spent", 0) or 0
+                actual_value = (spent / clicks) if clicks > 0 else float('inf')
+                print(f"            → cpc = {actual_value:.2f} (spent={spent}, clicks={clicks})")
             else:
                 actual_value = 0
-        
-        # Check condition
-        if operator == ">":
-            if not (actual_value > threshold):
-                return False
-        elif operator == ">=":
-            if not (actual_value >= threshold):
-                return False
-        elif operator == "<":
-            if not (actual_value < threshold):
-                return False
-        elif operator == "<=":
-            if not (actual_value <= threshold):
-                return False
-        elif operator == "==":
-            if not (actual_value == threshold):
-                return False
-        elif operator == "!=":
-            if not (actual_value != threshold):
-                return False
+                print(f"            → значение отсутствует, используем 0")
+
+        # Normalize goals field name
+        if metric == "goals" and actual_value == 0:
+            vk_goals = stats.get("vk_goals", 0) or 0
+            if vk_goals > 0:
+                actual_value = vk_goals
+                print(f"            → используем vk_goals = {actual_value}")
+
+        # Check condition based on operator (same syntax as disable rules)
+        condition_met = False
+
+        # FIX: If cost_per_goal is infinite (0 goals), handle specially
+        if metric == "cost_per_goal" and actual_value == float('inf'):
+            if operator in ("not_equals", "!="):
+                condition_met = True
+            else:
+                condition_met = False
+            print(f"            → cost_per_goal=∞: условие {'✓ выполнено' if condition_met else '✗ НЕ выполнено'}")
+        elif operator in ("equals", "=", "=="):
+            condition_met = (actual_value == threshold)
+            print(f"            → {actual_value} == {threshold} = {condition_met}")
+        elif operator in ("not_equals", "!=", "<>"):
+            condition_met = (actual_value != threshold)
+            print(f"            → {actual_value} != {threshold} = {condition_met}")
+        elif operator in ("greater_than", ">"):
+            condition_met = (actual_value > threshold)
+            print(f"            → {actual_value} > {threshold} = {condition_met}")
+        elif operator in ("less_than", "<"):
+            condition_met = (actual_value < threshold)
+            print(f"            → {actual_value} < {threshold} = {condition_met}")
+        elif operator in ("greater_or_equal", ">="):
+            condition_met = (actual_value >= threshold)
+            print(f"            → {actual_value} >= {threshold} = {condition_met}")
+        elif operator in ("less_or_equal", "<="):
+            condition_met = (actual_value <= threshold)
+            print(f"            → {actual_value} <= {threshold} = {condition_met}")
         else:
-            # Unknown operator, skip
-            continue
-    
+            # Unknown operator - FAIL the condition
+            condition_met = False
+            print(f"            → ⚠️  НЕИЗВЕСТНЫЙ ОПЕРАТОР '{operator}'")
+
+        if not condition_met:
+            print(f"            ✗ Условие НЕ выполнено, пропускаем группу")
+            return False
+        else:
+            print(f"            ✓ Условие выполнено")
+
+    print(f"         ✅ ВСЕ условия выполнены!")
     return True
 
 

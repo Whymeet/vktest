@@ -45,6 +45,7 @@ if IN_DOCKER:
     LOGS_DIR = PROJECT_ROOT / "logs"
     DATA_DIR = PROJECT_ROOT / "data"
     SCHEDULER_SCRIPT = PROJECT_ROOT / "scheduler" / "scheduler_main.py"
+    SCALING_SCHEDULER_SCRIPT = PROJECT_ROOT / "scheduler" / "scaling_scheduler.py"
     MAIN_SCRIPT = PROJECT_ROOT / "core" / "main.py"
     BOT_SCRIPT = PROJECT_ROOT / "bot" / "telegram_bot.py"
 else:
@@ -53,6 +54,7 @@ else:
     LOGS_DIR = PROJECT_ROOT / "logs"
     DATA_DIR = PROJECT_ROOT / "data"
     SCHEDULER_SCRIPT = PROJECT_ROOT / "backend" / "scheduler" / "scheduler_main.py"
+    SCALING_SCHEDULER_SCRIPT = PROJECT_ROOT / "backend" / "scheduler" / "scaling_scheduler.py"
     MAIN_SCRIPT = PROJECT_ROOT / "backend" / "core" / "main.py"
     BOT_SCRIPT = PROJECT_ROOT / "backend" / "bot" / "telegram_bot.py"
 
@@ -320,6 +322,59 @@ app.add_middleware(
 app.include_router(auth_router)
 
 
+def autostart_scaling_schedulers():
+    """Auto-start scaling scheduler for all users on application startup"""
+    db = SessionLocal()
+    try:
+        # Get all users
+        from database.models import User
+        users = db.query(User).all()
+
+        for user in users:
+            # Check if scaling scheduler is already running for this user
+            is_running, existing_pid = is_process_running_by_db("scaling_scheduler", db, user.id)
+
+            if is_running:
+                print(f"  ⏭️  Scaling scheduler already running for user {user.username} (PID: {existing_pid})")
+                continue
+
+            # Start scaling scheduler for this user
+            try:
+                # Ensure logs directory exists
+                LOGS_DIR.mkdir(parents=True, exist_ok=True)
+
+                # Open log files for stdout/stderr with user-specific filenames
+                user_log_prefix = f"user_{user.id}"
+                scaling_scheduler_stdout = open(LOGS_DIR / f"{user_log_prefix}_scaling_scheduler_stdout.log", "a", encoding="utf-8")
+                scaling_scheduler_stderr = open(LOGS_DIR / f"{user_log_prefix}_scaling_scheduler_stderr.log", "a", encoding="utf-8")
+
+                # Pass user_id as environment variable to the scaling scheduler
+                env = os.environ.copy()
+                env["VK_ADS_USER_ID"] = str(user.id)
+
+                process = subprocess.Popen(
+                    [sys.executable, str(SCALING_SCHEDULER_SCRIPT)],
+                    stdout=scaling_scheduler_stdout,
+                    stderr=scaling_scheduler_stderr,
+                    cwd=str(PROJECT_ROOT),
+                    start_new_session=True,
+                    env=env
+                )
+
+                # Save to DB for persistence with user-specific name
+                process_name = f"scaling_scheduler_{user.id}"
+                crud.set_process_running(db, process_name, process.pid, str(SCALING_SCHEDULER_SCRIPT), user_id=user.id)
+
+                # Also keep in memory cache for current session
+                running_processes[process_name] = process
+
+                print(f"  ✅ Scaling scheduler started for user {user.username} (PID: {process.pid})")
+            except Exception as e:
+                print(f"  ❌ Failed to start scaling scheduler for user {user.username}: {e}")
+    finally:
+        db.close()
+
+
 # Startup event
 @app.on_event("startup")
 async def startup_event():
@@ -336,6 +391,11 @@ async def startup_event():
     print("🔍 Checking for running processes...")
     recover_processes_on_startup()
     print("✅ Process recovery complete")
+
+    # Auto-start scaling scheduler for all users
+    print("🚀 Starting scaling schedulers for all users...")
+    autostart_scaling_schedulers()
+    print("✅ Scaling schedulers started")
 
 
 # === Health Check ===
@@ -984,11 +1044,13 @@ async def get_control_status(
     scheduler_running, scheduler_pid = is_process_running_by_db("scheduler", db, current_user.id)
     analysis_running, analysis_pid = is_process_running_by_db("analysis", db, current_user.id)
     bot_running, bot_pid = is_process_running_by_db("bot", db, current_user.id)
+    scaling_scheduler_running, scaling_scheduler_pid = is_process_running_by_db("scaling_scheduler", db, current_user.id)
 
     return {
         "scheduler": {"running": scheduler_running, "pid": scheduler_pid},
         "analysis": {"running": analysis_running, "pid": analysis_pid},
-        "bot": {"running": bot_running, "pid": bot_pid}
+        "bot": {"running": bot_running, "pid": bot_pid},
+        "scaling_scheduler": {"running": scaling_scheduler_running, "pid": scaling_scheduler_pid}
     }
 
 
@@ -1192,6 +1254,84 @@ async def stop_bot(db: Session = Depends(get_db)):
         return {"message": "Bot stopped", "pid": pid}
     else:
         raise HTTPException(status_code=500, detail=f"Failed to stop bot (PID: {pid})")
+
+
+@app.post("/api/control/scaling_scheduler/start")
+async def start_scaling_scheduler(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Start scaling scheduler with persistent PID tracking for current user"""
+    is_running, existing_pid = is_process_running_by_db("scaling_scheduler", db, current_user.id)
+
+    if is_running:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Scaling scheduler already running (PID: {existing_pid})"
+        )
+
+    # Ensure logs directory exists
+    LOGS_DIR.mkdir(parents=True, exist_ok=True)
+
+    try:
+        # Open log files for stdout/stderr with user-specific filenames
+        user_log_prefix = f"user_{current_user.id}"
+        scaling_scheduler_stdout = open(LOGS_DIR / f"{user_log_prefix}_scaling_scheduler_stdout.log", "a", encoding="utf-8")
+        scaling_scheduler_stderr = open(LOGS_DIR / f"{user_log_prefix}_scaling_scheduler_stderr.log", "a", encoding="utf-8")
+
+        # Pass user_id as environment variable to the scaling scheduler
+        env = os.environ.copy()
+        env["VK_ADS_USER_ID"] = str(current_user.id)
+
+        process = subprocess.Popen(
+            [sys.executable, str(SCALING_SCHEDULER_SCRIPT)],
+            stdout=scaling_scheduler_stdout,
+            stderr=scaling_scheduler_stderr,
+            cwd=str(PROJECT_ROOT),
+            start_new_session=True,
+            env=env
+        )
+
+        # Save to DB for persistence with user-specific name
+        process_name = f"scaling_scheduler_{current_user.id}"
+        crud.set_process_running(db, process_name, process.pid, str(SCALING_SCHEDULER_SCRIPT), user_id=current_user.id)
+
+        # Also keep in memory cache for current session
+        running_processes[process_name] = process
+
+        print(f"✅ Scaling scheduler started with PID: {process.pid} for user {current_user.username}")
+        return {"message": "Scaling scheduler started", "pid": process.pid}
+    except Exception as e:
+        print(f"❌ Failed to start scaling scheduler: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to start scaling scheduler: {str(e)}")
+
+
+@app.post("/api/control/scaling_scheduler/stop")
+async def stop_scaling_scheduler(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Stop scaling scheduler for current user - works even after API restart"""
+    is_running, pid = is_process_running_by_db("scaling_scheduler", db, current_user.id)
+
+    if not is_running:
+        raise HTTPException(status_code=400, detail="Scaling scheduler not running")
+
+    # Kill by PID (works even if not in memory cache)
+    success = kill_process_by_pid(pid)
+
+    if success:
+        process_name = f"scaling_scheduler_{current_user.id}"
+        crud.set_process_stopped(db, process_name)
+
+        # Remove from memory cache if present
+        if process_name in running_processes:
+            del running_processes[process_name]
+
+        print(f"✅ Scaling scheduler stopped (PID: {pid}) for user {current_user.username}")
+        return {"message": "Scaling scheduler stopped", "pid": pid}
+    else:
+        raise HTTPException(status_code=500, detail=f"Failed to stop scaling scheduler (PID: {pid})")
 
 
 @app.post("/api/control/kill-all")
@@ -1826,10 +1966,10 @@ async def update_scaling_config_endpoint(
         duplicates_count=data.duplicates_count,
         enabled=data.enabled
     )
-    
+
     if not config:
         raise HTTPException(status_code=404, detail="Configuration not found")
-    
+
     # Update conditions if provided
     if data.conditions is not None:
         crud.set_scaling_conditions(
@@ -1837,7 +1977,10 @@ async def update_scaling_config_endpoint(
             config_id,
             [c.model_dump() for c in data.conditions]
         )
-    
+
+    # Auto-manage scaling scheduler based on enabled configs
+    await manage_scaling_scheduler_auto(current_user.id, db)
+
     return {"message": "Configuration updated"}
 
 
@@ -2129,11 +2272,16 @@ async def run_scaling_config(
                 stats = group.get("stats", {})
                 
                 print(f"\n   📋 Группа {group_id}: {group_name}")
-                print(f"      Статистика: spent={stats.get('spent')}, goals={stats.get('goals')}, cost_per_goal={stats.get('cost_per_goal')}")
-                
-                # Check conditions
+                print(f"      Статистика: spent={stats.get('spent')}, shows={stats.get('shows')}, clicks={stats.get('clicks')}, goals={stats.get('goals')}, cost_per_goal={stats.get('cost_per_goal')}")
+
+                # Check conditions with detailed logging
+                print(f"      🔍 Проверка условий:")
+                for i, cond in enumerate(conditions):
+                    actual_value = stats.get(cond.metric)
+                    print(f"         [{i+1}] {cond.metric} {cond.operator} {cond.value} -> actual={actual_value}")
+
                 conditions_met = crud.check_group_conditions(stats, conditions)
-                print(f"      Условия выполнены: {conditions_met}")
+                print(f"      ✓ Результат проверки условий: {conditions_met}")
                 
                 if conditions_met:
                     # Duplicate the group N times (based on duplicates_count)
