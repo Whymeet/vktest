@@ -1979,7 +1979,8 @@ async def update_scaling_config_endpoint(
         )
 
     # Auto-manage scaling scheduler based on enabled configs
-    await manage_scaling_scheduler_auto(current_user.id, db)
+    # TODO: Реализовать функцию manage_scaling_scheduler_auto для автоматического управления планировщиком
+    # Пока что убрано, так как функция не определена и вызывает ошибку 500
 
     return {"message": "Configuration updated"}
 

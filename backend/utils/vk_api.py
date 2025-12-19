@@ -757,7 +757,8 @@ def duplicate_ad_group_full(
         'conversions', 'cost_per_conversion', 'impressions',
         'banner_count', 'banners', 'delivery', 'issues', 'read_only',
         'interface_read_only', 'user_id', 'stats_info', 'learning_progress',
-        'efficiency_status', 'vkads_status', 'or_status', 'or_migrated'
+        'efficiency_status', 'vkads_status', 'or_status', 'or_migrated',
+        'budget_limit_day'  # Не копируем, устанавливаем отдельно если указан new_budget
     }
     
     # Исключаемые поля баннеров (read-only согласно документации VK Ads)
@@ -821,8 +822,10 @@ def duplicate_ad_group_full(
         
         # Устанавливаем новый бюджет если указан
         if new_budget is not None:
-            new_group_data['budget_limit_day'] = str(int(new_budget * 100))  # В копейках
-            logger.info(f"💰 Установлен новый дневной бюджет: {new_budget} руб")
+            # VK Ads API ожидает бюджет в рублях (без умножения на 100)
+            budget_value = str(int(new_budget))
+            new_group_data['budget_limit_day'] = budget_value
+            logger.info(f"💰 Установлен новый дневной бюджет: {new_budget} руб (значение для API: {budget_value})")
         
         # Статус
         new_group_data['status'] = 'active' if auto_activate else 'blocked'

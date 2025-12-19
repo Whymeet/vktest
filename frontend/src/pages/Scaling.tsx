@@ -816,6 +816,7 @@ export function Scaling() {
   const { data: configs = [], isLoading: configsLoading } = useQuery({
     queryKey: ['scaling-configs'],
     queryFn: () => getScalingConfigs().then((r) => r.data),
+    refetchOnWindowFocus: false, // Отключаем автоматический refetch при фокусе окна
   });
 
   const { data: logsData } = useQuery({
@@ -843,8 +844,45 @@ export function Scaling() {
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: any }) => updateScalingConfig(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['scaling-configs'] });
+    onMutate: async ({ id, data }) => {
+      // Отменяем исходящие запросы, чтобы не перезаписать оптимистичное обновление
+      await queryClient.cancelQueries({ queryKey: ['scaling-configs'] });
+      
+      // Сохраняем предыдущее значение для отката
+      const previousConfigs = queryClient.getQueryData<ScalingConfig[]>(['scaling-configs']);
+      
+      // Оптимистично обновляем данные
+      if (previousConfigs) {
+        const updatedConfigs = previousConfigs.map((config) => {
+          if (config.id === id) {
+            // Создаем новый объект с обновленными данными
+            return { ...config, ...data };
+          }
+          return config;
+        });
+        // Устанавливаем новые данные напрямую
+        queryClient.setQueryData<ScalingConfig[]>(['scaling-configs'], updatedConfigs);
+      }
+      
+      return { previousConfigs };
+    },
+    onError: (err, variables, context) => {
+      // Откатываем изменения при ошибке
+      if (context?.previousConfigs) {
+        queryClient.setQueryData(['scaling-configs'], context.previousConfigs);
+      }
+    },
+    onSuccess: (data, variables) => {
+      // Определяем, это toggle операция или редактирование через модалку
+      const isToggleOperation = variables.data.hasOwnProperty('enabled') && 
+                                Object.keys(variables.data).length === 1;
+      
+      if (!isToggleOperation) {
+        // Для других операций (редактирование через модалку) делаем refetch
+        queryClient.refetchQueries({ queryKey: ['scaling-configs'] });
+      }
+      // Для toggle операций ничего не делаем - оптимистичное обновление уже применено
+      // и мы не хотим делать refetch, чтобы не перезаписать его старыми данными
       setConfigModalOpen(false);
       setEditingConfig(null);
     },
