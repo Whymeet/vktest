@@ -888,9 +888,12 @@ async def get_disabled_banners(
 
 
 @app.get("/api/banners/disabled/accounts")
-async def get_disabled_banners_accounts(db: Session = Depends(get_db)):
-    """Get all unique account names from disabled banners for filter dropdown"""
-    account_names = crud.get_disabled_banners_account_names(db)
+async def get_disabled_banners_accounts(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get all unique account names from disabled banners for filter dropdown (for current user only)"""
+    account_names = crud.get_disabled_banners_account_names(db, user_id=current_user.id)
     return {"accounts": account_names}
 
 

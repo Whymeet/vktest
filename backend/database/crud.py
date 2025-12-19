@@ -1237,10 +1237,11 @@ def get_leadstech_analysis_cabinet_names(db: Session, user_id: int) -> List[str]
     return sorted([r[0] for r in results if r[0]])
 
 
-def get_disabled_banners_account_names(db: Session) -> List[str]:
-    """Get all unique account names from disabled banners"""
+def get_disabled_banners_account_names(db: Session, user_id: int) -> List[str]:
+    """Get all unique account names from disabled banners for a specific user"""
     results = db.query(BannerAction.account_name).filter(
-        BannerAction.action == 'disabled'
+        BannerAction.action == 'disabled',
+        BannerAction.user_id == user_id
     ).distinct().all()
     return sorted([r[0] for r in results if r[0]])
 
