@@ -866,13 +866,13 @@ export function Scaling() {
       
       return { previousConfigs };
     },
-    onError: (err, variables, context) => {
+    onError: (_err, _variables, context) => {
       // Откатываем изменения при ошибке
       if (context?.previousConfigs) {
         queryClient.setQueryData(['scaling-configs'], context.previousConfigs);
       }
     },
-    onSuccess: (data, variables) => {
+    onSuccess: (_data, variables) => {
       // Определяем, это toggle операция или редактирование через модалку
       const isToggleOperation = variables.data.hasOwnProperty('enabled') && 
                                 Object.keys(variables.data).length === 1;
