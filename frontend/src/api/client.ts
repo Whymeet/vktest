@@ -681,32 +681,9 @@ export const duplicateAdGroup = (data: ManualDuplicateRequest) =>
 // Run a scaling configuration manually
 export const runScalingConfig = (configId: number) =>
   api.post<{
+    task_id: number;
+    message: string;
     config_name: string;
-    date_from: string;
-    date_to: string;
-    results: {
-      duplicated: Array<{
-        account: string;
-        original_group_id: number;
-        original_group_name: string;
-        new_group_id: number;
-        new_group_name: string;
-        banners_copied: number;
-      }>;
-      skipped: Array<{
-        account: string;
-        group_id: number;
-        group_name: string;
-        stats: Record<string, number>;
-        reason: string;
-      }>;
-      errors: Array<{
-        account: string;
-        group_id?: number;
-        group_name?: string;
-        error: string;
-      }>;
-    };
   }>(`/scaling/run/${configId}`);
 
 

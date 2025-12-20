@@ -768,6 +768,7 @@ export function Scaling() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['scaling-configs'] });
       queryClient.invalidateQueries({ queryKey: ['scaling-logs'] });
+      queryClient.invalidateQueries({ queryKey: ['scalingTasks'] });
     },
   });
 
