@@ -1,5 +1,8 @@
 // Auth utilities for API client
 
+// Базовый URL API из окружения (в проде через nginx это '/api')
+const API_URL = import.meta.env.VITE_API_URL || '/api';
+
 export interface AuthTokens {
   access_token: string;
   refresh_token: string;
@@ -52,9 +55,6 @@ export const clearTokens = (): void => {
 export const isAuthenticated = (): boolean => {
   return getAccessToken() !== null;
 };
-
-// Базовый URL API берём из Vite env, в проде это '/api' за nginx
-const API_URL = import.meta.env.VITE_API_URL || '/api';
 
 /**
  * Login with username and password

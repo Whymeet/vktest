@@ -75,6 +75,7 @@ export interface ProcessStatus {
   scheduler: ProcessStatusItem;
   analysis: ProcessStatusItem;
   bot: ProcessStatusItem;
+  scaling_scheduler: ProcessStatusItem;
 }
 
 export interface DashboardData {
@@ -264,6 +265,8 @@ export const startAnalysis = () => api.post('/control/analysis/start');
 export const stopAnalysis = () => api.post('/control/analysis/stop');
 export const startBot = () => api.post('/control/bot/start');
 export const stopBot = () => api.post('/control/bot/stop');
+export const startScalingScheduler = () => api.post('/control/scaling_scheduler/start');
+export const stopScalingScheduler = () => api.post('/control/scaling_scheduler/stop');
 export const killAllProcesses = () => api.post('/control/kill-all');
 
 // Health
@@ -542,6 +545,12 @@ export interface ScalingConfigCreate {
   conditions?: ScalingCondition[];
 }
 
+export interface DuplicatedBannerInfo {
+  original_id: number;
+  new_id: number;
+  name: string | null;
+}
+
 export interface ScalingLog {
   id: number;
   config_id: number | null;
@@ -556,6 +565,7 @@ export interface ScalingLog {
   error_message: string | null;
   total_banners: number;
   duplicated_banners: number;
+  duplicated_banner_ids: DuplicatedBannerInfo[] | null;
   created_at: string;
 }
 
@@ -626,45 +636,54 @@ export const getScalingLogs = (configId?: number, limit = 100, offset = 0) => {
   return api.get<{ items: ScalingLog[]; total: number }>(`/scaling/logs?${params.toString()}`);
 };
 
+// Scaling Task types
+export interface ScalingTask {
+  id: number;
+  task_type: 'manual' | 'auto';
+  config_id: number | null;
+  config_name: string | null;
+  account_name: string | null;
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+  total_operations: number;
+  completed_operations: number;
+  successful_operations: number;
+  failed_operations: number;
+  current_group_id: number | null;
+  current_group_name: string | null;
+  last_error: string | null;
+  created_at: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+// Get scaling tasks (active and recent)
+export const getScalingTasks = () =>
+  api.get<{ active: ScalingTask[]; recent: ScalingTask[] }>('/scaling/tasks');
+
+// Get specific scaling task
+export const getScalingTask = (taskId: number) =>
+  api.get<ScalingTask>(`/scaling/tasks/${taskId}`);
+
+// Cancel scaling task
+export const cancelScalingTask = (taskId: number) =>
+  api.post<{ message: string }>(`/scaling/tasks/${taskId}/cancel`);
+
 // Get ad groups with stats for an account
 export const getAccountAdGroups = (accountName: string, lookbackDays = 7) =>
   api.get<{ account_name: string; date_from: string; date_to: string; groups: AdGroupWithStats[] }>(
     `/scaling/ad-groups/${encodeURIComponent(accountName)}?lookback_days=${lookbackDays}`
   );
 
-// Manually duplicate ad groups
+// Manually duplicate ad groups (now returns task_id for tracking)
 export const duplicateAdGroup = (data: ManualDuplicateRequest) =>
-  api.post<ManualDuplicateResponse>('/scaling/duplicate', data);
+  api.post<{ task_id: number; message: string; total_operations: number }>('/scaling/duplicate', data);
 
 // Run a scaling configuration manually
 export const runScalingConfig = (configId: number) =>
   api.post<{
+    task_id: number;
+    message: string;
     config_name: string;
-    date_from: string;
-    date_to: string;
-    results: {
-      duplicated: Array<{
-        account: string;
-        original_group_id: number;
-        original_group_name: string;
-        new_group_id: number;
-        new_group_name: string;
-        banners_copied: number;
-      }>;
-      skipped: Array<{
-        account: string;
-        group_id: number;
-        group_name: string;
-        stats: Record<string, number>;
-        reason: string;
-      }>;
-      errors: Array<{
-        account: string;
-        group_id?: number;
-        group_name?: string;
-        error: string;
-      }>;
-    };
   }>(`/scaling/run/${configId}`);
 
 

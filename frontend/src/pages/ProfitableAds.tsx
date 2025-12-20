@@ -338,70 +338,72 @@ export function ProfitableAds() {
   const isRunning = analysisStatus?.running;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 lg:space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-white">Прибыльные объявления</h1>
-          <p className="text-slate-400 mt-1">Анализ ROI объявлений через LeadsTech</p>
-        </div>
-        <div className="flex items-center gap-3">
-          {isRunning ? (
-            <button
-              onClick={() => stopAnalysisMutation.mutate()}
-              disabled={stopAnalysisMutation.isPending}
-              className="btn bg-red-600 hover:bg-red-700 text-white"
-            >
-              {stopAnalysisMutation.isPending ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Square className="w-4 h-4" />
-              )}
-              Остановить анализ
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <h1 className="text-xl lg:text-2xl font-bold text-white">Прибыльные объявления</h1>
+            <p className="text-slate-400 text-sm mt-1 hidden sm:block">Анализ ROI объявлений через LeadsTech</p>
+          </div>
+          <div className="flex items-center gap-2">
+            {isRunning ? (
+              <button
+                onClick={() => stopAnalysisMutation.mutate()}
+                disabled={stopAnalysisMutation.isPending}
+                className="btn bg-red-600 hover:bg-red-700 text-white text-sm"
+              >
+                {stopAnalysisMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Square className="w-4 h-4" />
+                )}
+                <span className="hidden sm:inline">Остановить</span>
+              </button>
+            ) : (
+              <button
+                onClick={() => startAnalysisMutation.mutate()}
+                disabled={startAnalysisMutation.isPending || !configData?.configured}
+                className="btn bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 text-sm"
+              >
+                {startAnalysisMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Play className="w-4 h-4" />
+                )}
+                <span className="hidden sm:inline">Запустить</span>
+              </button>
+            )}
+            <button onClick={handleRefresh} className="btn btn-secondary text-sm">
+              <RefreshCw className="w-4 h-4" />
+              <span className="hidden sm:inline">Обновить</span>
             </button>
-          ) : (
             <button
-              onClick={() => startAnalysisMutation.mutate()}
-              disabled={startAnalysisMutation.isPending || !configData?.configured}
-              className="btn bg-green-600 hover:bg-green-700 text-white disabled:opacity-50"
+              onClick={() => {
+                getLeadsTechAnalysisLogs(200).then((response: any) => {
+                  setModalConfig({
+                    isOpen: true,
+                    title: 'Логи анализа (' + response.data.source + ')',
+                    content: (
+                      <pre className="bg-slate-900 p-4 rounded text-xs overflow-auto max-h-96 text-slate-300">
+                        {response.data.logs}
+                      </pre>
+                    ),
+                  });
+                }).catch((error: any) => {
+                  setModalConfig({
+                    isOpen: true,
+                    title: 'Ошибка',
+                    content: <p className="text-red-400">Не удалось загрузить логи: {error.message}</p>,
+                  });
+                });
+              }}
+              className="btn btn-secondary text-sm"
             >
-              {startAnalysisMutation.isPending ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Play className="w-4 h-4" />
-              )}
-              Запустить анализ
+              <FileText className="w-4 h-4" />
+              <span className="hidden sm:inline">Логи</span>
             </button>
-          )}
-          <button onClick={handleRefresh} className="btn btn-secondary">
-            <RefreshCw className="w-4 h-4" />
-            Обновить
-          </button>
-          <button 
-            onClick={() => {
-              getLeadsTechAnalysisLogs(200).then((response: any) => {
-                setModalConfig({
-                  isOpen: true,
-                  title: 'Логи анализа (' + response.data.source + ')',
-                  content: (
-                    <pre className="bg-slate-900 p-4 rounded text-xs overflow-auto max-h-96 text-slate-300">
-                      {response.data.logs}
-                    </pre>
-                  ),
-                });
-              }).catch((error: any) => {
-                setModalConfig({
-                  isOpen: true,
-                  title: 'Ошибка',
-                  content: <p className="text-red-400">Не удалось загрузить логи: {error.message}</p>,
-                });
-              });
-            }}
-            className="btn btn-secondary"
-          >
-            <FileText className="w-4 h-4" />
-            Логи
-          </button>
+          </div>
         </div>
       </div>
 
@@ -474,68 +476,68 @@ export function ProfitableAds() {
       {/* Results Tab */}
       {activeTab === 'results' && (
         <>
-          {/* Summary Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-            <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-orange-900/30 rounded-lg">
-                  <DollarSign className="w-5 h-5 text-orange-400" />
+          {/* Summary Cards - 2 columns on mobile, 3 on tablet, 5 on desktop */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-4">
+            <div className="bg-slate-800/50 rounded-lg p-3 sm:p-4 border border-slate-700">
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className="p-1.5 sm:p-2 bg-orange-900/30 rounded-lg">
+                  <DollarSign className="w-4 h-4 sm:w-5 sm:h-5 text-orange-400" />
                 </div>
-                <div>
-                  <p className="text-sm text-slate-400">Потрачено VK</p>
-                  <p className="text-xl font-bold text-white">{formatMoney(summary.totalSpent)}</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-blue-900/30 rounded-lg">
-                  <TrendingUp className="w-5 h-5 text-blue-400" />
-                </div>
-                <div>
-                  <p className="text-sm text-slate-400">Доход LeadsTech</p>
-                  <p className="text-xl font-bold text-white">{formatMoney(summary.totalRevenue)}</p>
+                <div className="min-w-0">
+                  <p className="text-xs sm:text-sm text-slate-400 truncate">Потрачено VK</p>
+                  <p className="text-base sm:text-xl font-bold text-white truncate">{formatMoney(summary.totalSpent)}</p>
                 </div>
               </div>
             </div>
 
-            <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700">
-              <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-lg ${summary.totalProfit >= 0 ? 'bg-green-900/30' : 'bg-red-900/30'}`}>
-                  <DollarSign className={`w-5 h-5 ${summary.totalProfit >= 0 ? 'text-green-400' : 'text-red-400'}`} />
+            <div className="bg-slate-800/50 rounded-lg p-3 sm:p-4 border border-slate-700">
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className="p-1.5 sm:p-2 bg-blue-900/30 rounded-lg">
+                  <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-blue-400" />
                 </div>
-                <div>
-                  <p className="text-sm text-slate-400">Прибыль</p>
-                  <p className={`text-xl font-bold ${summary.totalProfit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                <div className="min-w-0">
+                  <p className="text-xs sm:text-sm text-slate-400 truncate">Доход LT</p>
+                  <p className="text-base sm:text-xl font-bold text-white truncate">{formatMoney(summary.totalRevenue)}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-slate-800/50 rounded-lg p-3 sm:p-4 border border-slate-700">
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className={`p-1.5 sm:p-2 rounded-lg ${summary.totalProfit >= 0 ? 'bg-green-900/30' : 'bg-red-900/30'}`}>
+                  <DollarSign className={`w-4 h-4 sm:w-5 sm:h-5 ${summary.totalProfit >= 0 ? 'text-green-400' : 'text-red-400'}`} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs sm:text-sm text-slate-400 truncate">Прибыль</p>
+                  <p className={`text-base sm:text-xl font-bold truncate ${summary.totalProfit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                     {formatMoney(summary.totalProfit)}
                   </p>
                 </div>
               </div>
             </div>
 
-            <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700">
-              <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-lg ${(summary.avgRoi || 0) >= 0 ? 'bg-green-900/30' : 'bg-red-900/30'}`}>
-                  <Percent className={`w-5 h-5 ${(summary.avgRoi || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`} />
+            <div className="bg-slate-800/50 rounded-lg p-3 sm:p-4 border border-slate-700">
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className={`p-1.5 sm:p-2 rounded-lg ${(summary.avgRoi || 0) >= 0 ? 'bg-green-900/30' : 'bg-red-900/30'}`}>
+                  <Percent className={`w-4 h-4 sm:w-5 sm:h-5 ${(summary.avgRoi || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`} />
                 </div>
-                <div>
-                  <p className="text-sm text-slate-400">Средний ROI</p>
-                  <p className={`text-xl font-bold ${(summary.avgRoi || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                <div className="min-w-0">
+                  <p className="text-xs sm:text-sm text-slate-400 truncate">Средний ROI</p>
+                  <p className={`text-base sm:text-xl font-bold ${(summary.avgRoi || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                     {summary.avgRoi !== null ? `${summary.avgRoi.toFixed(1)}%` : '-'}
                   </p>
                 </div>
               </div>
             </div>
 
-            <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-purple-900/30 rounded-lg">
-                  <Building2 className="w-5 h-5 text-purple-400" />
+            <div className="bg-slate-800/50 rounded-lg p-3 sm:p-4 border border-slate-700 col-span-2 sm:col-span-1">
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className="p-1.5 sm:p-2 bg-purple-900/30 rounded-lg">
+                  <Building2 className="w-4 h-4 sm:w-5 sm:h-5 text-purple-400" />
                 </div>
-                <div>
-                  <p className="text-sm text-slate-400">Объявлений</p>
-                  <p className="text-xl font-bold text-white">{summary.count}</p>
+                <div className="min-w-0">
+                  <p className="text-xs sm:text-sm text-slate-400 truncate">Объявлений</p>
+                  <p className="text-base sm:text-xl font-bold text-white">{summary.count}</p>
                 </div>
               </div>
             </div>
@@ -565,15 +567,15 @@ export function ProfitableAds() {
           </Card>
 
           {/* Whitelist by ROI */}
-          <Card title="Автоматическое добавление в белый список" icon={CheckCircle}>
-            <div className="bg-blue-900/10 border border-blue-700/30 rounded-lg p-4 mb-4">
-              <p className="text-sm text-blue-300">
-                💡 Добавьте прибыльные объявления в белый список и включите их автоматически по порогу ROI.
+          <Card title="Автодобавление в белый список" icon={CheckCircle}>
+            <div className="bg-blue-900/10 border border-blue-700/30 rounded-lg p-3 sm:p-4 mb-4">
+              <p className="text-xs sm:text-sm text-blue-300">
+                Добавьте прибыльные объявления в белый список по порогу ROI.
               </p>
             </div>
-            <div className="flex flex-wrap gap-4 items-end">
-              <div className="min-w-[200px]">
-                <label className="block text-sm text-slate-400 mb-1">Минимальный ROI (%)</label>
+            <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4 sm:items-end">
+              <div className="w-full sm:w-auto sm:min-w-[150px]">
+                <label className="block text-xs sm:text-sm text-slate-400 mb-1">Мин. ROI (%)</label>
                 <input
                   type="number"
                   value={roiThreshold}
@@ -591,21 +593,21 @@ export function ProfitableAds() {
                   onChange={(e) => setEnableBanners(e.target.checked)}
                   className="w-4 h-4 rounded border-slate-500 bg-slate-700 text-blue-600"
                 />
-                <label htmlFor="enable-banners" className="text-sm text-slate-300">
-                  Включить объявления в VK Ads
+                <label htmlFor="enable-banners" className="text-xs sm:text-sm text-slate-300">
+                  Включить в VK Ads
                 </label>
               </div>
               <button
                 onClick={handleWhitelistProfitable}
                 disabled={whitelistProfitableMutation.isPending || whitelistStatus?.running || !analysisResults?.results || sortedResults.length === 0}
-                className="btn bg-green-600 hover:bg-green-700 text-white disabled:opacity-50"
+                className="btn bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 text-sm w-full sm:w-auto"
               >
                 {whitelistProfitableMutation.isPending || whitelistStatus?.running ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
                   <CheckCircle className="w-4 h-4" />
                 )}
-                Добавить прибыльные
+                Добавить
               </button>
             </div>
           </Card>
@@ -618,102 +620,178 @@ export function ProfitableAds() {
                 <p>Нет данных. Запустите анализ для получения результатов.</p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="text-left text-sm text-slate-400 border-b border-slate-700">
-                      <th className="pb-3 pr-4">
-                        <button
-                          onClick={() => handleSort('banner_id')}
-                          className="flex items-center gap-1 hover:text-white"
-                        >
-                          ID объявления
-                          <SortIcon field="banner_id" />
-                        </button>
-                      </th>
-                      <th className="pb-3 pr-4">Кабинет</th>
-                      <th className="pb-3 pr-4 text-right">
-                        <button
-                          onClick={() => handleSort('vk_spent')}
-                          className="flex items-center gap-1 hover:text-white ml-auto"
-                        >
-                          Траты VK
-                          <SortIcon field="vk_spent" />
-                        </button>
-                      </th>
-                      <th className="pb-3 pr-4 text-right">
-                        <button
-                          onClick={() => handleSort('lt_revenue')}
-                          className="flex items-center gap-1 hover:text-white ml-auto"
-                        >
-                          Доход LT
-                          <SortIcon field="lt_revenue" />
-                        </button>
-                      </th>
-                      <th className="pb-3 pr-4 text-right">
-                        <button
-                          onClick={() => handleSort('profit')}
-                          className="flex items-center gap-1 hover:text-white ml-auto"
-                        >
-                          Прибыль
-                          <SortIcon field="profit" />
-                        </button>
-                      </th>
-                      <th className="pb-3 text-right">
-                        <button
-                          onClick={() => handleSort('roi_percent')}
-                          className="flex items-center gap-1 hover:text-white ml-auto"
-                        >
-                          ROI
-                          <SortIcon field="roi_percent" />
-                        </button>
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sortedResults.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="text-center py-8 text-slate-400">
-                          Нет данных для отображения
-                        </td>
+              <>
+                {/* Mobile: Card view */}
+                <div className="lg:hidden space-y-3">
+                  {/* Mobile sort controls */}
+                  <div className="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1">
+                    <button
+                      onClick={() => handleSort('roi_percent')}
+                      className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition-colors ${
+                        sortField === 'roi_percent' ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                      }`}
+                    >
+                      ROI <SortIcon field="roi_percent" />
+                    </button>
+                    <button
+                      onClick={() => handleSort('profit')}
+                      className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition-colors ${
+                        sortField === 'profit' ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                      }`}
+                    >
+                      Прибыль <SortIcon field="profit" />
+                    </button>
+                    <button
+                      onClick={() => handleSort('vk_spent')}
+                      className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition-colors ${
+                        sortField === 'vk_spent' ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                      }`}
+                    >
+                      Траты <SortIcon field="vk_spent" />
+                    </button>
+                  </div>
+
+                  {/* Mobile cards */}
+                  {sortedResults.map((result: any) => (
+                    <div
+                      key={result.id}
+                      className="bg-slate-700/30 rounded-lg p-3 border border-slate-700/50 space-y-2"
+                    >
+                      {/* Top row: Banner ID and ROI */}
+                      <div className="flex items-center justify-between">
+                        <span className="text-white font-mono text-sm">ID: {result.banner_id}</span>
+                        <span className={`font-bold text-lg ${
+                          result.roi_percent === null ? 'text-slate-400' :
+                          result.roi_percent >= 0 ? 'text-green-400' : 'text-red-400'
+                        }`}>
+                          {result.roi_percent !== null ? `${result.roi_percent.toFixed(1)}%` : '-'}
+                        </span>
+                      </div>
+
+                      {/* Cabinet */}
+                      <div className="text-xs text-slate-400 truncate">
+                        {result.cabinet_name}
+                      </div>
+
+                      {/* Stats row */}
+                      <div className="flex items-center justify-between text-xs gap-2">
+                        <div className="flex flex-col">
+                          <span className="text-slate-500">Траты</span>
+                          <span className="text-orange-400">{formatMoney(result.vk_spent)}</span>
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-slate-500">Доход</span>
+                          <span className="text-blue-400">{formatMoney(result.lt_revenue)}</span>
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-slate-500">Прибыль</span>
+                          <span className={result.profit >= 0 ? 'text-green-400' : 'text-red-400'}>
+                            {formatMoney(result.profit)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Desktop: Table view */}
+                <div className="hidden lg:block overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="text-left text-sm text-slate-400 border-b border-slate-700">
+                        <th className="pb-3 pr-4">
+                          <button
+                            onClick={() => handleSort('banner_id')}
+                            className="flex items-center gap-1 hover:text-white"
+                          >
+                            ID объявления
+                            <SortIcon field="banner_id" />
+                          </button>
+                        </th>
+                        <th className="pb-3 pr-4">Кабинет</th>
+                        <th className="pb-3 pr-4 text-right">
+                          <button
+                            onClick={() => handleSort('vk_spent')}
+                            className="flex items-center gap-1 hover:text-white ml-auto"
+                          >
+                            Траты VK
+                            <SortIcon field="vk_spent" />
+                          </button>
+                        </th>
+                        <th className="pb-3 pr-4 text-right">
+                          <button
+                            onClick={() => handleSort('lt_revenue')}
+                            className="flex items-center gap-1 hover:text-white ml-auto"
+                          >
+                            Доход LT
+                            <SortIcon field="lt_revenue" />
+                          </button>
+                        </th>
+                        <th className="pb-3 pr-4 text-right">
+                          <button
+                            onClick={() => handleSort('profit')}
+                            className="flex items-center gap-1 hover:text-white ml-auto"
+                          >
+                            Прибыль
+                            <SortIcon field="profit" />
+                          </button>
+                        </th>
+                        <th className="pb-3 text-right">
+                          <button
+                            onClick={() => handleSort('roi_percent')}
+                            className="flex items-center gap-1 hover:text-white ml-auto"
+                          >
+                            ROI
+                            <SortIcon field="roi_percent" />
+                          </button>
+                        </th>
                       </tr>
-                    ) : (
-                      sortedResults.map((result: any) => (
-                        <tr
-                          key={result.id}
-                          className="border-b border-slate-700/50 hover:bg-slate-700/30 transition-colors"
-                        >
-                          <td className="py-3 pr-4">
-                            <span className="text-white font-mono">{result.banner_id}</span>
-                          </td>
-                          <td className="py-3 pr-4">
-                            <span className="text-sm text-slate-300">{result.cabinet_name}</span>
-                          </td>
-                          <td className="py-3 pr-4 text-right">
-                            <span className="text-orange-400">{formatMoney(result.vk_spent)}</span>
-                          </td>
-                          <td className="py-3 pr-4 text-right">
-                            <span className="text-blue-400">{formatMoney(result.lt_revenue)}</span>
-                          </td>
-                          <td className="py-3 pr-4 text-right">
-                            <span className={result.profit >= 0 ? 'text-green-400' : 'text-red-400'}>
-                              {formatMoney(result.profit)}
-                            </span>
-                          </td>
-                          <td className="py-3 text-right">
-                            <span className={`font-medium ${
-                              result.roi_percent === null ? 'text-slate-400' :
-                              result.roi_percent >= 0 ? 'text-green-400' : 'text-red-400'
-                            }`}>
-                              {result.roi_percent !== null ? `${result.roi_percent.toFixed(1)}%` : '-'}
-                            </span>
+                    </thead>
+                    <tbody>
+                      {sortedResults.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="text-center py-8 text-slate-400">
+                            Нет данных для отображения
                           </td>
                         </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                      ) : (
+                        sortedResults.map((result: any) => (
+                          <tr
+                            key={result.id}
+                            className="border-b border-slate-700/50 hover:bg-slate-700/30 transition-colors"
+                          >
+                            <td className="py-3 pr-4">
+                              <span className="text-white font-mono">{result.banner_id}</span>
+                            </td>
+                            <td className="py-3 pr-4">
+                              <span className="text-sm text-slate-300">{result.cabinet_name}</span>
+                            </td>
+                            <td className="py-3 pr-4 text-right">
+                              <span className="text-orange-400">{formatMoney(result.vk_spent)}</span>
+                            </td>
+                            <td className="py-3 pr-4 text-right">
+                              <span className="text-blue-400">{formatMoney(result.lt_revenue)}</span>
+                            </td>
+                            <td className="py-3 pr-4 text-right">
+                              <span className={result.profit >= 0 ? 'text-green-400' : 'text-red-400'}>
+                                {formatMoney(result.profit)}
+                              </span>
+                            </td>
+                            <td className="py-3 text-right">
+                              <span className={`font-medium ${
+                                result.roi_percent === null ? 'text-slate-400' :
+                                result.roi_percent >= 0 ? 'text-green-400' : 'text-red-400'
+                              }`}>
+                                {result.roi_percent !== null ? `${result.roi_percent.toFixed(1)}%` : '-'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             )}
             
             {/* Pagination */}
@@ -737,63 +815,63 @@ export function ProfitableAds() {
         <>
           {/* LeadsTech Config */}
           <Card title="Настройки LeadsTech" icon={Settings}>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               <div>
-                <label className="block text-sm text-slate-400 mb-1">Логин</label>
+                <label className="block text-xs sm:text-sm text-slate-400 mb-1">Логин</label>
                 <input
                   type="text"
                   value={configForm.login}
                   onChange={(e) => setConfigForm({ ...configForm, login: e.target.value })}
                   placeholder={configData?.login || 'Введите логин'}
-                  className="input w-full"
+                  className="input w-full text-sm"
                 />
               </div>
               <div>
-                <label className="block text-sm text-slate-400 mb-1">Пароль</label>
+                <label className="block text-xs sm:text-sm text-slate-400 mb-1">Пароль</label>
                 <div className="relative">
                   <input
                     type={showPassword ? 'text' : 'password'}
                     value={configForm.password}
                     onChange={(e) => setConfigForm({ ...configForm, password: e.target.value })}
-                    placeholder={configData?.configured ? '••••••••••••••••' : 'Введите пароль'}
-                    className="input w-full pr-20"
+                    placeholder={configData?.configured ? '••••••••' : 'Введите пароль'}
+                    className="input w-full pr-16 text-sm"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-sm"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs"
                   >
                     {showPassword ? 'Скрыть' : 'Показать'}
                   </button>
                 </div>
                 {configData?.configured && !configForm.password && (
-                  <p className="text-xs text-slate-500 mt-1">Пароль сохранён. Оставьте пустым, чтобы не менять.</p>
+                  <p className="text-xs text-slate-500 mt-1">Оставьте пустым, чтобы не менять.</p>
                 )}
               </div>
               <div>
-                <label className="block text-sm text-slate-400 mb-1">URL API</label>
+                <label className="block text-xs sm:text-sm text-slate-400 mb-1">URL API</label>
                 <input
                   type="text"
                   value={configForm.base_url}
                   onChange={(e) => setConfigForm({ ...configForm, base_url: e.target.value })}
-                  className="input w-full"
+                  className="input w-full text-sm"
                 />
               </div>
               <div>
-                <label className="block text-sm text-slate-400 mb-1">Период анализа (дней)</label>
+                <label className="block text-xs sm:text-sm text-slate-400 mb-1">Период (дней)</label>
                 <input
                   type="number"
                   value={configForm.lookback_days}
                   onChange={(e) => setConfigForm({ ...configForm, lookback_days: parseInt(e.target.value) || 10 })}
-                  className="input w-full"
+                  className="input w-full text-sm"
                 />
               </div>
-              <div>
-                <label className="block text-sm text-slate-400 mb-1">Поле с ID объявления</label>
+              <div className="sm:col-span-2">
+                <label className="block text-xs sm:text-sm text-slate-400 mb-1">Поле с ID объявления</label>
                 <select
                   value={configForm.banner_sub_field}
                   onChange={(e) => setConfigForm({ ...configForm, banner_sub_field: e.target.value })}
-                  className="input w-full"
+                  className="input w-full text-sm"
                 >
                   <option value="sub1">sub1</option>
                   <option value="sub2">sub2</option>
@@ -803,24 +881,24 @@ export function ProfitableAds() {
                 </select>
               </div>
             </div>
-            <div className="flex justify-between items-center mt-4 pt-4 border-t border-slate-700">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mt-4 pt-4 border-t border-slate-700">
               <div className="flex items-center gap-2">
                 {configData?.configured ? (
                   <>
                     <CheckCircle className="w-4 h-4 text-green-400" />
-                    <span className="text-sm text-green-400">Настроено</span>
+                    <span className="text-xs sm:text-sm text-green-400">Настроено</span>
                   </>
                 ) : (
                   <>
                     <AlertCircle className="w-4 h-4 text-yellow-400" />
-                    <span className="text-sm text-yellow-400">Не настроено</span>
+                    <span className="text-xs sm:text-sm text-yellow-400">Не настроено</span>
                   </>
                 )}
               </div>
               <button
                 onClick={handleSaveConfig}
                 disabled={updateConfigMutation.isPending || !configForm.login || (!configData?.configured && !configForm.password)}
-                className="btn bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50"
+                className="btn bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 text-sm w-full sm:w-auto"
               >
                 {updateConfigMutation.isPending ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
@@ -835,17 +913,16 @@ export function ProfitableAds() {
           {/* Cabinets Configuration */}
           <Card title="Кабинеты для анализа" icon={Building2}>
             {/* Add new cabinet */}
-            <div className="mb-4 p-4 bg-slate-700/30 rounded-lg">
-              <h4 className="text-sm text-slate-400 mb-3">Добавить кабинет</h4>
-              <div className="flex gap-3">
+            <div className="mb-4 p-3 sm:p-4 bg-slate-700/30 rounded-lg">
+              <h4 className="text-xs sm:text-sm text-slate-400 mb-3">Добавить кабинет</h4>
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
                 <select
                   value={newCabinetAccountId}
                   onChange={(e) => setNewCabinetAccountId(e.target.value ? parseInt(e.target.value) : '')}
-                  className="input flex-1"
+                  className="input sm:flex-1 text-sm"
                 >
                   <option value="">Выберите кабинет VK</option>
                   {accountsData?.accounts && Object.entries(accountsData.accounts).map(([name, acc]: [string, any]) => {
-                    // Check if account already has cabinet
                     const hasLabel = cabinetsData?.cabinets.some((c: any) => c.account_name === name);
                     if (hasLabel) return null;
                     return (
@@ -857,20 +934,21 @@ export function ProfitableAds() {
                   type="text"
                   value={newCabinetLabel}
                   onChange={(e) => setNewCabinetLabel(e.target.value)}
-                  placeholder="LeadsTech label (sub1)"
-                  className="input flex-1"
+                  placeholder="LeadsTech label"
+                  className="input sm:flex-1 text-sm"
                 />
                 <button
                   onClick={handleAddCabinet}
                   disabled={!newCabinetAccountId || !newCabinetLabel || createCabinetMutation.isPending}
-                  className="btn bg-green-600 hover:bg-green-700 text-white disabled:opacity-50"
+                  className="btn bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 text-sm"
                 >
                   {createCabinetMutation.isPending ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
                   ) : (
                     <Plus className="w-4 h-4" />
                   )}
-                  Добавить
+                  <span className="sm:hidden">Добавить</span>
+                  <span className="hidden sm:inline">Добавить</span>
                 </button>
               </div>
             </div>
@@ -882,16 +960,16 @@ export function ProfitableAds() {
                   <Loader2 className="w-6 h-6 mx-auto animate-spin" />
                 </div>
               ) : cabinetsData?.cabinets.length === 0 ? (
-                <div className="text-center py-4 text-slate-400">
+                <div className="text-center py-4 text-slate-400 text-sm">
                   Нет настроенных кабинетов
                 </div>
               ) : (
                 cabinetsData?.cabinets.map((cabinet: any) => (
                   <div
                     key={cabinet.id}
-                    className="flex items-center justify-between p-3 bg-slate-700/30 rounded-lg"
+                    className="flex items-center justify-between p-3 bg-slate-700/30 rounded-lg gap-2"
                   >
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2 sm:gap-4 min-w-0">
                       <input
                         type="checkbox"
                         checked={cabinet.enabled}
@@ -899,24 +977,24 @@ export function ProfitableAds() {
                           id: cabinet.id,
                           data: { enabled: e.target.checked }
                         })}
-                        className="w-4 h-4 rounded border-slate-500 bg-slate-700 text-blue-600 focus:ring-blue-500"
+                        className="w-4 h-4 rounded border-slate-500 bg-slate-700 text-blue-600 focus:ring-blue-500 flex-shrink-0"
                       />
-                      <div>
-                        <p className="text-white font-medium">{cabinet.account_name || 'Unknown'}</p>
+                      <div className="min-w-0">
+                        <p className="text-white font-medium text-sm truncate">{cabinet.account_name || 'Unknown'}</p>
                         {editingCabinetId === cabinet.id ? (
                           <input
                             type="text"
                             value={editingLabel}
                             onChange={(e) => setEditingLabel(e.target.value)}
-                            className="input text-sm py-1 mt-1"
+                            className="input text-xs py-1 mt-1 w-full"
                             autoFocus
                           />
                         ) : (
-                          <p className="text-sm text-slate-400">Label: {cabinet.leadstech_label}</p>
+                          <p className="text-xs text-slate-400 truncate">Label: {cabinet.leadstech_label}</p>
                         )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1 flex-shrink-0">
                       {editingCabinetId === cabinet.id ? (
                         <>
                           <button
@@ -926,13 +1004,13 @@ export function ProfitableAds() {
                                 data: { leadstech_label: editingLabel }
                               });
                             }}
-                            className="p-2 text-green-400 hover:bg-slate-600 rounded"
+                            className="p-1.5 sm:p-2 text-green-400 hover:bg-slate-600 rounded"
                           >
                             <Check className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => setEditingCabinetId(null)}
-                            className="p-2 text-slate-400 hover:bg-slate-600 rounded"
+                            className="p-1.5 sm:p-2 text-slate-400 hover:bg-slate-600 rounded"
                           >
                             <X className="w-4 h-4" />
                           </button>
@@ -944,13 +1022,13 @@ export function ProfitableAds() {
                               setEditingCabinetId(cabinet.id);
                               setEditingLabel(cabinet.leadstech_label);
                             }}
-                            className="p-2 text-slate-400 hover:bg-slate-600 rounded"
+                            className="p-1.5 sm:p-2 text-slate-400 hover:bg-slate-600 rounded"
                           >
                             <Edit2 className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => deleteCabinetMutation.mutate(cabinet.id)}
-                            className="p-2 text-red-400 hover:bg-slate-600 rounded"
+                            className="p-1.5 sm:p-2 text-red-400 hover:bg-slate-600 rounded"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>

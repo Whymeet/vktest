@@ -4,7 +4,7 @@ Multi-tenant architecture with user isolation
 """
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import Column, Integer, BigInteger, String, Boolean, Float, DateTime, Text, ForeignKey, JSON, UniqueConstraint
+from sqlalchemy import Column, Integer, BigInteger, String, Boolean, Float, DateTime, Text, ForeignKey, JSON, UniqueConstraint, Index
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from utils.time_utils import get_moscow_time
@@ -189,6 +189,16 @@ class BannerAction(Base):
     # Timestamp
     created_at = Column(DateTime, default=get_moscow_time, nullable=False, index=True)
 
+    # Composite indexes for common query patterns
+    __table_args__ = (
+        # Most common query: get disabled banners for user, sorted by date
+        Index('ix_banner_actions_user_action_created', 'user_id', 'action', 'created_at'),
+        # Filter by account within user
+        Index('ix_banner_actions_user_account', 'user_id', 'vk_account_id'),
+        # Filter by account_name for reporting
+        Index('ix_banner_actions_user_account_name_created', 'user_id', 'account_name', 'created_at'),
+    )
+
     # Relationships
     account = relationship("Account", back_populates="banner_actions")
 
@@ -287,6 +297,14 @@ class DailyAccountStats(Base):
 
     # Timestamp когда записана статистика
     created_at = Column(DateTime, default=get_moscow_time, nullable=False, index=True)
+
+    # Composite indexes for common query patterns
+    __table_args__ = (
+        # Query by user and date range
+        Index('ix_daily_stats_user_date', 'user_id', 'stats_date'),
+        # Query by user, account and date
+        Index('ix_daily_stats_user_account_date', 'user_id', 'account_name', 'stats_date'),
+    )
 
     def __repr__(self):
         return f"<DailyAccountStats(account='{self.account_name}', date={self.stats_date}, spend={self.total_spend})>"
@@ -418,6 +436,14 @@ class LeadsTechAnalysisResult(Base):
     # Timestamp
     created_at = Column(DateTime, default=get_moscow_time, nullable=False, index=True)
 
+    # Composite indexes for common query patterns
+    __table_args__ = (
+        # Query by user and cabinet for filtering
+        Index('ix_lt_results_user_cabinet', 'user_id', 'cabinet_name'),
+        # Query by user sorted by ROI/profit for reporting
+        Index('ix_lt_results_user_roi', 'user_id', 'roi_percent'),
+    )
+
     def __repr__(self):
         return f"<LeadsTechAnalysisResult(banner_id={self.banner_id}, roi={self.roi_percent}, profit={self.profit})>"
 
@@ -487,7 +513,7 @@ class ScalingCondition(Base):
     
     # Condition definition
     metric = Column(String(50), nullable=False)  # spent, shows, clicks, goals, cost_per_goal
-    operator = Column(String(10), nullable=False)  # >, <, >=, <=, ==
+    operator = Column(String(20), nullable=False)  # greater_than, less_than, greater_or_equal, etc.
     value = Column(Float, nullable=False)  # Threshold value
     
     # Order for display
@@ -535,12 +561,66 @@ class ScalingLog(Base):
     # Banners info
     total_banners = Column(Integer, default=0)
     duplicated_banners = Column(Integer, default=0)
-    
+    duplicated_banner_ids = Column(JSON, nullable=True)  # List of {original_id, new_id, name}
+
     # Timestamp
     created_at = Column(DateTime, default=get_moscow_time, nullable=False, index=True)
 
+    # Composite indexes for common query patterns
+    __table_args__ = (
+        # Query logs by user and config
+        Index('ix_scaling_logs_user_config', 'user_id', 'config_id'),
+        # Query logs by user sorted by date
+        Index('ix_scaling_logs_user_created', 'user_id', 'created_at'),
+    )
+
     def __repr__(self):
         return f"<ScalingLog(original={self.original_group_id}, new={self.new_group_id}, success={self.success})>"
+
+
+class ScalingTask(Base):
+    """Active scaling/duplication task for real-time tracking"""
+    __tablename__ = "scaling_tasks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    # Task type: 'manual' or 'auto'
+    task_type = Column(String(20), nullable=False, default='manual')
+
+    # Config reference (for auto tasks)
+    config_id = Column(Integer, ForeignKey("scaling_configs.id", ondelete="SET NULL"), nullable=True)
+    config_name = Column(String(255), nullable=True)
+
+    # Account info
+    account_name = Column(String(255), nullable=True)
+
+    # Task status: 'pending', 'running', 'completed', 'failed', 'cancelled'
+    status = Column(String(20), nullable=False, default='pending')
+
+    # Progress tracking
+    total_operations = Column(Integer, default=0)  # Total groups * duplicates_count
+    completed_operations = Column(Integer, default=0)
+    successful_operations = Column(Integer, default=0)
+    failed_operations = Column(Integer, default=0)
+
+    # Current operation info
+    current_group_id = Column(BigInteger, nullable=True)
+    current_group_name = Column(String(500), nullable=True)
+
+    # Error info
+    last_error = Column(Text, nullable=True)
+
+    # Timestamps
+    created_at = Column(DateTime, default=get_moscow_time, nullable=False)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+
+    # Relationships
+    user = relationship("User", backref="scaling_tasks")
+
+    def __repr__(self):
+        return f"<ScalingTask(id={self.id}, type={self.task_type}, status={self.status}, progress={self.completed_operations}/{self.total_operations})>"
 
 
 # ===== Disable Rules Models (автоотключение объявлений) =====

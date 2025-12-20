@@ -62,14 +62,14 @@ function ConditionEditor({
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <label className="text-sm font-medium text-slate-300">
           Условия (все должны выполняться - AND)
         </label>
         <button
           type="button"
           onClick={addCondition}
-          className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-600 hover:bg-blue-700 rounded text-white transition-colors"
+          className="flex items-center justify-center gap-1 px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 rounded text-white transition-colors w-full sm:w-auto"
         >
           <Plus className="w-3 h-3" />
           Добавить условие
@@ -85,7 +85,7 @@ function ConditionEditor({
           {conditions.map((condition, index) => (
             <div
               key={index}
-              className="flex items-center gap-2 p-3 bg-slate-800 rounded-lg border border-slate-700"
+              className="flex flex-col sm:flex-row sm:items-center gap-2 p-3 bg-slate-800 rounded-lg border border-slate-700"
             >
               <select
                 value={condition.metric}
@@ -102,7 +102,7 @@ function ConditionEditor({
               <select
                 value={condition.operator}
                 onChange={(e) => updateCondition(index, 'operator', e.target.value)}
-                className="w-32 px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm"
+                className="sm:w-32 px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm"
               >
                 {operators.map((op) => (
                   <option key={op.value} value={op.value}>
@@ -115,14 +115,14 @@ function ConditionEditor({
                 type="number"
                 value={condition.value}
                 onChange={(e) => updateCondition(index, 'value', parseFloat(e.target.value) || 0)}
-                className="w-28 px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm"
+                className="sm:w-28 px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm"
                 step="any"
               />
 
               <button
                 type="button"
                 onClick={() => removeCondition(index)}
-                className="p-2 text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded transition-colors"
+                className="p-2 text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded transition-colors sm:flex-shrink-0"
               >
                 <Trash2 className="w-4 h-4" />
               </button>
@@ -251,22 +251,22 @@ function RuleCard({
 
   return (
     <Card className={`transition-all ${!rule.enabled ? 'opacity-60' : ''}`}>
-      <div className="flex items-start justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-3 mb-2">
+          <div className="flex items-center gap-2 sm:gap-3 mb-2 flex-wrap">
             <Toggle checked={rule.enabled} onChange={onToggle} />
-            <h3 className="text-lg font-semibold text-white truncate">{rule.name}</h3>
-            <span className="px-2 py-0.5 text-xs bg-slate-700 rounded text-slate-400">
+            <h3 className="text-base sm:text-lg font-semibold text-white truncate">{rule.name}</h3>
+            <span className="px-2 py-0.5 text-xs bg-slate-700 rounded text-slate-400 whitespace-nowrap">
               Приоритет: {rule.priority}
             </span>
           </div>
-          
+
           {rule.description && (
-            <p className="text-sm text-slate-400 mb-3">{rule.description}</p>
+            <p className="text-xs sm:text-sm text-slate-400 mb-3">{rule.description}</p>
           )}
 
           {/* Conditions Preview */}
-          <div className="flex flex-wrap gap-2 mb-3">
+          <div className="flex flex-wrap gap-1.5 sm:gap-2 mb-3">
             {rule.conditions.slice(0, expanded ? undefined : 2).map((c, i) => (
               <span
                 key={i}
@@ -295,31 +295,31 @@ function RuleCard({
           </div>
         </div>
 
-        <div className="flex items-center gap-2 ml-4">
+        <div className="flex sm:flex-col items-center gap-1.5 sm:gap-2 sm:ml-4 justify-end sm:justify-start">
           <button
             onClick={() => setExpanded(!expanded)}
-            className="p-2 text-slate-400 hover:text-slate-300 hover:bg-slate-700 rounded transition-colors"
+            className="p-1.5 sm:p-2 text-slate-400 hover:text-slate-300 hover:bg-slate-700 rounded transition-colors"
             title={expanded ? 'Свернуть' : 'Развернуть'}
           >
             {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </button>
           <button
             onClick={onDuplicate}
-            className="p-2 text-slate-400 hover:text-blue-400 hover:bg-blue-900/20 rounded transition-colors"
+            className="p-1.5 sm:p-2 text-slate-400 hover:text-blue-400 hover:bg-blue-900/20 rounded transition-colors"
             title="Дублировать"
           >
             <Copy className="w-4 h-4" />
           </button>
           <button
             onClick={onEdit}
-            className="p-2 text-slate-400 hover:text-green-400 hover:bg-green-900/20 rounded transition-colors"
+            className="p-1.5 sm:p-2 text-slate-400 hover:text-green-400 hover:bg-green-900/20 rounded transition-colors"
             title="Редактировать"
           >
             <Edit2 className="w-4 h-4" />
           </button>
           <button
             onClick={onDelete}
-            className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-900/20 rounded transition-colors"
+            className="p-1.5 sm:p-2 text-slate-400 hover:text-red-400 hover:bg-red-900/20 rounded transition-colors"
             title="Удалить"
           >
             <Trash2 className="w-4 h-4" />
@@ -513,16 +513,16 @@ export function DisableRules() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 lg:space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-white">Правила отключения</h1>
-          <p className="text-slate-400 mt-1">
+          <h1 className="text-xl lg:text-2xl font-bold text-white">Правила отключения</h1>
+          <p className="text-slate-400 text-sm mt-1 hidden sm:block">
             Гибкие правила для автоматического отключения баннеров
           </p>
         </div>
-        <button onClick={openCreateModal} className="btn btn-primary">
+        <button onClick={openCreateModal} className="btn btn-primary text-sm w-full sm:w-auto">
           <Plus className="w-4 h-4" />
           Создать правило
         </button>
@@ -530,9 +530,9 @@ export function DisableRules() {
 
       {/* Info Card */}
       <Card>
-        <div className="flex items-start gap-3">
-          <AlertTriangle className="w-5 h-5 text-yellow-400 flex-shrink-0 mt-0.5" />
-          <div className="text-sm text-slate-300">
+        <div className="flex items-start gap-2 sm:gap-3">
+          <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-400 flex-shrink-0 mt-0.5" />
+          <div className="text-xs sm:text-sm text-slate-300">
             <p className="font-medium text-yellow-400 mb-1">Как это работает</p>
             <ul className="list-disc list-inside space-y-1 text-slate-400">
               <li>Правила проверяются при каждом запуске анализа</li>
@@ -549,19 +549,19 @@ export function DisableRules() {
       {rules.length === 0 ? (
         <Card>
           <div className="text-center py-8">
-            <Settings className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-            <h3 className="text-lg font-medium text-slate-300 mb-1">Нет правил</h3>
-            <p className="text-slate-500 mb-4">
+            <Settings className="w-10 h-10 sm:w-12 sm:h-12 text-slate-600 mx-auto mb-3" />
+            <h3 className="text-base sm:text-lg font-medium text-slate-300 mb-1">Нет правил</h3>
+            <p className="text-sm text-slate-500 mb-4">
               Создайте первое правило для автоматического отключения баннеров
             </p>
-            <button onClick={openCreateModal} className="btn btn-primary">
+            <button onClick={openCreateModal} className="btn btn-primary text-sm">
               <Plus className="w-4 h-4" />
               Создать правило
             </button>
           </div>
         </Card>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-3 sm:space-y-4">
           {rules
             .sort((a, b) => a.priority - b.priority)
             .map((rule) => (
@@ -587,41 +587,41 @@ export function DisableRules() {
       >
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1">
+            <label className="block text-xs sm:text-sm font-medium text-slate-300 mb-1">
               Название *
             </label>
             <input
               type="text"
               value={formName}
               onChange={(e) => setFormName(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white"
+              className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm"
               placeholder="Например: Отключить без конверсий"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1">
+            <label className="block text-xs sm:text-sm font-medium text-slate-300 mb-1">
               Описание
             </label>
             <textarea
               value={formDescription}
               onChange={(e) => setFormDescription(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white resize-none"
+              className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white resize-none text-sm"
               rows={2}
               placeholder="Опишите логику правила..."
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1">
+              <label className="block text-xs sm:text-sm font-medium text-slate-300 mb-1">
                 Приоритет
               </label>
               <input
                 type="number"
                 value={formPriority}
                 onChange={(e) => setFormPriority(parseInt(e.target.value) || 1)}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white"
+                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm"
                 min={1}
               />
               <p className="text-xs text-slate-500 mt-1">Меньше = выше приоритет</p>
@@ -630,7 +630,7 @@ export function DisableRules() {
             <div className="flex items-center">
               <label className="flex items-center gap-3 cursor-pointer">
                 <Toggle checked={formEnabled} onChange={setFormEnabled} />
-                <span className="text-sm text-slate-300">Правило активно</span>
+                <span className="text-xs sm:text-sm text-slate-300">Правило активно</span>
               </label>
             </div>
           </div>
@@ -648,11 +648,11 @@ export function DisableRules() {
             accounts={accounts}
           />
 
-          <div className="flex gap-3 pt-4 border-t border-slate-700">
+          <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t border-slate-700">
             <button
               onClick={handleSubmit}
               disabled={!formName || formConditions.length === 0 || createMutation.isPending || updateMutation.isPending}
-              className="btn btn-primary flex-1"
+              className="btn btn-primary flex-1 text-sm"
             >
               {createMutation.isPending || updateMutation.isPending ? (
                 <RefreshCw className="w-4 h-4 animate-spin" />
@@ -661,7 +661,7 @@ export function DisableRules() {
               )}
               {editingRule ? 'Сохранить' : 'Создать'}
             </button>
-            <button onClick={closeModal} className="btn btn-secondary">
+            <button onClick={closeModal} className="btn btn-secondary text-sm sm:w-auto">
               Отмена
             </button>
           </div>
@@ -674,18 +674,18 @@ export function DisableRules() {
         onClose={() => setDeleteConfirm(null)}
         title="Удалить правило?"
       >
-        <div className="flex items-start gap-3 mb-6">
-          <AlertTriangle className="w-6 h-6 text-red-400 flex-shrink-0" />
+        <div className="flex items-start gap-2 sm:gap-3 mb-6">
+          <AlertTriangle className="w-5 h-5 sm:w-6 sm:h-6 text-red-400 flex-shrink-0" />
           <div>
-            <p className="text-slate-300">
+            <p className="text-sm text-slate-300">
               Вы уверены, что хотите удалить это правило? Это действие нельзя отменить.
             </p>
           </div>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-col sm:flex-row gap-3">
           <button
             onClick={() => deleteConfirm && deleteMutation.mutate(deleteConfirm)}
-            className="btn btn-danger flex-1"
+            className="btn btn-danger flex-1 text-sm"
             disabled={deleteMutation.isPending}
           >
             {deleteMutation.isPending ? (
@@ -695,7 +695,7 @@ export function DisableRules() {
             )}
             Удалить
           </button>
-          <button onClick={() => setDeleteConfirm(null)} className="btn btn-secondary">
+          <button onClick={() => setDeleteConfirm(null)} className="btn btn-secondary text-sm sm:w-auto">
             Отмена
           </button>
         </div>

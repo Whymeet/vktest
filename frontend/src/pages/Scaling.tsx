@@ -15,6 +15,7 @@ import {
   Save,
   Target,
   BarChart3,
+  AlertTriangle,
 } from 'lucide-react';
 import {
   getAccounts,
@@ -25,46 +26,56 @@ import {
   getScalingLogs,
   duplicateAdGroup,
   runScalingConfig,
+  getDisableRuleMetrics,
 } from '../api/client';
 import type {
   Account,
   ScalingConfig,
   ScalingCondition,
   ScalingLog,
+  DuplicatedBannerInfo,
 } from '../api/client';
 import { Card } from '../components/Card';
 import { Toggle } from '../components/Toggle';
 import { Modal } from '../components/Modal';
+import { ScalingSchedulerStatusIndicator } from '../components/ScalingSchedulerStatusIndicator';
 
-// Available metrics for conditions
-const METRICS = [
-  { value: 'goals', label: 'Лиды (конверсии)', unit: 'шт' },
-  { value: 'shows', label: 'Показы', unit: 'шт' },
-  { value: 'clicks', label: 'Клики', unit: 'шт' },
-  { value: 'spent', label: 'Расход', unit: '₽' },
-  { value: 'cost_per_goal', label: 'Стоимость лида', unit: '₽' },
+// Fallback metrics and operators (will be loaded from API)
+const FALLBACK_METRICS = [
+  { value: 'goals', label: 'Результаты (goals)', description: 'Количество конверсий/целей VK' },
+  { value: 'spent', label: 'Потрачено (₽)', description: 'Сумма потраченных денег в рублях' },
+  { value: 'clicks', label: 'Клики', description: 'Количество кликов по объявлению' },
+  { value: 'shows', label: 'Показы', description: 'Количество показов объявления' },
+  { value: 'ctr', label: 'CTR (%)', description: 'Click-through rate (клики/показы * 100)' },
+  { value: 'cpc', label: 'CPC (₽)', description: 'Cost per click (цена за клик)' },
+  { value: 'cost_per_goal', label: 'Цена результата (₽)', description: 'Стоимость одной конверсии' },
 ];
 
-const OPERATORS = [
-  { value: '>', label: 'больше' },
-  { value: '>=', label: 'больше или равно' },
-  { value: '<', label: 'меньше' },
-  { value: '<=', label: 'меньше или равно' },
-  { value: '==', label: 'равно' },
+const FALLBACK_OPERATORS = [
+  { value: 'equals', label: '=', description: 'Равно' },
+  { value: 'not_equals', label: '≠', description: 'Не равно' },
+  { value: 'greater_than', label: '>', description: 'Больше' },
+  { value: 'less_than', label: '<', description: 'Меньше' },
+  { value: 'greater_or_equal', label: '≥', description: 'Больше или равно' },
+  { value: 'less_or_equal', label: '≤', description: 'Меньше или равно' },
 ];
 
-// Condition Editor Component
+// Condition Editor Component (same as DisableRules)
 function ConditionEditor({
   conditions,
   onChange,
+  metrics,
+  operators,
 }: {
   conditions: ScalingCondition[];
   onChange: (conditions: ScalingCondition[]) => void;
+  metrics: Array<{ value: string; label: string; description: string }>;
+  operators: Array<{ value: string; label: string; description: string }>;
 }) {
   const addCondition = () => {
     onChange([
       ...conditions,
-      { metric: 'goals', operator: '>', value: 2 },
+      { metric: 'spent', operator: 'greater_or_equal', value: 100 },
     ]);
   };
 
@@ -80,12 +91,14 @@ function ConditionEditor({
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <label className="text-sm font-medium text-slate-300">Условия масштабирования</label>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+        <label className="text-sm font-medium text-slate-300">
+          Условия (все должны выполняться - AND)
+        </label>
         <button
           type="button"
           onClick={addCondition}
-          className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-600 hover:bg-blue-700 rounded text-white transition-colors"
+          className="flex items-center justify-center gap-1 px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 rounded text-white transition-colors w-full sm:w-auto"
         >
           <Plus className="w-3 h-3" />
           Добавить условие
@@ -101,14 +114,14 @@ function ConditionEditor({
           {conditions.map((condition, index) => (
             <div
               key={index}
-              className="flex items-center gap-2 p-3 bg-slate-800 rounded-lg border border-slate-700"
+              className="flex flex-col sm:flex-row sm:items-center gap-2 p-3 bg-slate-800 rounded-lg border border-slate-700"
             >
               <select
                 value={condition.metric}
                 onChange={(e) => updateCondition(index, 'metric', e.target.value)}
                 className="flex-1 px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm"
               >
-                {METRICS.map((m) => (
+                {metrics.map((m) => (
                   <option key={m.value} value={m.value}>
                     {m.label}
                   </option>
@@ -118,9 +131,9 @@ function ConditionEditor({
               <select
                 value={condition.operator}
                 onChange={(e) => updateCondition(index, 'operator', e.target.value)}
-                className="w-40 px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm"
+                className="sm:w-32 px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm"
               >
-                {OPERATORS.map((op) => (
+                {operators.map((op) => (
                   <option key={op.value} value={op.value}>
                     {op.label}
                   </option>
@@ -131,18 +144,14 @@ function ConditionEditor({
                 type="number"
                 value={condition.value}
                 onChange={(e) => updateCondition(index, 'value', parseFloat(e.target.value) || 0)}
-                className="w-24 px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm"
+                className="sm:w-28 px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm"
                 step="any"
               />
-
-              <span className="text-sm text-slate-400 w-8">
-                {METRICS.find((m) => m.value === condition.metric)?.unit}
-              </span>
 
               <button
                 type="button"
                 onClick={() => removeCondition(index)}
-                className="p-2 text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded transition-colors"
+                className="p-2 text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded transition-colors sm:flex-shrink-0"
               >
                 <Trash2 className="w-4 h-4" />
               </button>
@@ -167,12 +176,16 @@ function ConfigFormModal({
   config,
   accounts,
   onSave,
+  metrics,
+  operators,
 }: {
   isOpen: boolean;
   onClose: () => void;
   config?: ScalingConfig | null;
   accounts: Account[];
   onSave: (data: Partial<ScalingConfig>) => void;
+  metrics: Array<{ value: string; label: string; description: string }>;
+  operators: Array<{ value: string; label: string; description: string }>;
 }) {
   const [name, setName] = useState('');
   const [scheduleTime, setScheduleTime] = useState('08:00');
@@ -201,7 +214,7 @@ function ConfigFormModal({
       setAutoActivate(false);
       setLookbackDays(7);
       setDuplicatesCount(1);
-      setConditions([{ metric: 'goals', operator: '>', value: 2 }]);
+      setConditions([{ metric: 'goals', operator: 'greater_than', value: 2 }]);
     }
   }, [config, isOpen]);
 
@@ -348,10 +361,10 @@ function ConfigFormModal({
             <input
               type="number"
               value={duplicatesCount}
-              onChange={(e) => setDuplicatesCount(Math.max(1, Math.min(10, parseInt(e.target.value) || 1)))}
+              onChange={(e) => setDuplicatesCount(Math.max(1, Math.min(100, parseInt(e.target.value) || 1)))}
               className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white"
               min="1"
-              max="10"
+              max="100"
             />
           </div>
         </div>
@@ -361,7 +374,12 @@ function ConfigFormModal({
           <span className="text-sm text-slate-300">Автоматически активировать после создания</span>
         </div>
 
-        <ConditionEditor conditions={conditions} onChange={setConditions} />
+        <ConditionEditor
+          conditions={conditions}
+          onChange={setConditions}
+          metrics={metrics}
+          operators={operators}
+        />
 
         <div className="flex justify-end gap-3 pt-4 border-t border-slate-700">
           <button
@@ -400,19 +418,17 @@ function ManualDuplicateModal({
   const [duplicatesCount, setDuplicatesCount] = useState(1);
   const [newBudget, setNewBudget] = useState('');
   const [autoActivate, setAutoActivate] = useState(false);
-  const [result, setResult] = useState<any>(null);
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [taskStarted, setTaskStarted] = useState(false);
 
   const duplicateMutation = useMutation({
     mutationFn: (data: any) => duplicateAdGroup(data),
-    onSuccess: (data: any) => {
-      setResult(data.data);
-      setIsProcessing(false);
+    onSuccess: () => {
+      setTaskStarted(true);
+      queryClient.invalidateQueries({ queryKey: ['scalingTasks'] });
       queryClient.invalidateQueries({ queryKey: ['scaling-logs'] });
     },
     onError: (error: any) => {
-      setResult({ success: [], errors: [{ error: error.response?.data?.detail || error.message }] });
-      setIsProcessing(false);
+      alert(error.response?.data?.detail || error.message);
     },
   });
 
@@ -428,9 +444,6 @@ function ManualDuplicateModal({
     const groupIds = parseGroupIds();
     if (!selectedAccount || groupIds.length === 0) return;
 
-    setIsProcessing(true);
-    setResult(null);
-
     duplicateMutation.mutate({
       account_name: selectedAccount,
       ad_group_ids: groupIds,
@@ -445,8 +458,7 @@ function ManualDuplicateModal({
     setDuplicatesCount(1);
     setNewBudget('');
     setAutoActivate(false);
-    setResult(null);
-    setIsProcessing(false);
+    setTaskStarted(false);
   };
 
   useEffect(() => {
@@ -472,7 +484,7 @@ function ManualDuplicateModal({
               resetForm();
             }}
             className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white"
-            disabled={isProcessing}
+            disabled={duplicateMutation.isPending || taskStarted}
           >
             <option value="">-- Выберите кабинет --</option>
             {accounts.map((acc) => (
@@ -496,7 +508,7 @@ function ManualDuplicateModal({
                 className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm resize-none"
                 placeholder="Например: 12345, 67890, 11111"
                 rows={2}
-                disabled={isProcessing}
+                disabled={duplicateMutation.isPending || taskStarted}
               />
               {groupIds.length > 0 && (
                 <p className="text-xs text-slate-400 mt-1">
@@ -514,13 +526,13 @@ function ManualDuplicateModal({
                 <input
                   type="number"
                   value={duplicatesCount}
-                  onChange={(e) => setDuplicatesCount(Math.max(1, Math.min(10, parseInt(e.target.value) || 1)))}
+                  onChange={(e) => setDuplicatesCount(Math.max(1, Math.min(100, parseInt(e.target.value) || 1)))}
                   className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white"
                   min="1"
-                  max="10"
-                  disabled={isProcessing}
+                  max="100"
+                  disabled={duplicateMutation.isPending || taskStarted}
                 />
-                <p className="text-xs text-slate-500 mt-1">От 1 до 10</p>
+                <p className="text-xs text-slate-500 mt-1">От 1 до 100</p>
               </div>
 
               <div>
@@ -535,91 +547,84 @@ function ManualDuplicateModal({
                   placeholder="Как в оригинале"
                   min="0"
                   step="0.01"
-                  disabled={isProcessing}
+                  disabled={duplicateMutation.isPending || taskStarted}
                 />
               </div>
             </div>
 
             <div className="flex items-center gap-2">
-              <Toggle checked={autoActivate} onChange={setAutoActivate} disabled={isProcessing} />
+              <Toggle checked={autoActivate} onChange={setAutoActivate} disabled={duplicateMutation.isPending || taskStarted} />
               <span className="text-sm text-slate-300">Автоматически активировать</span>
             </div>
 
             {/* Summary */}
             {groupIds.length > 0 && (
-              <div className="p-3 bg-slate-800 rounded-lg border border-slate-700">
+              <div className="p-3 bg-slate-800 rounded-lg border border-slate-700 space-y-2">
                 <p className="text-sm text-slate-300">
                   Будет создано: <span className="text-white font-medium">{totalOperations}</span> копий
                   {groupIds.length > 1 && (
                     <span className="text-slate-400"> ({groupIds.length} групп × {duplicatesCount} дублей)</span>
                   )}
                 </p>
+
+                {/* Warning for large operations */}
+                {totalOperations > 20 && (
+                  <div className={`flex items-start gap-2 p-2 rounded ${
+                    totalOperations > 50 ? 'bg-orange-900/30 border border-orange-700' : 'bg-yellow-900/20 border border-yellow-800'
+                  }`}>
+                    <AlertTriangle className={`w-4 h-4 mt-0.5 flex-shrink-0 ${
+                      totalOperations > 50 ? 'text-orange-400' : 'text-yellow-400'
+                    }`} />
+                    <div className="text-xs">
+                      <p className={totalOperations > 50 ? 'text-orange-300' : 'text-yellow-300'}>
+                        {totalOperations > 50
+                          ? 'Большое количество операций. Возможны задержки из-за лимитов VK API.'
+                          : 'Операция может занять некоторое время.'}
+                      </p>
+                      <p className="text-slate-400 mt-0.5">
+                        Примерное время: {Math.ceil(totalOperations * 0.5)} - {Math.ceil(totalOperations * 2)} сек
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </>
         )}
 
-        {/* Processing Indicator */}
-        {isProcessing && (
-          <div className="p-4 bg-blue-900/30 border border-blue-700 rounded-lg">
-            <div className="flex items-center gap-3 mb-3">
-              <RefreshCw className="w-5 h-5 text-blue-400 animate-spin" />
-              <span className="text-blue-400 font-medium">Создание дублей...</span>
+        {/* Task Started Indicator */}
+        {taskStarted && (
+          <div className="p-4 bg-green-900/30 border border-green-700 rounded-lg space-y-3">
+            <div className="flex items-center gap-3">
+              <CheckCircle className="w-5 h-5 text-green-400" />
+              <span className="text-green-400 font-medium">Задача запущена!</span>
             </div>
-            <div className="w-full bg-slate-700 rounded-full h-2">
-              <div 
-                className="bg-blue-500 h-2 rounded-full transition-all duration-300"
-                style={{ width: '100%' }}
-              />
-            </div>
-            <p className="text-xs text-slate-400 mt-2">
-              Пожалуйста, подождите. Операция может занять несколько минут.
+
+            <p className="text-sm text-slate-300">
+              Дублирование выполняется в фоновом режиме. Вы можете закрыть это окно -
+              прогресс будет отображаться в панели статуса выше.
+            </p>
+
+            <p className="text-xs text-slate-500">
+              Следите за прогрессом в разделе "Активные задачи"
             </p>
           </div>
         )}
 
-        {/* Result */}
-        {result && !isProcessing && (
+        {/* Processing Indicator */}
+        {duplicateMutation.isPending && (
+          <div className="p-4 bg-blue-900/30 border border-blue-700 rounded-lg space-y-3">
+            <div className="flex items-center gap-3">
+              <RefreshCw className="w-5 h-5 text-blue-400 animate-spin" />
+              <span className="text-blue-400 font-medium">Запуск задачи...</span>
+            </div>
+          </div>
+        )}
+
+        {/* Legacy result display removed - now using task tracking */}
+        {false && (
           <div className="p-4 rounded-lg bg-slate-800 border border-slate-700 space-y-3">
             <h4 className="font-medium text-white">Результат</h4>
-            
-            {result.success?.length > 0 && (
-              <div className="p-3 bg-green-900/30 border border-green-700 rounded">
-                <div className="flex items-center gap-2 text-green-400 mb-2">
-                  <CheckCircle className="w-4 h-4" />
-                  <span className="font-medium">Успешно: {result.success.length}</span>
-                </div>
-                <div className="max-h-32 overflow-y-auto space-y-1">
-                  {result.success.slice(0, 10).map((s: any, i: number) => (
-                    <p key={i} className="text-xs text-slate-300">
-                      {s.original_group_name} → {s.new_group_name} ({s.banners_copied} объявл.)
-                    </p>
-                  ))}
-                  {result.success.length > 10 && (
-                    <p className="text-xs text-slate-400">...и ещё {result.success.length - 10}</p>
-                  )}
-                </div>
-              </div>
-            )}
-            
-            {result.errors?.length > 0 && (
-              <div className="p-3 bg-red-900/30 border border-red-700 rounded">
-                <div className="flex items-center gap-2 text-red-400 mb-2">
-                  <XCircle className="w-4 h-4" />
-                  <span className="font-medium">Ошибки: {result.errors.length}</span>
-                </div>
-                <div className="max-h-32 overflow-y-auto space-y-1">
-                  {result.errors.slice(0, 5).map((e: any, i: number) => (
-                    <p key={i} className="text-xs text-red-300">
-                      ID {e.original_group_id}: {e.error}
-                    </p>
-                  ))}
-                  {result.errors.length > 5 && (
-                    <p className="text-xs text-slate-400">...и ещё {result.errors.length - 5}</p>
-                  )}
-                </div>
-              </div>
-            )}
           </div>
         )}
 
@@ -629,22 +634,23 @@ function ManualDuplicateModal({
             type="button"
             onClick={onClose}
             className="px-4 py-2 text-slate-400 hover:text-white transition-colors"
-            disabled={isProcessing}
           >
-            Закрыть
+            {taskStarted ? 'Закрыть' : 'Отмена'}
           </button>
-          <button
-            onClick={handleDuplicate}
-            disabled={!selectedAccount || groupIds.length === 0 || isProcessing}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 disabled:text-slate-500 rounded text-white transition-colors"
-          >
-            {isProcessing ? (
-              <RefreshCw className="w-4 h-4 animate-spin" />
-            ) : (
-              <Copy className="w-4 h-4" />
-            )}
-            {isProcessing ? 'Создание...' : `Дублировать (${totalOperations})`}
-          </button>
+          {!taskStarted && (
+            <button
+              onClick={handleDuplicate}
+              disabled={!selectedAccount || groupIds.length === 0 || duplicateMutation.isPending}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 disabled:text-slate-500 rounded text-white transition-colors"
+            >
+              {duplicateMutation.isPending ? (
+                <RefreshCw className="w-4 h-4 animate-spin" />
+              ) : (
+                <Copy className="w-4 h-4" />
+              )}
+              {duplicateMutation.isPending ? 'Запуск...' : `Дублировать (${totalOperations})`}
+            </button>
+          )}
         </div>
       </div>
     </Modal>
@@ -673,12 +679,22 @@ export function Scaling() {
   const { data: configs = [], isLoading: configsLoading } = useQuery({
     queryKey: ['scaling-configs'],
     queryFn: () => getScalingConfigs().then((r) => r.data),
+    refetchOnWindowFocus: false, // Отключаем автоматический refetch при фокусе окна
   });
 
   const { data: logsData } = useQuery({
     queryKey: ['scaling-logs'],
     queryFn: () => getScalingLogs(undefined, 50).then((r: any) => r.data),
   });
+
+  // Load metrics and operators from API (same as DisableRules)
+  const { data: metricsData } = useQuery({
+    queryKey: ['disableRuleMetrics'],
+    queryFn: () => getDisableRuleMetrics().then((r) => r.data),
+  });
+
+  const metrics = metricsData?.metrics || FALLBACK_METRICS;
+  const operators = metricsData?.operators || FALLBACK_OPERATORS;
 
   // Mutations
   const createMutation = useMutation({
@@ -691,8 +707,50 @@ export function Scaling() {
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: any }) => updateScalingConfig(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['scaling-configs'] });
+    onMutate: async ({ id, data }) => {
+      // Отменяем исходящие запросы, чтобы не перезаписать оптимистичное обновление
+      await queryClient.cancelQueries({ queryKey: ['scaling-configs'] });
+      
+      // Сохраняем предыдущее значение для отката
+      const previousConfigs = queryClient.getQueryData<ScalingConfig[]>(['scaling-configs']);
+      
+      // Оптимистично обновляем данные
+      if (previousConfigs) {
+        const updatedConfigs = previousConfigs.map((config) => {
+          if (config.id === id) {
+            // Создаем новый объект с обновленными данными
+            return { ...config, ...data };
+          }
+          return config;
+        });
+        // Устанавливаем новые данные напрямую
+        queryClient.setQueryData<ScalingConfig[]>(['scaling-configs'], updatedConfigs);
+      }
+      
+      return { previousConfigs };
+    },
+    onError: (_err, _variables, context) => {
+      // Откатываем изменения при ошибке
+      if (context?.previousConfigs) {
+        queryClient.setQueryData(['scaling-configs'], context.previousConfigs);
+      }
+      // Используем переменные для избежания ошибки TypeScript
+      void _err;
+      void _variables;
+    },
+    onSuccess: (_data, variables) => {
+      // Определяем, это toggle операция или редактирование через модалку
+      const isToggleOperation = variables.data.hasOwnProperty('enabled') && 
+                                Object.keys(variables.data).length === 1;
+      // Используем переменную для избежания ошибки TypeScript
+      void _data;
+      
+      if (!isToggleOperation) {
+        // Для других операций (редактирование через модалку) делаем refetch
+        queryClient.refetchQueries({ queryKey: ['scaling-configs'] });
+      }
+      // Для toggle операций ничего не делаем - оптимистичное обновление уже применено
+      // и мы не хотим делать refetch, чтобы не перезаписать его старыми данными
       setConfigModalOpen(false);
       setEditingConfig(null);
     },
@@ -710,6 +768,7 @@ export function Scaling() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['scaling-configs'] });
       queryClient.invalidateQueries({ queryKey: ['scaling-logs'] });
+      queryClient.invalidateQueries({ queryKey: ['scalingTasks'] });
     },
   });
 
@@ -729,9 +788,9 @@ export function Scaling() {
   };
 
   const formatCondition = (condition: ScalingCondition) => {
-    const metric = METRICS.find((m) => m.value === condition.metric);
-    const operator = OPERATORS.find((op) => op.value === condition.operator);
-    return `${metric?.label || condition.metric} ${operator?.label || condition.operator} ${condition.value} ${metric?.unit || ''}`;
+    const metric = metrics.find((m) => m.value === condition.metric);
+    const operator = operators.find((op) => op.value === condition.operator);
+    return `${metric?.label || condition.metric} ${operator?.label || condition.operator} ${condition.value}`;
   };
 
   return (
@@ -764,6 +823,11 @@ export function Scaling() {
           </button>
         </div>
       </div>
+
+      {/* Scaling Scheduler Status */}
+      <Card>
+        <ScalingSchedulerStatusIndicator />
+      </Card>
 
       {/* Configurations */}
       <Card
@@ -948,14 +1012,33 @@ export function Scaling() {
                     </td>
                     <td className="px-4 py-3 text-slate-300">{log.config_name || '—'}</td>
                     <td className="px-4 py-3 text-slate-300">{log.account_name || '—'}</td>
-                    <td className="px-4 py-3 text-white">
-                      {log.original_group_name || log.original_group_id}
+                    <td className="px-4 py-3">
+                      <div>
+                        <span className="text-white">{log.original_group_name || 'Без названия'}</span>
+                        {log.original_group_id && (
+                          <span className="block text-xs text-slate-400 font-mono">ID: {log.original_group_id}</span>
+                        )}
+                      </div>
                     </td>
-                    <td className="px-4 py-3 text-white">
-                      {log.new_group_name || log.new_group_id || '—'}
+                    <td className="px-4 py-3">
+                      {log.new_group_id ? (
+                        <div>
+                          <span className="text-white">{log.new_group_name || 'Без названия'}</span>
+                          <span className="block text-xs text-slate-400 font-mono">ID: {log.new_group_id}</span>
+                        </div>
+                      ) : (
+                        <span className="text-slate-500">—</span>
+                      )}
                     </td>
-                    <td className="px-4 py-3 text-center text-slate-300">
-                      {log.duplicated_banners} / {log.total_banners}
+                    <td className="px-4 py-3 text-center">
+                      <div className="text-slate-300">
+                        {log.duplicated_banners} / {log.total_banners}
+                      </div>
+                      {log.duplicated_banner_ids && log.duplicated_banner_ids.length > 0 && (
+                        <div className="text-xs text-slate-500 mt-1 font-mono">
+                          ({log.duplicated_banner_ids.map((b: DuplicatedBannerInfo) => b.new_id).join(', ')})
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-center">
                       {log.success ? (
@@ -992,6 +1075,8 @@ export function Scaling() {
         config={editingConfig}
         accounts={accounts}
         onSave={handleSaveConfig}
+        metrics={metrics}
+        operators={operators}
       />
 
       <ManualDuplicateModal

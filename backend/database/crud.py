@@ -25,6 +25,7 @@ from .models import (
     ScalingConfigAccount,
     ScalingCondition,
     ScalingLog,
+    ScalingTask,
     DisableRule,
     DisableRuleCondition,
     DisableRuleAccount,
@@ -344,43 +345,52 @@ def replace_whitelist(db: Session, user_id: int, banner_ids: List[int]) -> List[
 
 
 def bulk_add_to_whitelist(db: Session, user_id: int, banner_ids: List[int]) -> dict:
-    """Add multiple banners to whitelist for a user (without removing existing ones)"""
-    added_count = 0
-    skipped_count = 0
+    """Add multiple banners to whitelist for a user (without removing existing ones)
 
-    for banner_id in banner_ids:
-        # Check if already exists
-        existing = db.query(WhitelistBanner).filter(
-            WhitelistBanner.user_id == user_id,
-            WhitelistBanner.banner_id == banner_id
-        ).first()
-        if existing:
-            skipped_count += 1
-            continue
+    Optimized: Uses single query to check existing + bulk insert
+    """
+    if not banner_ids:
+        return {"added": 0, "skipped": 0, "total": 0}
 
-        db.add(WhitelistBanner(user_id=user_id, banner_id=banner_id))
-        added_count += 1
+    # Get all existing banner_ids in ONE query instead of N queries
+    existing_records = db.query(WhitelistBanner.banner_id).filter(
+        WhitelistBanner.user_id == user_id,
+        WhitelistBanner.banner_id.in_(banner_ids)
+    ).all()
+    existing_ids = {record[0] for record in existing_records}
 
-    db.commit()
+    # Filter out already existing banners
+    new_banner_ids = [bid for bid in banner_ids if bid not in existing_ids]
+
+    # Bulk insert all new banners at once
+    if new_banner_ids:
+        new_banners = [
+            WhitelistBanner(user_id=user_id, banner_id=banner_id)
+            for banner_id in new_banner_ids
+        ]
+        db.bulk_save_objects(new_banners)
+        db.commit()
+
     return {
-        "added": added_count,
-        "skipped": skipped_count,
+        "added": len(new_banner_ids),
+        "skipped": len(existing_ids),
         "total": len(banner_ids)
     }
 
 
 def bulk_remove_from_whitelist(db: Session, user_id: int, banner_ids: List[int]) -> dict:
-    """Remove multiple banners from whitelist for a user"""
-    removed_count = 0
+    """Remove multiple banners from whitelist for a user
 
-    for banner_id in banner_ids:
-        banner = db.query(WhitelistBanner).filter(
-            WhitelistBanner.user_id == user_id,
-            WhitelistBanner.banner_id == banner_id
-        ).first()
-        if banner:
-            db.delete(banner)
-            removed_count += 1
+    Optimized: Uses single DELETE query instead of N queries
+    """
+    if not banner_ids:
+        return {"removed": 0, "total": 0}
+
+    # Delete all matching banners in ONE query instead of N queries
+    removed_count = db.query(WhitelistBanner).filter(
+        WhitelistBanner.user_id == user_id,
+        WhitelistBanner.banner_id.in_(banner_ids)
+    ).delete(synchronize_session='fetch')
 
     db.commit()
     return {
@@ -539,26 +549,33 @@ def get_banner_history(
     user_id: Optional[int] = None,
     banner_id: Optional[int] = None,
     vk_account_id: Optional[int] = None,
+    account_name: Optional[str] = None,
     action: Optional[str] = None,
     limit: int = 500,
     offset: int = 0,
     sort_by: str = 'created_at',
     sort_order: str = 'desc'
 ) -> tuple[List[BannerAction], int]:
-    """Get banner action history with filters, pagination and sorting"""
+    """Get banner action history with filters, pagination and sorting
+
+    Optimized: All filtering done in SQL, not Python
+    """
     query = db.query(BannerAction)
 
+    # Apply all filters in SQL
     if user_id is not None:
         query = query.filter(BannerAction.user_id == user_id)
     if banner_id is not None:
         query = query.filter(BannerAction.banner_id == banner_id)
     if vk_account_id is not None:
         query = query.filter(BannerAction.vk_account_id == vk_account_id)
+    if account_name is not None:
+        query = query.filter(BannerAction.account_name == account_name)
     if action is not None:
         query = query.filter(BannerAction.action == action)
 
     total = query.count()
-    
+
     # Determine sort column
     sort_columns = {
         'created_at': BannerAction.created_at,
@@ -570,14 +587,14 @@ def get_banner_history(
         'cost_per_conversion': BannerAction.cost_per_conversion,
         'banner_id': BannerAction.banner_id,
     }
-    
+
     sort_column = sort_columns.get(sort_by, BannerAction.created_at)
-    
+
     if sort_order == 'asc':
         query = query.order_by(sort_column.asc().nullslast())
     else:
         query = query.order_by(sort_column.desc().nullslast())
-    
+
     items = query.offset(offset).limit(limit).all()
     return items, total
 
@@ -585,13 +602,26 @@ def get_banner_history(
 def get_disabled_banners(
     db: Session,
     user_id: int = None,
-    limit: int = 500, 
+    account_name: Optional[str] = None,
+    limit: int = 500,
     offset: int = 0,
     sort_by: str = 'created_at',
     sort_order: str = 'desc'
 ) -> tuple[List[BannerAction], int]:
-    """Get recently disabled banners with sorting for a user"""
-    return get_banner_history(db, user_id=user_id, action='disabled', limit=limit, offset=offset, sort_by=sort_by, sort_order=sort_order)
+    """Get recently disabled banners with sorting for a user
+
+    Optimized: account_name filter is now in SQL, not Python
+    """
+    return get_banner_history(
+        db,
+        user_id=user_id,
+        account_name=account_name,
+        action='disabled',
+        limit=limit,
+        offset=offset,
+        sort_by=sort_by,
+        sort_order=sort_order
+    )
 
 
 # ===== Active Banners =====
@@ -1208,10 +1238,11 @@ def get_leadstech_analysis_cabinet_names(db: Session, user_id: int) -> List[str]
     return sorted([r[0] for r in results if r[0]])
 
 
-def get_disabled_banners_account_names(db: Session) -> List[str]:
-    """Get all unique account names from disabled banners"""
+def get_disabled_banners_account_names(db: Session, user_id: int) -> List[str]:
+    """Get all unique account names from disabled banners for a specific user"""
     results = db.query(BannerAction.account_name).filter(
-        BannerAction.action == 'disabled'
+        BannerAction.action == 'disabled',
+        BannerAction.user_id == user_id
     ).distinct().all()
     return sorted([r[0] for r in results if r[0]])
 
@@ -1228,9 +1259,12 @@ def get_scaling_config_by_id(db: Session, config_id: int) -> Optional[ScalingCon
     return db.query(ScalingConfig).filter(ScalingConfig.id == config_id).first()
 
 
-def get_enabled_scaling_configs(db: Session) -> List[ScalingConfig]:
-    """Get all enabled scaling configurations"""
-    return db.query(ScalingConfig).filter(ScalingConfig.enabled == True).all()
+def get_enabled_scaling_configs(db: Session, user_id: Optional[int] = None) -> List[ScalingConfig]:
+    """Get all enabled scaling configurations, optionally filtered by user_id"""
+    query = db.query(ScalingConfig).filter(ScalingConfig.enabled == True)
+    if user_id is not None:
+        query = query.filter(ScalingConfig.user_id == user_id)
+    return query.all()
 
 
 def get_scaling_config_account_ids(db: Session, config_id: int) -> List[int]:
@@ -1440,7 +1474,8 @@ def delete_all_scaling_conditions(db: Session, config_id: int) -> int:
     count = db.query(ScalingCondition).filter(
         ScalingCondition.config_id == config_id
     ).delete()
-    db.commit()
+    if count > 0:
+        db.commit()
     return count
 
 
@@ -1450,23 +1485,56 @@ def set_scaling_conditions(
     conditions: List[dict]
 ) -> List[ScalingCondition]:
     """Replace all conditions for a config with new ones"""
-    # Delete existing conditions
-    delete_all_scaling_conditions(db, config_id)
-    
-    # Create new conditions
-    result = []
-    for i, cond in enumerate(conditions):
-        condition = create_scaling_condition(
-            db,
-            config_id=config_id,
-            metric=cond.get("metric", "goals"),
-            operator=cond.get("operator", ">"),
-            value=cond.get("value", 0),
-            order=i
-        )
-        result.append(condition)
-    
-    return result
+    try:
+        # Delete existing conditions (only if there are any)
+        existing_count = db.query(ScalingCondition).filter(
+            ScalingCondition.config_id == config_id
+        ).count()
+        if existing_count > 0:
+            delete_all_scaling_conditions(db, config_id)
+        
+        # If no conditions to add, return empty list
+        if not conditions:
+            return []
+        
+        # Create new conditions (batch create for better performance)
+        result = []
+        for i, cond in enumerate(conditions):
+            # Ensure value is float
+            value = cond.get("value", 0)
+            if isinstance(value, (int, str)):
+                try:
+                    value = float(value)
+                except (ValueError, TypeError):
+                    value = 0.0
+            
+            # Get operator, default to ">" if not provided
+            operator = cond.get("operator", ">")
+            
+            condition = ScalingCondition(
+                config_id=config_id,
+                metric=cond.get("metric", "goals"),
+                operator=operator,
+                value=value,
+                order=i
+            )
+            db.add(condition)
+            result.append(condition)
+        
+        # Commit all conditions at once
+        db.commit()
+        
+        # Refresh all conditions to get IDs
+        for condition in result:
+            db.refresh(condition)
+        
+        return result
+    except Exception as e:
+        print(f"❌ Error setting scaling conditions: {e}")
+        import traceback
+        traceback.print_exc()
+        db.rollback()
+        raise
 
 
 # ===== Scaling Logs =====
@@ -1504,7 +1572,8 @@ def create_scaling_log(
     success: bool = False,
     error_message: Optional[str] = None,
     total_banners: int = 0,
-    duplicated_banners: int = 0
+    duplicated_banners: int = 0,
+    duplicated_banner_ids: Optional[list] = None
 ) -> ScalingLog:
     """Create new scaling log entry"""
     log = ScalingLog(
@@ -1520,7 +1589,8 @@ def create_scaling_log(
         success=success,
         error_message=error_message,
         total_banners=total_banners,
-        duplicated_banners=duplicated_banners
+        duplicated_banners=duplicated_banners,
+        duplicated_banner_ids=duplicated_banner_ids
     )
     db.add(log)
     db.commit()
@@ -1530,57 +1600,102 @@ def create_scaling_log(
 
 def check_group_conditions(stats: dict, conditions: List[ScalingCondition]) -> bool:
     """
-    Check if ad group stats match all conditions
-    
+    Check if ad group stats match all conditions.
+    Uses the same logic as check_banner_against_rules for consistency.
+
     Args:
-        stats: Dict with keys: spent, shows, clicks, goals, cost_per_goal
+        stats: Dict with keys: spent, shows, clicks, goals, cost_per_goal, ctr, cpc
         conditions: List of ScalingCondition objects
-    
+
     Returns:
         True if ALL conditions are satisfied
     """
     if not conditions:
+        print(f"         ⚠️  Нет условий для проверки")
         return False  # No conditions = don't match anything
-    
-    for condition in conditions:
+
+    for idx, condition in enumerate(conditions):
         metric = condition.metric
         operator = condition.operator
         threshold = condition.value
-        
+
         # Get metric value from stats
         actual_value = stats.get(metric)
-        
-        # Handle None values
+        print(f"         [{idx+1}] Проверяем: {metric} {operator} {threshold} (начальное значение: {actual_value})")
+
+        # Handle None and special cases (same logic as check_banner_against_rules)
         if actual_value is None:
             if metric == "cost_per_goal":
                 # If no goals, cost_per_goal is infinite
-                actual_value = float('inf')
+                goals = stats.get("goals", 0) or stats.get("vk_goals", 0)
+                if goals == 0:
+                    actual_value = float('inf')
+                    print(f"            → cost_per_goal = ∞ (нет целей)")
+                else:
+                    spent = stats.get("spent", 0) or 0
+                    actual_value = spent / goals if goals > 0 else float('inf')
+                    print(f"            → cost_per_goal = {actual_value:.2f} (spent={spent}, goals={goals})")
+            elif metric == "ctr":
+                shows = stats.get("shows", 0) or 0
+                clicks = stats.get("clicks", 0) or 0
+                actual_value = (clicks / shows * 100) if shows > 0 else 0
+                print(f"            → ctr = {actual_value:.2f}% (clicks={clicks}, shows={shows})")
+            elif metric == "cpc":
+                clicks = stats.get("clicks", 0) or 0
+                spent = stats.get("spent", 0) or 0
+                actual_value = (spent / clicks) if clicks > 0 else float('inf')
+                print(f"            → cpc = {actual_value:.2f} (spent={spent}, clicks={clicks})")
             else:
                 actual_value = 0
-        
-        # Check condition
-        if operator == ">":
-            if not (actual_value > threshold):
-                return False
-        elif operator == ">=":
-            if not (actual_value >= threshold):
-                return False
-        elif operator == "<":
-            if not (actual_value < threshold):
-                return False
-        elif operator == "<=":
-            if not (actual_value <= threshold):
-                return False
-        elif operator == "==":
-            if not (actual_value == threshold):
-                return False
-        elif operator == "!=":
-            if not (actual_value != threshold):
-                return False
+                print(f"            → значение отсутствует, используем 0")
+
+        # Normalize goals field name
+        if metric == "goals" and actual_value == 0:
+            vk_goals = stats.get("vk_goals", 0) or 0
+            if vk_goals > 0:
+                actual_value = vk_goals
+                print(f"            → используем vk_goals = {actual_value}")
+
+        # Check condition based on operator (same syntax as disable rules)
+        condition_met = False
+
+        # FIX: If cost_per_goal is infinite (0 goals), handle specially
+        if metric == "cost_per_goal" and actual_value == float('inf'):
+            if operator in ("not_equals", "!="):
+                condition_met = True
+            else:
+                condition_met = False
+            print(f"            → cost_per_goal=∞: условие {'✓ выполнено' if condition_met else '✗ НЕ выполнено'}")
+        elif operator in ("equals", "=", "=="):
+            condition_met = (actual_value == threshold)
+            print(f"            → {actual_value} == {threshold} = {condition_met}")
+        elif operator in ("not_equals", "!=", "<>"):
+            condition_met = (actual_value != threshold)
+            print(f"            → {actual_value} != {threshold} = {condition_met}")
+        elif operator in ("greater_than", ">"):
+            condition_met = (actual_value > threshold)
+            print(f"            → {actual_value} > {threshold} = {condition_met}")
+        elif operator in ("less_than", "<"):
+            condition_met = (actual_value < threshold)
+            print(f"            → {actual_value} < {threshold} = {condition_met}")
+        elif operator in ("greater_or_equal", ">="):
+            condition_met = (actual_value >= threshold)
+            print(f"            → {actual_value} >= {threshold} = {condition_met}")
+        elif operator in ("less_or_equal", "<="):
+            condition_met = (actual_value <= threshold)
+            print(f"            → {actual_value} <= {threshold} = {condition_met}")
         else:
-            # Unknown operator, skip
-            continue
-    
+            # Unknown operator - FAIL the condition
+            condition_met = False
+            print(f"            → ⚠️  НЕИЗВЕСТНЫЙ ОПЕРАТОР '{operator}'")
+
+        if not condition_met:
+            print(f"            ✗ Условие НЕ выполнено, пропускаем группу")
+            return False
+        else:
+            print(f"            ✓ Условие выполнено")
+
+    print(f"         ✅ ВСЕ условия выполнены!")
     return True
 
 
@@ -2021,5 +2136,153 @@ def format_rule_match_reason(rule: DisableRule, stats: dict) -> str:
             actual = f"{actual:.2f}"
         
         parts.append(f"  {metric_name} {op_name} {condition.value} (факт: {actual})")
-    
+
     return "\n".join(parts)
+
+
+# ===== Scaling Tasks (отслеживание процессов дублирования) =====
+
+def create_scaling_task(
+    db: Session,
+    user_id: int,
+    task_type: str = 'manual',
+    config_id: Optional[int] = None,
+    config_name: Optional[str] = None,
+    account_name: Optional[str] = None,
+    total_operations: int = 0
+) -> ScalingTask:
+    """Create a new scaling task"""
+    task = ScalingTask(
+        user_id=user_id,
+        task_type=task_type,
+        config_id=config_id,
+        config_name=config_name,
+        account_name=account_name,
+        status='pending',
+        total_operations=total_operations,
+        completed_operations=0,
+        successful_operations=0,
+        failed_operations=0
+    )
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+    return task
+
+
+def get_scaling_task(db: Session, task_id: int) -> Optional[ScalingTask]:
+    """Get scaling task by ID"""
+    return db.query(ScalingTask).filter(ScalingTask.id == task_id).first()
+
+
+def get_active_scaling_tasks(db: Session, user_id: int) -> List[ScalingTask]:
+    """Get all active (pending/running) scaling tasks for a user"""
+    return db.query(ScalingTask).filter(
+        ScalingTask.user_id == user_id,
+        ScalingTask.status.in_(['pending', 'running'])
+    ).order_by(ScalingTask.created_at.desc()).all()
+
+
+def get_recent_scaling_tasks(db: Session, user_id: int, limit: int = 10) -> List[ScalingTask]:
+    """Get recent scaling tasks for a user"""
+    return db.query(ScalingTask).filter(
+        ScalingTask.user_id == user_id
+    ).order_by(ScalingTask.created_at.desc()).limit(limit).all()
+
+
+def start_scaling_task(db: Session, task_id: int) -> Optional[ScalingTask]:
+    """Mark task as running"""
+    task = get_scaling_task(db, task_id)
+    if not task:
+        return None
+
+    task.status = 'running'
+    task.started_at = get_moscow_time()
+    db.commit()
+    db.refresh(task)
+    return task
+
+
+def update_scaling_task_progress(
+    db: Session,
+    task_id: int,
+    completed: int = None,
+    successful: int = None,
+    failed: int = None,
+    current_group_id: int = None,
+    current_group_name: str = None,
+    last_error: str = None
+) -> Optional[ScalingTask]:
+    """Update task progress"""
+    task = get_scaling_task(db, task_id)
+    if not task:
+        return None
+
+    if completed is not None:
+        task.completed_operations = completed
+    if successful is not None:
+        task.successful_operations = successful
+    if failed is not None:
+        task.failed_operations = failed
+    if current_group_id is not None:
+        task.current_group_id = current_group_id
+    if current_group_name is not None:
+        task.current_group_name = current_group_name
+    if last_error is not None:
+        task.last_error = last_error
+
+    db.commit()
+    db.refresh(task)
+    return task
+
+
+def complete_scaling_task(
+    db: Session,
+    task_id: int,
+    status: str = 'completed',
+    last_error: str = None
+) -> Optional[ScalingTask]:
+    """Mark task as completed/failed"""
+    task = get_scaling_task(db, task_id)
+    if not task:
+        return None
+
+    task.status = status
+    task.completed_at = get_moscow_time()
+    task.current_group_id = None
+    task.current_group_name = None
+    if last_error:
+        task.last_error = last_error
+
+    db.commit()
+    db.refresh(task)
+    return task
+
+
+def cancel_scaling_task(db: Session, task_id: int) -> Optional[ScalingTask]:
+    """Cancel a pending/running task"""
+    task = get_scaling_task(db, task_id)
+    if not task:
+        return None
+
+    if task.status in ['pending', 'running']:
+        task.status = 'cancelled'
+        task.completed_at = get_moscow_time()
+        db.commit()
+        db.refresh(task)
+
+    return task
+
+
+def cleanup_old_scaling_tasks(db: Session, max_age_hours: int = 24) -> int:
+    """Remove old completed/failed tasks"""
+    from datetime import timedelta
+    cutoff = get_moscow_time() - timedelta(hours=max_age_hours)
+
+    count = db.query(ScalingTask).filter(
+        ScalingTask.status.in_(['completed', 'failed', 'cancelled']),
+        ScalingTask.completed_at < cutoff
+    ).delete()
+
+    db.commit()
+    return count
