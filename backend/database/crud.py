@@ -1473,7 +1473,8 @@ def delete_all_scaling_conditions(db: Session, config_id: int) -> int:
     count = db.query(ScalingCondition).filter(
         ScalingCondition.config_id == config_id
     ).delete()
-    db.commit()
+    if count > 0:
+        db.commit()
     return count
 
 
@@ -1483,23 +1484,56 @@ def set_scaling_conditions(
     conditions: List[dict]
 ) -> List[ScalingCondition]:
     """Replace all conditions for a config with new ones"""
-    # Delete existing conditions
-    delete_all_scaling_conditions(db, config_id)
-    
-    # Create new conditions
-    result = []
-    for i, cond in enumerate(conditions):
-        condition = create_scaling_condition(
-            db,
-            config_id=config_id,
-            metric=cond.get("metric", "goals"),
-            operator=cond.get("operator", ">"),
-            value=cond.get("value", 0),
-            order=i
-        )
-        result.append(condition)
-    
-    return result
+    try:
+        # Delete existing conditions (only if there are any)
+        existing_count = db.query(ScalingCondition).filter(
+            ScalingCondition.config_id == config_id
+        ).count()
+        if existing_count > 0:
+            delete_all_scaling_conditions(db, config_id)
+        
+        # If no conditions to add, return empty list
+        if not conditions:
+            return []
+        
+        # Create new conditions (batch create for better performance)
+        result = []
+        for i, cond in enumerate(conditions):
+            # Ensure value is float
+            value = cond.get("value", 0)
+            if isinstance(value, (int, str)):
+                try:
+                    value = float(value)
+                except (ValueError, TypeError):
+                    value = 0.0
+            
+            # Get operator, default to ">" if not provided
+            operator = cond.get("operator", ">")
+            
+            condition = ScalingCondition(
+                config_id=config_id,
+                metric=cond.get("metric", "goals"),
+                operator=operator,
+                value=value,
+                order=i
+            )
+            db.add(condition)
+            result.append(condition)
+        
+        # Commit all conditions at once
+        db.commit()
+        
+        # Refresh all conditions to get IDs
+        for condition in result:
+            db.refresh(condition)
+        
+        return result
+    except Exception as e:
+        print(f"❌ Error setting scaling conditions: {e}")
+        import traceback
+        traceback.print_exc()
+        db.rollback()
+        raise
 
 
 # ===== Scaling Logs =====

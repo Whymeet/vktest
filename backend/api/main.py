@@ -1916,6 +1916,49 @@ async def get_scaling_configs_endpoint(
     return result
 
 
+@app.get("/api/scaling/configs/{config_id}")
+async def get_scaling_config_endpoint(
+    config_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get a single scaling configuration by ID"""
+    config = crud.get_scaling_config_by_id(db, config_id)
+    if not config:
+        raise HTTPException(status_code=404, detail="Configuration not found")
+    
+    # Check if user owns this config
+    if config.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    conditions = crud.get_scaling_conditions(db, config_id)
+    account_ids = crud.get_scaling_config_account_ids(db, config_id)
+    
+    return {
+        "id": config.id,
+        "name": config.name,
+        "enabled": config.enabled,
+        "schedule_time": config.schedule_time,
+        "account_id": config.account_id,
+        "account_ids": account_ids,
+        "new_budget": config.new_budget,
+        "auto_activate": config.auto_activate,
+        "lookback_days": config.lookback_days,
+        "duplicates_count": config.duplicates_count or 1,
+        "last_run_at": config.last_run_at.isoformat() if config.last_run_at else None,
+        "created_at": config.created_at.isoformat(),
+        "conditions": [
+            {
+                "id": c.id,
+                "metric": c.metric,
+                "operator": c.operator,
+                "value": c.value
+            }
+            for c in conditions
+        ]
+    }
+
+
 @app.post("/api/scaling/configs")
 async def create_scaling_config_endpoint(
     data: ScalingConfigCreate,
@@ -1923,29 +1966,54 @@ async def create_scaling_config_endpoint(
     db: Session = Depends(get_db)
 ):
     """Create new scaling configuration"""
-    config = crud.create_scaling_config(
-        db,
-        user_id=current_user.id,
-        name=data.name,
-        schedule_time=data.schedule_time,
-        account_id=data.account_id,
-        account_ids=data.account_ids,
-        new_budget=data.new_budget,
-        auto_activate=data.auto_activate,
-        lookback_days=data.lookback_days,
-        duplicates_count=data.duplicates_count,
-        enabled=data.enabled
-    )
-    
-    # Add conditions
-    if data.conditions:
-        crud.set_scaling_conditions(
+    import time
+    start_time = time.time()
+    print(f"[SCALING CREATE] START - user_id={current_user.id}, name={data.name}")
+    print(f"[SCALING CREATE] Data: account_id={data.account_id}, account_ids={data.account_ids}, enabled={data.enabled}")
+    print(f"[SCALING CREATE] Conditions count: {len(data.conditions) if data.conditions else 0}")
+
+    try:
+        print(f"[SCALING CREATE] Step 1: Calling crud.create_scaling_config...")
+        config = crud.create_scaling_config(
             db,
-            config.id,
-            [c.model_dump() for c in data.conditions]
+            user_id=current_user.id,
+            name=data.name,
+            schedule_time=data.schedule_time,
+            account_id=data.account_id,
+            account_ids=data.account_ids,
+            new_budget=data.new_budget,
+            auto_activate=data.auto_activate,
+            lookback_days=data.lookback_days,
+            duplicates_count=data.duplicates_count,
+            enabled=data.enabled
         )
-    
-    return {"id": config.id, "message": "Configuration created"}
+        print(f"[SCALING CREATE] Step 1 DONE: config.id={config.id}, took {time.time() - start_time:.2f}s")
+
+        # Add conditions (always try to set, even if empty list)
+        conditions_data = [c.model_dump() for c in data.conditions] if data.conditions else []
+
+        if conditions_data:
+            print(f"[SCALING CREATE] Step 2: Setting {len(conditions_data)} conditions...")
+            crud.set_scaling_conditions(
+                db,
+                config.id,
+                conditions_data
+            )
+            print(f"[SCALING CREATE] Step 2 DONE, took {time.time() - start_time:.2f}s")
+
+        # Refresh config to ensure all relationships are loaded
+        print(f"[SCALING CREATE] Step 3: Refreshing config...")
+        db.refresh(config)
+        print(f"[SCALING CREATE] Step 3 DONE, took {time.time() - start_time:.2f}s")
+
+        print(f"[SCALING CREATE] SUCCESS - config_id={config.id}, total time={time.time() - start_time:.2f}s")
+        return {"id": int(config.id), "message": "Configuration created"}
+    except Exception as e:
+        print(f"[SCALING CREATE] ERROR after {time.time() - start_time:.2f}s: {e}")
+        import traceback
+        traceback.print_exc()
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to create configuration: {str(e)}")
 
 
 @app.put("/api/scaling/configs/{config_id}")
@@ -1956,36 +2024,59 @@ async def update_scaling_config_endpoint(
     db: Session = Depends(get_db)
 ):
     """Update scaling configuration"""
-    config = crud.update_scaling_config(
-        db,
-        config_id,
-        name=data.name,
-        schedule_time=data.schedule_time,
-        account_id=data.account_id,
-        account_ids=data.account_ids,
-        new_budget=data.new_budget,
-        auto_activate=data.auto_activate,
-        lookback_days=data.lookback_days,
-        duplicates_count=data.duplicates_count,
-        enabled=data.enabled
-    )
+    import time
+    start_time = time.time()
+    print(f"[SCALING UPDATE] START - config_id={config_id}, user_id={current_user.id}")
+    print(f"[SCALING UPDATE] Data: name={data.name}, enabled={data.enabled}, account_ids={data.account_ids}")
+    print(f"[SCALING UPDATE] Conditions: {len(data.conditions) if data.conditions else 'None'}")
 
-    if not config:
-        raise HTTPException(status_code=404, detail="Configuration not found")
-
-    # Update conditions if provided
-    if data.conditions is not None:
-        crud.set_scaling_conditions(
+    try:
+        print(f"[SCALING UPDATE] Step 1: Calling crud.update_scaling_config...")
+        config = crud.update_scaling_config(
             db,
             config_id,
-            [c.model_dump() for c in data.conditions]
+            name=data.name,
+            schedule_time=data.schedule_time,
+            account_id=data.account_id,
+            account_ids=data.account_ids,
+            new_budget=data.new_budget,
+            auto_activate=data.auto_activate,
+            lookback_days=data.lookback_days,
+            duplicates_count=data.duplicates_count,
+            enabled=data.enabled
         )
+        print(f"[SCALING UPDATE] Step 1 DONE, took {time.time() - start_time:.2f}s")
 
-    # Auto-manage scaling scheduler based on enabled configs
-    # TODO: Реализовать функцию manage_scaling_scheduler_auto для автоматического управления планировщиком
-    # Пока что убрано, так как функция не определена и вызывает ошибку 500
+        if not config:
+            print(f"[SCALING UPDATE] ERROR: Config not found")
+            raise HTTPException(status_code=404, detail="Configuration not found")
 
-    return {"message": "Configuration updated"}
+        # Update conditions if provided
+        if data.conditions is not None:
+            conditions_data = [c.model_dump() for c in data.conditions]
+            print(f"[SCALING UPDATE] Step 2: Setting {len(conditions_data)} conditions...")
+            crud.set_scaling_conditions(
+                db,
+                config_id,
+                conditions_data
+            )
+            print(f"[SCALING UPDATE] Step 2 DONE, took {time.time() - start_time:.2f}s")
+
+        # Refresh config to ensure all relationships are loaded
+        print(f"[SCALING UPDATE] Step 3: Refreshing config...")
+        db.refresh(config)
+        print(f"[SCALING UPDATE] Step 3 DONE, took {time.time() - start_time:.2f}s")
+
+        print(f"[SCALING UPDATE] SUCCESS - total time={time.time() - start_time:.2f}s")
+        return {"message": "Configuration updated"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[SCALING UPDATE] ERROR after {time.time() - start_time:.2f}s: {e}")
+        import traceback
+        traceback.print_exc()
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to update configuration: {str(e)}")
 
 
 @app.delete("/api/scaling/configs/{config_id}")
