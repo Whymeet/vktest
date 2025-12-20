@@ -2447,7 +2447,7 @@ def run_auto_scaling_task(
     user_id: int,
     config_id: int,
     config_name: str,
-    conditions: list,
+    conditions: list,  # List of dicts with 'metric', 'operator', 'value'
     accounts: list,  # List of (account_id, account_name, account_token)
     lookback_days: int,
     duplicates_count: int,
@@ -2458,11 +2458,24 @@ def run_auto_scaling_task(
     from datetime import datetime, timedelta
     from utils.vk_api import get_ad_groups_with_stats, duplicate_ad_group_full
 
+    # Create simple condition objects for checking
+    class SimpleCondition:
+        def __init__(self, metric, operator, value):
+            self.metric = metric
+            self.operator = operator
+            self.value = value
+
     db = SessionLocal()
     try:
         # Start the task
         crud.start_scaling_task(db, task_id)
         print(f"[TASK {task_id}] Auto-scaling started for config: {config_name}")
+
+        # Convert condition dicts to simple objects
+        condition_objects = [
+            SimpleCondition(c['metric'], c['operator'], c['value'])
+            for c in conditions
+        ]
 
         # Calculate date range
         date_to = datetime.now().strftime("%Y-%m-%d")
@@ -2495,7 +2508,7 @@ def run_auto_scaling_task(
                     stats = group.get("stats", {})
 
                     # Check if conditions are met
-                    conditions_met = crud.check_group_conditions(stats, conditions)
+                    conditions_met = crud.check_group_conditions(stats, condition_objects)
 
                     if conditions_met:
                         print(f"[TASK {task_id}] Conditions met for group {group_id}: {group_name}")
@@ -2654,6 +2667,16 @@ async def run_scaling_config(
         for acc in accounts
     ]
 
+    # Convert ORM conditions to plain dictionaries
+    conditions_data = [
+        {
+            'metric': cond.metric,
+            'operator': cond.operator,
+            'value': cond.value
+        }
+        for cond in conditions
+    ]
+
     # Start background task
     background_tasks.add_task(
         run_auto_scaling_task,
@@ -2661,7 +2684,7 @@ async def run_scaling_config(
         user_id=current_user.id,
         config_id=config.id,
         config_name=config.name,
-        conditions=conditions,
+        conditions=conditions_data,
         accounts=accounts_data,
         lookback_days=config.lookback_days,
         duplicates_count=duplicates_count,

@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Copy, CircleDot, RefreshCw, X, CheckCircle, XCircle, Clock } from 'lucide-react';
+import { Copy, CircleDot, RefreshCw, X } from 'lucide-react';
 import { getScalingTasks, cancelScalingTask } from '../api/client';
 import type { ScalingTask } from '../api/client';
 
@@ -20,22 +20,6 @@ function TaskProgressBar({ task }: { task: ScalingTask }) {
         style={{ width: `${progress}%` }}
       />
     </div>
-  );
-}
-
-function TaskStatusBadge({ status }: { status: ScalingTask['status'] }) {
-  const config = {
-    pending: { color: 'text-slate-400', bg: 'bg-slate-700', label: 'Ожидание' },
-    running: { color: 'text-blue-400', bg: 'bg-blue-900/30', label: 'Выполняется' },
-    completed: { color: 'text-green-400', bg: 'bg-green-900/30', label: 'Завершено' },
-    failed: { color: 'text-red-400', bg: 'bg-red-900/30', label: 'Ошибка' },
-    cancelled: { color: 'text-yellow-400', bg: 'bg-yellow-900/30', label: 'Отменено' },
-  }[status];
-
-  return (
-    <span className={`px-2 py-0.5 rounded text-xs font-medium ${config.color} ${config.bg}`}>
-      {config.label}
-    </span>
   );
 }
 
@@ -105,33 +89,6 @@ function ActiveTaskCard({ task, onCancel }: { task: ScalingTask; onCancel: () =>
   );
 }
 
-function RecentTaskItem({ task }: { task: ScalingTask }) {
-  return (
-    <div className="flex items-center gap-3 py-2 px-3 bg-slate-800/50 rounded">
-      {task.status === 'completed' ? (
-        <CheckCircle className="w-4 h-4 text-green-400 flex-shrink-0" />
-      ) : task.status === 'failed' ? (
-        <XCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
-      ) : (
-        <Clock className="w-4 h-4 text-slate-400 flex-shrink-0" />
-      )}
-
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-white truncate">
-            {task.task_type === 'manual' ? 'Ручное' : task.config_name || 'Авто'}
-          </span>
-          <TaskStatusBadge status={task.status} />
-        </div>
-        <p className="text-xs text-slate-500">
-          {task.successful_operations} успешно, {task.failed_operations} ошибок
-          {task.completed_at && ` | ${new Date(task.completed_at).toLocaleTimeString('ru')}`}
-        </p>
-      </div>
-    </div>
-  );
-}
-
 export function ScalingSchedulerStatusIndicator() {
   const queryClient = useQueryClient();
 
@@ -149,43 +106,30 @@ export function ScalingSchedulerStatusIndicator() {
   });
 
   const activeTasks = tasksData?.active || [];
-  const recentTasks = tasksData?.recent || [];
 
-  // If no tasks, don't show anything
-  if (activeTasks.length === 0 && recentTasks.length === 0) {
+  // Only show if there are active tasks
+  if (activeTasks.length === 0) {
     return null;
   }
 
   return (
     <div className="space-y-3">
       {/* Active Tasks */}
-      {activeTasks.length > 0 && (
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <RefreshCw className="w-4 h-4 text-blue-400 animate-spin" />
-            <span className="text-sm font-medium text-slate-300">
-              Активные задачи ({activeTasks.length})
-            </span>
-          </div>
-          {activeTasks.map((task) => (
-            <ActiveTaskCard
-              key={task.id}
-              task={task}
-              onCancel={() => cancelMutation.mutate(task.id)}
-            />
-          ))}
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <RefreshCw className="w-4 h-4 text-blue-400 animate-spin" />
+          <span className="text-sm font-medium text-slate-300">
+            Активные задачи ({activeTasks.length})
+          </span>
         </div>
-      )}
-
-      {/* Recent Completed Tasks */}
-      {recentTasks.length > 0 && activeTasks.length === 0 && (
-        <div className="space-y-2">
-          <span className="text-xs font-medium text-slate-500">Последние задачи</span>
-          {recentTasks.slice(0, 3).map((task) => (
-            <RecentTaskItem key={task.id} task={task} />
-          ))}
-        </div>
-      )}
+        {activeTasks.map((task) => (
+          <ActiveTaskCard
+            key={task.id}
+            task={task}
+            onCancel={() => cancelMutation.mutate(task.id)}
+          />
+        ))}
+      </div>
     </div>
   );
 }
