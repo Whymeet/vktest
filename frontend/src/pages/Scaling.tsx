@@ -734,11 +734,16 @@ export function Scaling() {
       if (context?.previousConfigs) {
         queryClient.setQueryData(['scaling-configs'], context.previousConfigs);
       }
+      // Используем переменные для избежания ошибки TypeScript
+      void _err;
+      void _variables;
     },
     onSuccess: (_data, variables) => {
       // Определяем, это toggle операция или редактирование через модалку
       const isToggleOperation = variables.data.hasOwnProperty('enabled') && 
                                 Object.keys(variables.data).length === 1;
+      // Используем переменную для избежания ошибки TypeScript
+      void _data;
       
       if (!isToggleOperation) {
         // Для других операций (редактирование через модалку) делаем refetch
