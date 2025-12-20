@@ -462,19 +462,17 @@ function ManualDuplicateModal({
   const [duplicatesCount, setDuplicatesCount] = useState(1);
   const [newBudget, setNewBudget] = useState('');
   const [autoActivate, setAutoActivate] = useState(false);
-  const [result, setResult] = useState<any>(null);
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [taskStarted, setTaskStarted] = useState(false);
 
   const duplicateMutation = useMutation({
     mutationFn: (data: any) => duplicateAdGroup(data),
-    onSuccess: (data: any) => {
-      setResult(data.data);
-      setIsProcessing(false);
+    onSuccess: () => {
+      setTaskStarted(true);
+      queryClient.invalidateQueries({ queryKey: ['scalingTasks'] });
       queryClient.invalidateQueries({ queryKey: ['scaling-logs'] });
     },
     onError: (error: any) => {
-      setResult({ success: [], errors: [{ error: error.response?.data?.detail || error.message }] });
-      setIsProcessing(false);
+      alert(error.response?.data?.detail || error.message);
     },
   });
 
@@ -490,9 +488,6 @@ function ManualDuplicateModal({
     const groupIds = parseGroupIds();
     if (!selectedAccount || groupIds.length === 0) return;
 
-    setIsProcessing(true);
-    setResult(null);
-
     duplicateMutation.mutate({
       account_name: selectedAccount,
       ad_group_ids: groupIds,
@@ -507,8 +502,7 @@ function ManualDuplicateModal({
     setDuplicatesCount(1);
     setNewBudget('');
     setAutoActivate(false);
-    setResult(null);
-    setIsProcessing(false);
+    setTaskStarted(false);
   };
 
   useEffect(() => {
@@ -642,127 +636,39 @@ function ManualDuplicateModal({
           </>
         )}
 
-        {/* Processing Indicator */}
-        {isProcessing && (
-          <div className="p-4 bg-blue-900/30 border border-blue-700 rounded-lg space-y-3">
+        {/* Task Started Indicator */}
+        {taskStarted && (
+          <div className="p-4 bg-green-900/30 border border-green-700 rounded-lg space-y-3">
             <div className="flex items-center gap-3">
-              <RefreshCw className="w-5 h-5 text-blue-400 animate-spin" />
-              <span className="text-blue-400 font-medium">Создание дублей...</span>
+              <CheckCircle className="w-5 h-5 text-green-400" />
+              <span className="text-green-400 font-medium">Задача запущена!</span>
             </div>
 
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-xs text-slate-400">
-                <span>Обработка {totalOperations} операций</span>
-                <span>~{Math.ceil(totalOperations * 0.5)} - {Math.ceil(totalOperations * 2)} сек</span>
-              </div>
-              <div className="w-full bg-slate-700 rounded-full h-2 overflow-hidden">
-                <div
-                  className="bg-blue-500 h-2 rounded-full animate-pulse"
-                  style={{
-                    width: '100%',
-                    animation: 'pulse 1.5s ease-in-out infinite'
-                  }}
-                />
-              </div>
-            </div>
-
-            <div className="p-2 bg-slate-800/50 rounded text-xs text-slate-400 space-y-1">
-              <p className="flex items-center gap-2">
-                <Timer className="w-3 h-3" />
-                <span>VK API имеет ограничения на количество запросов в минуту</span>
-              </p>
-              <p className="flex items-center gap-2">
-                <RefreshCw className="w-3 h-3" />
-                <span>При лимитах система автоматически делает паузу и повторяет запрос</span>
-              </p>
-            </div>
+            <p className="text-sm text-slate-300">
+              Дублирование выполняется в фоновом режиме. Вы можете закрыть это окно -
+              прогресс будет отображаться в панели статуса выше.
+            </p>
 
             <p className="text-xs text-slate-500">
-              Не закрывайте это окно до завершения операции
+              Следите за прогрессом в разделе "Активные задачи"
             </p>
           </div>
         )}
 
-        {/* Result */}
-        {result && !isProcessing && (
+        {/* Processing Indicator */}
+        {duplicateMutation.isPending && (
+          <div className="p-4 bg-blue-900/30 border border-blue-700 rounded-lg space-y-3">
+            <div className="flex items-center gap-3">
+              <RefreshCw className="w-5 h-5 text-blue-400 animate-spin" />
+              <span className="text-blue-400 font-medium">Запуск задачи...</span>
+            </div>
+          </div>
+        )}
+
+        {/* Legacy result display removed - now using task tracking */}
+        {false && (
           <div className="p-4 rounded-lg bg-slate-800 border border-slate-700 space-y-3">
             <h4 className="font-medium text-white">Результат</h4>
-            
-            {result.success?.length > 0 && (
-              <div className="p-3 bg-green-900/30 border border-green-700 rounded">
-                <div className="flex items-center gap-2 text-green-400 mb-2">
-                  <CheckCircle className="w-4 h-4" />
-                  <span className="font-medium">Успешно: {result.success.length}</span>
-                </div>
-                <div className="max-h-32 overflow-y-auto space-y-1">
-                  {result.success.slice(0, 10).map((s: any, i: number) => (
-                    <p key={i} className="text-xs text-slate-300">
-                      {s.original_group_name} → {s.new_group_name} ({s.banners_copied} объявл.)
-                    </p>
-                  ))}
-                  {result.success.length > 10 && (
-                    <p className="text-xs text-slate-400">...и ещё {result.success.length - 10}</p>
-                  )}
-                </div>
-              </div>
-            )}
-            
-            {result.errors?.length > 0 && (
-              <div className="p-3 bg-red-900/30 border border-red-700 rounded space-y-3">
-                <div className="flex items-center gap-2 text-red-400">
-                  <XCircle className="w-4 h-4" />
-                  <span className="font-medium">Ошибки: {result.errors.length}</span>
-                </div>
-
-                {/* Group errors by type */}
-                {(() => {
-                  const errorsByType = result.errors.reduce((acc: any, e: any) => {
-                    const parsed = parseErrorMessage(e.error || 'Unknown error');
-                    if (!acc[parsed.type]) {
-                      acc[parsed.type] = { ...parsed, count: 0, items: [] };
-                    }
-                    acc[parsed.type].count++;
-                    acc[parsed.type].items.push(e);
-                    return acc;
-                  }, {});
-
-                  return Object.entries(errorsByType).map(([type, data]: [string, any]) => (
-                    <div key={type} className={`p-2 rounded ${
-                      type === 'rate_limit' ? 'bg-orange-900/30 border border-orange-700' :
-                      type === 'timeout' ? 'bg-yellow-900/30 border border-yellow-700' :
-                      type === 'network' ? 'bg-purple-900/30 border border-purple-700' :
-                      'bg-red-900/20 border border-red-800'
-                    }`}>
-                      <div className="flex items-center gap-2 mb-1">
-                        {type === 'rate_limit' && <Timer className="w-4 h-4 text-orange-400" />}
-                        {type === 'timeout' && <Clock className="w-4 h-4 text-yellow-400" />}
-                        {type === 'network' && <AlertTriangle className="w-4 h-4 text-purple-400" />}
-                        {(type === 'api' || type === 'unknown') && <XCircle className="w-4 h-4 text-red-400" />}
-                        <span className={`text-sm font-medium ${
-                          type === 'rate_limit' ? 'text-orange-300' :
-                          type === 'timeout' ? 'text-yellow-300' :
-                          type === 'network' ? 'text-purple-300' :
-                          'text-red-300'
-                        }`}>
-                          {data.message} ({data.count})
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-400 mb-2">{data.suggestion}</p>
-                      <div className="max-h-20 overflow-y-auto space-y-0.5">
-                        {data.items.slice(0, 3).map((e: any, i: number) => (
-                          <p key={i} className="text-xs text-slate-400">
-                            ID {e.original_group_id}{e.copy_number ? ` (копия ${e.copy_number})` : ''}
-                          </p>
-                        ))}
-                        {data.items.length > 3 && (
-                          <p className="text-xs text-slate-500">...и ещё {data.items.length - 3}</p>
-                        )}
-                      </div>
-                    </div>
-                  ));
-                })()}
-              </div>
-            )}
           </div>
         )}
 
@@ -772,22 +678,23 @@ function ManualDuplicateModal({
             type="button"
             onClick={onClose}
             className="px-4 py-2 text-slate-400 hover:text-white transition-colors"
-            disabled={isProcessing}
           >
-            Закрыть
+            {taskStarted ? 'Закрыть' : 'Отмена'}
           </button>
-          <button
-            onClick={handleDuplicate}
-            disabled={!selectedAccount || groupIds.length === 0 || isProcessing}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 disabled:text-slate-500 rounded text-white transition-colors"
-          >
-            {isProcessing ? (
-              <RefreshCw className="w-4 h-4 animate-spin" />
-            ) : (
-              <Copy className="w-4 h-4" />
-            )}
-            {isProcessing ? 'Создание...' : `Дублировать (${totalOperations})`}
-          </button>
+          {!taskStarted && (
+            <button
+              onClick={handleDuplicate}
+              disabled={!selectedAccount || groupIds.length === 0 || duplicateMutation.isPending}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 disabled:text-slate-500 rounded text-white transition-colors"
+            >
+              {duplicateMutation.isPending ? (
+                <RefreshCw className="w-4 h-4 animate-spin" />
+              ) : (
+                <Copy className="w-4 h-4" />
+              )}
+              {duplicateMutation.isPending ? 'Запуск...' : `Дублировать (${totalOperations})`}
+            </button>
+          )}
         </div>
       </div>
     </Modal>

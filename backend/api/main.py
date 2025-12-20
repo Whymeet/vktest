@@ -2102,7 +2102,7 @@ async def get_scaling_logs_endpoint(
 ):
     """Get scaling logs"""
     logs, total = crud.get_scaling_logs(db, user_id=current_user.id, config_id=config_id, limit=limit, offset=offset)
-    
+
     return {
         "items": [
             {
@@ -2126,6 +2126,92 @@ async def get_scaling_logs_endpoint(
         ],
         "total": total
     }
+
+
+# ===== Scaling Tasks API =====
+
+@app.get("/api/scaling/tasks")
+async def get_scaling_tasks(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get active and recent scaling tasks"""
+    active_tasks = crud.get_active_scaling_tasks(db, user_id=current_user.id)
+    recent_tasks = crud.get_recent_scaling_tasks(db, user_id=current_user.id, limit=5)
+
+    def task_to_dict(task):
+        return {
+            "id": task.id,
+            "task_type": task.task_type,
+            "config_id": task.config_id,
+            "config_name": task.config_name,
+            "account_name": task.account_name,
+            "status": task.status,
+            "total_operations": task.total_operations,
+            "completed_operations": task.completed_operations,
+            "successful_operations": task.successful_operations,
+            "failed_operations": task.failed_operations,
+            "current_group_id": task.current_group_id,
+            "current_group_name": task.current_group_name,
+            "last_error": task.last_error,
+            "created_at": task.created_at.isoformat() if task.created_at else None,
+            "started_at": task.started_at.isoformat() if task.started_at else None,
+            "completed_at": task.completed_at.isoformat() if task.completed_at else None,
+        }
+
+    return {
+        "active": [task_to_dict(t) for t in active_tasks],
+        "recent": [task_to_dict(t) for t in recent_tasks if t.status not in ['pending', 'running']]
+    }
+
+
+@app.get("/api/scaling/tasks/{task_id}")
+async def get_scaling_task(
+    task_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get specific scaling task"""
+    task = crud.get_scaling_task(db, task_id)
+    if not task or task.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    return {
+        "id": task.id,
+        "task_type": task.task_type,
+        "config_id": task.config_id,
+        "config_name": task.config_name,
+        "account_name": task.account_name,
+        "status": task.status,
+        "total_operations": task.total_operations,
+        "completed_operations": task.completed_operations,
+        "successful_operations": task.successful_operations,
+        "failed_operations": task.failed_operations,
+        "current_group_id": task.current_group_id,
+        "current_group_name": task.current_group_name,
+        "last_error": task.last_error,
+        "created_at": task.created_at.isoformat() if task.created_at else None,
+        "started_at": task.started_at.isoformat() if task.started_at else None,
+        "completed_at": task.completed_at.isoformat() if task.completed_at else None,
+    }
+
+
+@app.post("/api/scaling/tasks/{task_id}/cancel")
+async def cancel_scaling_task(
+    task_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Cancel a scaling task"""
+    task = crud.get_scaling_task(db, task_id)
+    if not task or task.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    if task.status not in ['pending', 'running']:
+        raise HTTPException(status_code=400, detail="Task cannot be cancelled")
+
+    crud.cancel_scaling_task(db, task_id)
+    return {"message": "Task cancelled"}
 
 
 @app.get("/api/scaling/ad-groups/{account_name}")
@@ -2175,15 +2261,145 @@ async def get_account_ad_groups_with_stats(
         raise HTTPException(status_code=500, detail=f"Failed to fetch ad groups: {str(e)}")
 
 
+def run_duplication_task(
+    task_id: int,
+    user_id: int,
+    account_token: str,
+    account_name: str,
+    ad_group_ids: List[int],
+    duplicates_count: int,
+    new_budget: Optional[float],
+    auto_activate: bool
+):
+    """Background worker for duplication task"""
+    from utils.vk_api import duplicate_ad_group_full
+
+    db = SessionLocal()
+    try:
+        # Mark task as running
+        crud.start_scaling_task(db, task_id)
+
+        base_url = "https://ads.vk.com/api/v2"
+        completed = 0
+        successful = 0
+        failed = 0
+
+        for group_id in ad_group_ids:
+            # Check if task was cancelled
+            task = crud.get_scaling_task(db, task_id)
+            if task and task.status == 'cancelled':
+                print(f"[TASK {task_id}] Task was cancelled, stopping...")
+                break
+
+            for copy_num in range(duplicates_count):
+                # Check cancellation again
+                task = crud.get_scaling_task(db, task_id)
+                if task and task.status == 'cancelled':
+                    break
+
+                try:
+                    # Update current operation
+                    crud.update_scaling_task_progress(
+                        db, task_id,
+                        current_group_id=group_id,
+                        current_group_name=f"Группа {group_id} (копия {copy_num + 1})"
+                    )
+
+                    result = duplicate_ad_group_full(
+                        token=account_token,
+                        base_url=base_url,
+                        ad_group_id=group_id,
+                        new_name=None,
+                        new_budget=new_budget,
+                        auto_activate=auto_activate,
+                        rate_limit_delay=0.03
+                    )
+
+                    # Log the operation
+                    banner_ids_data = None
+                    if result.get("duplicated_banners"):
+                        banner_ids_data = [
+                            {
+                                "original_id": b.get("original_id"),
+                                "new_id": b.get("new_id"),
+                                "name": b.get("name")
+                            }
+                            for b in result.get("duplicated_banners", [])
+                        ]
+
+                    crud.create_scaling_log(
+                        db,
+                        user_id=user_id,
+                        config_id=None,
+                        config_name="Manual",
+                        account_name=account_name,
+                        original_group_id=group_id,
+                        original_group_name=result.get("original_group_name"),
+                        new_group_id=result.get("new_group_id"),
+                        new_group_name=result.get("new_group_name"),
+                        stats_snapshot=None,
+                        success=result.get("success", False),
+                        error_message=result.get("error"),
+                        total_banners=result.get("total_banners", 0),
+                        duplicated_banners=len(result.get("duplicated_banners", [])),
+                        duplicated_banner_ids=banner_ids_data
+                    )
+
+                    if result.get("success"):
+                        successful += 1
+                    else:
+                        failed += 1
+                        crud.update_scaling_task_progress(
+                            db, task_id,
+                            last_error=result.get("error", "Unknown error")
+                        )
+
+                except Exception as e:
+                    crud.create_scaling_log(
+                        db,
+                        user_id=user_id,
+                        config_id=None,
+                        config_name="Manual",
+                        account_name=account_name,
+                        original_group_id=group_id,
+                        original_group_name=None,
+                        success=False,
+                        error_message=str(e)
+                    )
+                    failed += 1
+                    crud.update_scaling_task_progress(
+                        db, task_id,
+                        last_error=str(e)
+                    )
+
+                completed += 1
+                crud.update_scaling_task_progress(
+                    db, task_id,
+                    completed=completed,
+                    successful=successful,
+                    failed=failed
+                )
+
+        # Complete the task
+        final_status = 'completed' if failed == 0 else ('failed' if successful == 0 else 'completed')
+        crud.complete_scaling_task(db, task_id, status=final_status)
+        print(f"[TASK {task_id}] Completed: {successful} success, {failed} failed")
+
+    except Exception as e:
+        print(f"[TASK {task_id}] Fatal error: {e}")
+        crud.complete_scaling_task(db, task_id, status='failed', last_error=str(e))
+    finally:
+        db.close()
+
+
 @app.post("/api/scaling/duplicate")
 async def manual_duplicate_ad_group(
     data: ManualDuplicateRequest,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Manually duplicate ad groups (supports multiple groups and multiple copies)"""
-    from utils.vk_api import duplicate_ad_group_full
-
+    """Manually duplicate ad groups (runs in background with progress tracking)"""
     # Find account
     accounts = crud.get_accounts(db, user_id=current_user.id)
     target_account = None
@@ -2191,103 +2407,40 @@ async def manual_duplicate_ad_group(
         if acc.name == data.account_name:
             target_account = acc
             break
-    
+
     if not target_account:
         raise HTTPException(status_code=404, detail="Account not found")
-    
-    base_url = "https://ads.vk.com/api/v2"
-    duplicates_count = max(1, min(data.duplicates_count, 10))  # Limit 1-10 copies
-    
-    results = {
-        "total_groups": len(data.ad_group_ids),
-        "duplicates_per_group": duplicates_count,
-        "total_operations": len(data.ad_group_ids) * duplicates_count,
-        "completed": 0,
-        "success": [],
-        "errors": []
-    }
-    
-    for group_id in data.ad_group_ids:
-        for copy_num in range(duplicates_count):
-            try:
-                result = duplicate_ad_group_full(
-                    token=target_account.api_token,
-                    base_url=base_url,
-                    ad_group_id=group_id,
-                    new_name=None,  # Auto-generate
-                    new_budget=data.new_budget,
-                    auto_activate=data.auto_activate,
-                    rate_limit_delay=0.03
-                )
-                
-                # Log the operation
-                # Extract banner IDs for logging
-                banner_ids_data = None
-                if result.get("duplicated_banners"):
-                    banner_ids_data = [
-                        {
-                            "original_id": b.get("original_id"),
-                            "new_id": b.get("new_id"),
-                            "name": b.get("name")
-                        }
-                        for b in result.get("duplicated_banners", [])
-                    ]
 
-                crud.create_scaling_log(
-                    db,
-                    user_id=current_user.id,
-                    config_id=None,
-                    config_name="Manual",
-                    account_name=data.account_name,
-                    original_group_id=group_id,
-                    original_group_name=result.get("original_group_name"),
-                    new_group_id=result.get("new_group_id"),
-                    new_group_name=result.get("new_group_name"),
-                    stats_snapshot=None,
-                    success=result.get("success", False),
-                    error_message=result.get("error"),
-                    total_banners=result.get("total_banners", 0),
-                    duplicated_banners=len(result.get("duplicated_banners", [])),
-                    duplicated_banner_ids=banner_ids_data
-                )
-                
-                if result.get("success"):
-                    results["success"].append({
-                        "original_group_id": group_id,
-                        "original_group_name": result.get("original_group_name"),
-                        "new_group_id": result.get("new_group_id"),
-                        "new_group_name": result.get("new_group_name"),
-                        "copy_number": copy_num + 1,
-                        "banners_copied": len(result.get("duplicated_banners", []))
-                    })
-                else:
-                    results["errors"].append({
-                        "original_group_id": group_id,
-                        "copy_number": copy_num + 1,
-                        "error": result.get("error", "Unknown error")
-                    })
-                    
-            except Exception as e:
-                crud.create_scaling_log(
-                    db,
-                    user_id=current_user.id,
-                    config_id=None,
-                    config_name="Manual",
-                    account_name=data.account_name,
-                    original_group_id=group_id,
-                    original_group_name=None,
-                    success=False,
-                    error_message=str(e)
-                )
-                results["errors"].append({
-                    "original_group_id": group_id,
-                    "copy_number": copy_num + 1,
-                    "error": str(e)
-                })
-            
-            results["completed"] += 1
-    
-    return results
+    duplicates_count = max(1, min(data.duplicates_count, 100))
+    total_operations = len(data.ad_group_ids) * duplicates_count
+
+    # Create task
+    task = crud.create_scaling_task(
+        db,
+        user_id=current_user.id,
+        task_type='manual',
+        account_name=data.account_name,
+        total_operations=total_operations
+    )
+
+    # Start background task
+    background_tasks.add_task(
+        run_duplication_task,
+        task_id=task.id,
+        user_id=current_user.id,
+        account_token=target_account.api_token,
+        account_name=data.account_name,
+        ad_group_ids=data.ad_group_ids,
+        duplicates_count=duplicates_count,
+        new_budget=data.new_budget,
+        auto_activate=data.auto_activate
+    )
+
+    return {
+        "task_id": task.id,
+        "message": "Duplication task started",
+        "total_operations": total_operations
+    }
 
 @app.post("/api/scaling/run/{config_id}")
 async def run_scaling_config(

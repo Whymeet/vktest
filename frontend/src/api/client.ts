@@ -636,15 +636,47 @@ export const getScalingLogs = (configId?: number, limit = 100, offset = 0) => {
   return api.get<{ items: ScalingLog[]; total: number }>(`/scaling/logs?${params.toString()}`);
 };
 
+// Scaling Task types
+export interface ScalingTask {
+  id: number;
+  task_type: 'manual' | 'auto';
+  config_id: number | null;
+  config_name: string | null;
+  account_name: string | null;
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+  total_operations: number;
+  completed_operations: number;
+  successful_operations: number;
+  failed_operations: number;
+  current_group_id: number | null;
+  current_group_name: string | null;
+  last_error: string | null;
+  created_at: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+// Get scaling tasks (active and recent)
+export const getScalingTasks = () =>
+  api.get<{ active: ScalingTask[]; recent: ScalingTask[] }>('/scaling/tasks');
+
+// Get specific scaling task
+export const getScalingTask = (taskId: number) =>
+  api.get<ScalingTask>(`/scaling/tasks/${taskId}`);
+
+// Cancel scaling task
+export const cancelScalingTask = (taskId: number) =>
+  api.post<{ message: string }>(`/scaling/tasks/${taskId}/cancel`);
+
 // Get ad groups with stats for an account
 export const getAccountAdGroups = (accountName: string, lookbackDays = 7) =>
   api.get<{ account_name: string; date_from: string; date_to: string; groups: AdGroupWithStats[] }>(
     `/scaling/ad-groups/${encodeURIComponent(accountName)}?lookback_days=${lookbackDays}`
   );
 
-// Manually duplicate ad groups
+// Manually duplicate ad groups (now returns task_id for tracking)
 export const duplicateAdGroup = (data: ManualDuplicateRequest) =>
-  api.post<ManualDuplicateResponse>('/scaling/duplicate', data);
+  api.post<{ task_id: number; message: string; total_operations: number }>('/scaling/duplicate', data);
 
 // Run a scaling configuration manually
 export const runScalingConfig = (configId: number) =>

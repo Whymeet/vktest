@@ -25,6 +25,7 @@ from .models import (
     ScalingConfigAccount,
     ScalingCondition,
     ScalingLog,
+    ScalingTask,
     DisableRule,
     DisableRuleCondition,
     DisableRuleAccount,
@@ -2135,5 +2136,153 @@ def format_rule_match_reason(rule: DisableRule, stats: dict) -> str:
             actual = f"{actual:.2f}"
         
         parts.append(f"  {metric_name} {op_name} {condition.value} (факт: {actual})")
-    
+
     return "\n".join(parts)
+
+
+# ===== Scaling Tasks (отслеживание процессов дублирования) =====
+
+def create_scaling_task(
+    db: Session,
+    user_id: int,
+    task_type: str = 'manual',
+    config_id: Optional[int] = None,
+    config_name: Optional[str] = None,
+    account_name: Optional[str] = None,
+    total_operations: int = 0
+) -> ScalingTask:
+    """Create a new scaling task"""
+    task = ScalingTask(
+        user_id=user_id,
+        task_type=task_type,
+        config_id=config_id,
+        config_name=config_name,
+        account_name=account_name,
+        status='pending',
+        total_operations=total_operations,
+        completed_operations=0,
+        successful_operations=0,
+        failed_operations=0
+    )
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+    return task
+
+
+def get_scaling_task(db: Session, task_id: int) -> Optional[ScalingTask]:
+    """Get scaling task by ID"""
+    return db.query(ScalingTask).filter(ScalingTask.id == task_id).first()
+
+
+def get_active_scaling_tasks(db: Session, user_id: int) -> List[ScalingTask]:
+    """Get all active (pending/running) scaling tasks for a user"""
+    return db.query(ScalingTask).filter(
+        ScalingTask.user_id == user_id,
+        ScalingTask.status.in_(['pending', 'running'])
+    ).order_by(ScalingTask.created_at.desc()).all()
+
+
+def get_recent_scaling_tasks(db: Session, user_id: int, limit: int = 10) -> List[ScalingTask]:
+    """Get recent scaling tasks for a user"""
+    return db.query(ScalingTask).filter(
+        ScalingTask.user_id == user_id
+    ).order_by(ScalingTask.created_at.desc()).limit(limit).all()
+
+
+def start_scaling_task(db: Session, task_id: int) -> Optional[ScalingTask]:
+    """Mark task as running"""
+    task = get_scaling_task(db, task_id)
+    if not task:
+        return None
+
+    task.status = 'running'
+    task.started_at = get_moscow_time()
+    db.commit()
+    db.refresh(task)
+    return task
+
+
+def update_scaling_task_progress(
+    db: Session,
+    task_id: int,
+    completed: int = None,
+    successful: int = None,
+    failed: int = None,
+    current_group_id: int = None,
+    current_group_name: str = None,
+    last_error: str = None
+) -> Optional[ScalingTask]:
+    """Update task progress"""
+    task = get_scaling_task(db, task_id)
+    if not task:
+        return None
+
+    if completed is not None:
+        task.completed_operations = completed
+    if successful is not None:
+        task.successful_operations = successful
+    if failed is not None:
+        task.failed_operations = failed
+    if current_group_id is not None:
+        task.current_group_id = current_group_id
+    if current_group_name is not None:
+        task.current_group_name = current_group_name
+    if last_error is not None:
+        task.last_error = last_error
+
+    db.commit()
+    db.refresh(task)
+    return task
+
+
+def complete_scaling_task(
+    db: Session,
+    task_id: int,
+    status: str = 'completed',
+    last_error: str = None
+) -> Optional[ScalingTask]:
+    """Mark task as completed/failed"""
+    task = get_scaling_task(db, task_id)
+    if not task:
+        return None
+
+    task.status = status
+    task.completed_at = get_moscow_time()
+    task.current_group_id = None
+    task.current_group_name = None
+    if last_error:
+        task.last_error = last_error
+
+    db.commit()
+    db.refresh(task)
+    return task
+
+
+def cancel_scaling_task(db: Session, task_id: int) -> Optional[ScalingTask]:
+    """Cancel a pending/running task"""
+    task = get_scaling_task(db, task_id)
+    if not task:
+        return None
+
+    if task.status in ['pending', 'running']:
+        task.status = 'cancelled'
+        task.completed_at = get_moscow_time()
+        db.commit()
+        db.refresh(task)
+
+    return task
+
+
+def cleanup_old_scaling_tasks(db: Session, max_age_hours: int = 24) -> int:
+    """Remove old completed/failed tasks"""
+    from datetime import timedelta
+    cutoff = get_moscow_time() - timedelta(hours=max_age_hours)
+
+    count = db.query(ScalingTask).filter(
+        ScalingTask.status.in_(['completed', 'failed', 'cancelled']),
+        ScalingTask.completed_at < cutoff
+    ).delete()
+
+    db.commit()
+    return count

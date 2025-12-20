@@ -578,6 +578,51 @@ class ScalingLog(Base):
         return f"<ScalingLog(original={self.original_group_id}, new={self.new_group_id}, success={self.success})>"
 
 
+class ScalingTask(Base):
+    """Active scaling/duplication task for real-time tracking"""
+    __tablename__ = "scaling_tasks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    # Task type: 'manual' or 'auto'
+    task_type = Column(String(20), nullable=False, default='manual')
+
+    # Config reference (for auto tasks)
+    config_id = Column(Integer, ForeignKey("scaling_configs.id", ondelete="SET NULL"), nullable=True)
+    config_name = Column(String(255), nullable=True)
+
+    # Account info
+    account_name = Column(String(255), nullable=True)
+
+    # Task status: 'pending', 'running', 'completed', 'failed', 'cancelled'
+    status = Column(String(20), nullable=False, default='pending')
+
+    # Progress tracking
+    total_operations = Column(Integer, default=0)  # Total groups * duplicates_count
+    completed_operations = Column(Integer, default=0)
+    successful_operations = Column(Integer, default=0)
+    failed_operations = Column(Integer, default=0)
+
+    # Current operation info
+    current_group_id = Column(BigInteger, nullable=True)
+    current_group_name = Column(String(500), nullable=True)
+
+    # Error info
+    last_error = Column(Text, nullable=True)
+
+    # Timestamps
+    created_at = Column(DateTime, default=get_moscow_time, nullable=False)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+
+    # Relationships
+    user = relationship("User", backref="scaling_tasks")
+
+    def __repr__(self):
+        return f"<ScalingTask(id={self.id}, type={self.task_type}, status={self.status}, progress={self.completed_operations}/{self.total_operations})>"
+
+
 # ===== Disable Rules Models (автоотключение объявлений) =====
 
 class DisableRuleAccount(Base):
