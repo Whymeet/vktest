@@ -820,13 +820,23 @@ def duplicate_ad_group_full(
         else:
             new_group_data['name'] = f"{original_group.get('name', 'Копия')} (копия)"
         
-        # Устанавливаем новый бюджет если указан
-        if new_budget is not None:
+        # Устанавливаем бюджет
+        if new_budget is not None and new_budget > 0:
             # VK Ads API ожидает бюджет в рублях (без умножения на 100)
             budget_value = str(int(new_budget))
             new_group_data['budget_limit_day'] = budget_value
             logger.info(f"💰 Установлен новый дневной бюджет: {new_budget} руб (значение для API: {budget_value})")
-        
+        elif 'budget_limit_day' in original_group and original_group['budget_limit_day']:
+            # Если бюджет не указан, копируем из оригинала (если он есть и корректный)
+            original_budget = original_group['budget_limit_day']
+            try:
+                budget_int = int(float(original_budget))
+                if budget_int > 0:
+                    new_group_data['budget_limit_day'] = str(budget_int)
+                    logger.info(f"💰 Скопирован бюджет из оригинала: {budget_int} руб")
+            except (ValueError, TypeError):
+                logger.warning(f"⚠️  Некорректный бюджет оригинала: {original_budget}, пропускаем")
+
         # Статус
         new_group_data['status'] = 'active' if auto_activate else 'blocked'
         
