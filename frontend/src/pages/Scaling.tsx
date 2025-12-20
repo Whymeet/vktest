@@ -60,49 +60,6 @@ const FALLBACK_OPERATORS = [
   { value: 'less_or_equal', label: '≤', description: 'Меньше или равно' },
 ];
 
-// Error parsing helper (kept for potential future use)
-function _parseErrorMessage(error: string): { type: 'rate_limit' | 'timeout' | 'network' | 'api' | 'unknown'; message: string; suggestion: string } {
-  const lowerError = error.toLowerCase();
-
-  if (lowerError.includes('429') || lowerError.includes('too many') || lowerError.includes('rate limit') || lowerError.includes('лимит')) {
-    return {
-      type: 'rate_limit',
-      message: 'Превышен лимит запросов к VK API',
-      suggestion: 'Подождите 1-2 минуты и попробуйте снова с меньшим количеством групп'
-    };
-  }
-
-  if (lowerError.includes('timeout') || lowerError.includes('timed out') || lowerError.includes('таймаут')) {
-    return {
-      type: 'timeout',
-      message: 'Превышено время ожидания ответа от VK API',
-      suggestion: 'VK API не ответил вовремя. Попробуйте позже или уменьшите количество дублей'
-    };
-  }
-
-  if (lowerError.includes('network') || lowerError.includes('сетевая') || lowerError.includes('connection') || lowerError.includes('econnrefused')) {
-    return {
-      type: 'network',
-      message: 'Ошибка сетевого подключения',
-      suggestion: 'Проверьте интернет-соединение и попробуйте снова'
-    };
-  }
-
-  if (lowerError.includes('500') || lowerError.includes('502') || lowerError.includes('503') || lowerError.includes('504')) {
-    return {
-      type: 'api',
-      message: 'Временная ошибка VK API',
-      suggestion: 'VK API временно недоступен. Попробуйте через несколько минут'
-    };
-  }
-
-  return {
-    type: 'unknown',
-    message: error.length > 150 ? error.substring(0, 150) + '...' : error,
-    suggestion: 'Попробуйте повторить операцию позже'
-  };
-}
-
 // Condition Editor Component (same as DisableRules)
 function ConditionEditor({
   conditions,
