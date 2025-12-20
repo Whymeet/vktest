@@ -1,7 +1,9 @@
+import { useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Copy, CircleDot, RefreshCw, X } from 'lucide-react';
 import { getScalingTasks, cancelScalingTask } from '../api/client';
 import type { ScalingTask } from '../api/client';
+import { useToast } from './Toast';
 
 function TaskProgressBar({ task }: { task: ScalingTask }) {
   const progress = task.total_operations > 0
@@ -91,6 +93,12 @@ function ActiveTaskCard({ task, onCancel }: { task: ScalingTask; onCancel: () =>
 
 export function ScalingSchedulerStatusIndicator() {
   const queryClient = useQueryClient();
+  const toast = useToast();
+
+  // Track which tasks we've already shown notifications for
+  const notifiedTasksRef = useRef<Set<number>>(new Set());
+  // Track running tasks to detect when they complete
+  const runningTasksRef = useRef<Map<number, ScalingTask>>(new Map());
 
   const { data: tasksData } = useQuery({
     queryKey: ['scalingTasks'],
@@ -106,6 +114,75 @@ export function ScalingSchedulerStatusIndicator() {
   });
 
   const activeTasks = tasksData?.active || [];
+  const recentTasks = tasksData?.recent || [];
+
+  // Show notifications when tasks complete
+  useEffect(() => {
+    // Update running tasks map
+    const currentRunning = new Map<number, ScalingTask>();
+    activeTasks.forEach((task) => {
+      if (task.status === 'running' || task.status === 'pending') {
+        currentRunning.set(task.id, task);
+      }
+    });
+
+    // Check for completed tasks (was running, now in recent or not running)
+    const allTasks = [...activeTasks, ...recentTasks];
+
+    for (const task of allTasks) {
+      // Skip if already notified
+      if (notifiedTasksRef.current.has(task.id)) continue;
+
+      // Check if this task was previously running
+      const wasRunning = runningTasksRef.current.has(task.id);
+
+      // If task is now completed/failed and was running, show notification
+      if (wasRunning && (task.status === 'completed' || task.status === 'failed' || task.status === 'cancelled')) {
+        notifiedTasksRef.current.add(task.id);
+
+        const taskName = task.task_type === 'manual'
+          ? 'Ручное дублирование'
+          : task.config_name || 'Автомасштабирование';
+
+        if (task.status === 'completed') {
+          if (task.failed_operations > 0) {
+            toast.warning(
+              `${taskName} завершено`,
+              `Успешно: ${task.successful_operations}, ошибок: ${task.failed_operations}`,
+              5000
+            );
+          } else {
+            toast.success(
+              `${taskName} завершено`,
+              `Успешно продублировано: ${task.successful_operations}`,
+              5000
+            );
+          }
+        } else if (task.status === 'failed') {
+          toast.error(
+            `${taskName} не удалось`,
+            task.last_error || 'Неизвестная ошибка',
+            5000
+          );
+        } else if (task.status === 'cancelled') {
+          toast.info(
+            `${taskName} отменено`,
+            `Выполнено: ${task.successful_operations} из ${task.total_operations}`,
+            5000
+          );
+        }
+      }
+    }
+
+    // Update running tasks ref
+    runningTasksRef.current = currentRunning;
+
+    // Cleanup old notifications (keep only last 100)
+    if (notifiedTasksRef.current.size > 100) {
+      const arr = Array.from(notifiedTasksRef.current);
+      notifiedTasksRef.current = new Set(arr.slice(-50));
+    }
+  }, [activeTasks, recentTasks, toast]);
 
   // Only show if there are active tasks
   if (activeTasks.length === 0) {

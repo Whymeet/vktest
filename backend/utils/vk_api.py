@@ -720,10 +720,50 @@ def update_ad_group(token: str, base_url: str, group_id: int, update_data: dict)
         return {"success": False, "error": error_msg}
 
 
+def _generate_copy_name(original_name: str) -> str:
+    """
+    Генерирует имя для копии группы.
+    Если имя уже содержит "(копия)", добавляет номер.
+
+    Примеры:
+        "Группа 1" -> "Группа 1 (копия)"
+        "Группа 1 (копия)" -> "Группа 1 (копия 2)"
+        "Группа 1 (копия 2)" -> "Группа 1 (копия 3)"
+    """
+    import re
+
+    if not original_name:
+        return "Копия"
+
+    # Проверяем паттерн "(копия N)" в конце
+    pattern_numbered = r'^(.+?)\s*\(копия\s+(\d+)\)\s*$'
+    match_numbered = re.match(pattern_numbered, original_name, re.IGNORECASE)
+
+    if match_numbered:
+        base_name = match_numbered.group(1).strip()
+        current_num = int(match_numbered.group(2))
+        return f"{base_name} (копия {current_num + 1})"
+
+    # Проверяем паттерн "(копия)" без номера
+    pattern_simple = r'^(.+?)\s*\(копия\)\s*$'
+    match_simple = re.match(pattern_simple, original_name, re.IGNORECASE)
+
+    if match_simple:
+        base_name = match_simple.group(1).strip()
+        return f"{base_name} (копия 2)"
+
+    # Обычное имя - добавляем "(копия)"
+    return f"{original_name} (копия)"
+
+
+# Минимальный дневной бюджет VK Ads (100 рублей)
+VK_MIN_DAILY_BUDGET = 100
+
+
 def duplicate_ad_group_full(
-    token: str, 
-    base_url: str, 
-    ad_group_id: int, 
+    token: str,
+    base_url: str,
+    ad_group_id: int,
     new_name: str = None,
     new_budget: float = None,
     auto_activate: bool = False,
@@ -731,16 +771,16 @@ def duplicate_ad_group_full(
 ):
     """
     Полное дублирование рекламной группы со всеми НЕудалёнными объявлениями
-    
+
     Args:
         token: VK Ads API токен
         base_url: Базовый URL VK Ads API
         ad_group_id: ID группы для дублирования
-        new_name: Новое имя группы (если None, добавляется "(копия)")
-        new_budget: Новый бюджет группы (если None, как в оригинале)
+        new_name: Новое имя группы (если None, генерируется автоматически)
+        new_budget: Новый бюджет группы в рублях (если None или 0, бюджет не устанавливается)
         auto_activate: Автоматически активировать группу и объявления
         rate_limit_delay: Задержка между запросами (по умолчанию 0.03 сек = ~33 req/sec)
-    
+
     Returns:
         dict: {
             "success": bool,
@@ -753,12 +793,12 @@ def duplicate_ad_group_full(
     # Поля которые НЕ копируем (read-only или статистика)
     EXCLUDED_GROUP_FIELDS = {
         'id', 'created', 'updated', 'created_at', 'updated_at', 'deleted',
-        'statistics', 'clicks', 'shows', 'spent', 'ctr', 
+        'statistics', 'clicks', 'shows', 'spent', 'ctr',
         'conversions', 'cost_per_conversion', 'impressions',
         'banner_count', 'banners', 'delivery', 'issues', 'read_only',
         'interface_read_only', 'user_id', 'stats_info', 'learning_progress',
         'efficiency_status', 'vkads_status', 'or_status', 'or_migrated',
-        'budget_limit_day'  # Не копируем, устанавливаем отдельно если указан new_budget
+        'budget_limit_day', 'budget_limit', 'budget_limit_per_day'  # Не копируем, устанавливаем отдельно
     }
     
     # Исключаемые поля баннеров (read-only согласно документации VK Ads)
@@ -813,29 +853,43 @@ def duplicate_ad_group_full(
         
         print(f"📋 Поля для создания: {list(new_group_data.keys())}")
         print(f"📋 Данные для создания: {new_group_data}")
-        
+
         # Изменяем имя
         if new_name:
             new_group_data['name'] = new_name
         else:
-            new_group_data['name'] = f"{original_group.get('name', 'Копия')} (копия)"
-        
+            # Используем умную генерацию имени
+            new_group_data['name'] = _generate_copy_name(original_group.get('name', 'Копия'))
+
         # Устанавливаем бюджет
+        # ВАЖНО: VK Ads API требует минимальный бюджет 100 руб
+        # Если бюджет меньше минимума или не указан - НЕ передаём budget_limit_day вообще
+        budget_to_set = None
+
         if new_budget is not None and new_budget > 0:
-            # VK Ads API ожидает бюджет в рублях (без умножения на 100)
-            budget_value = str(int(new_budget))
-            new_group_data['budget_limit_day'] = budget_value
-            logger.info(f"💰 Установлен новый дневной бюджет: {new_budget} руб (значение для API: {budget_value})")
-        elif 'budget_limit_day' in original_group and original_group['budget_limit_day']:
-            # Если бюджет не указан, копируем из оригинала (если он есть и корректный)
-            original_budget = original_group['budget_limit_day']
-            try:
-                budget_int = int(float(original_budget))
-                if budget_int > 0:
-                    new_group_data['budget_limit_day'] = str(budget_int)
-                    logger.info(f"💰 Скопирован бюджет из оригинала: {budget_int} руб")
-            except (ValueError, TypeError):
-                logger.warning(f"⚠️  Некорректный бюджет оригинала: {original_budget}, пропускаем")
+            # Указан новый бюджет
+            if new_budget >= VK_MIN_DAILY_BUDGET:
+                budget_to_set = int(new_budget)
+                logger.info(f"💰 Установлен новый дневной бюджет: {budget_to_set} руб")
+            else:
+                logger.warning(f"⚠️ Указанный бюджет {new_budget} меньше минимума VK ({VK_MIN_DAILY_BUDGET} руб). Бюджет не будет установлен.")
+        else:
+            # Пробуем скопировать бюджет из оригинала
+            original_budget = original_group.get('budget_limit_day')
+            if original_budget:
+                try:
+                    budget_int = int(float(original_budget))
+                    if budget_int >= VK_MIN_DAILY_BUDGET:
+                        budget_to_set = budget_int
+                        logger.info(f"💰 Скопирован бюджет из оригинала: {budget_int} руб")
+                    else:
+                        logger.info(f"ℹ️ Бюджет оригинала ({budget_int} руб) меньше минимума VK, пропускаем")
+                except (ValueError, TypeError):
+                    logger.warning(f"⚠️ Некорректный бюджет оригинала: {original_budget}, пропускаем")
+
+        # Устанавливаем бюджет только если он валидный
+        if budget_to_set is not None:
+            new_group_data['budget_limit_day'] = str(budget_to_set)
 
         # Статус
         new_group_data['status'] = 'active' if auto_activate else 'blocked'
