@@ -16,7 +16,6 @@ import {
   Target,
   BarChart3,
   AlertTriangle,
-  Timer,
 } from 'lucide-react';
 import {
   getAccounts,
@@ -61,8 +60,8 @@ const FALLBACK_OPERATORS = [
   { value: 'less_or_equal', label: '≤', description: 'Меньше или равно' },
 ];
 
-// Error parsing helper
-function parseErrorMessage(error: string): { type: 'rate_limit' | 'timeout' | 'network' | 'api' | 'unknown'; message: string; suggestion: string } {
+// Error parsing helper (kept for potential future use)
+function _parseErrorMessage(error: string): { type: 'rate_limit' | 'timeout' | 'network' | 'api' | 'unknown'; message: string; suggestion: string } {
   const lowerError = error.toLowerCase();
 
   if (lowerError.includes('429') || lowerError.includes('too many') || lowerError.includes('rate limit') || lowerError.includes('лимит')) {
@@ -528,7 +527,7 @@ function ManualDuplicateModal({
               resetForm();
             }}
             className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white"
-            disabled={isProcessing}
+            disabled={duplicateMutation.isPending || taskStarted}
           >
             <option value="">-- Выберите кабинет --</option>
             {accounts.map((acc) => (
@@ -552,7 +551,7 @@ function ManualDuplicateModal({
                 className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm resize-none"
                 placeholder="Например: 12345, 67890, 11111"
                 rows={2}
-                disabled={isProcessing}
+                disabled={duplicateMutation.isPending || taskStarted}
               />
               {groupIds.length > 0 && (
                 <p className="text-xs text-slate-400 mt-1">
@@ -574,7 +573,7 @@ function ManualDuplicateModal({
                   className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white"
                   min="1"
                   max="100"
-                  disabled={isProcessing}
+                  disabled={duplicateMutation.isPending || taskStarted}
                 />
                 <p className="text-xs text-slate-500 mt-1">От 1 до 100</p>
               </div>
@@ -591,13 +590,13 @@ function ManualDuplicateModal({
                   placeholder="Как в оригинале"
                   min="0"
                   step="0.01"
-                  disabled={isProcessing}
+                  disabled={duplicateMutation.isPending || taskStarted}
                 />
               </div>
             </div>
 
             <div className="flex items-center gap-2">
-              <Toggle checked={autoActivate} onChange={setAutoActivate} disabled={isProcessing} />
+              <Toggle checked={autoActivate} onChange={setAutoActivate} disabled={duplicateMutation.isPending || taskStarted} />
               <span className="text-sm text-slate-300">Автоматически активировать</span>
             </div>
 
