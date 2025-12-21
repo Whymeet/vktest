@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { api } from '../api/client';
-import { getActiveSessions, logoutAll, Session } from '../api/auth';
+import { getActiveSessions, logoutAll, type Session } from '../api/auth';
 
 export const Profile = () => {
   const { user, refetch } = useAuth();

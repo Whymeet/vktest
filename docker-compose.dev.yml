@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: vkads-postgres-dev
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=vkads
+      - POSTGRES_PASSWORD=vkads_password
+      - POSTGRES_DB=vkads
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    networks:
+      - dev-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vkads"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: vkads-backend-dev
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - ./logs:/app/logs
+    environment:
+      - PYTHONUNBUFFERED=1
+      - IN_DOCKER=true
+      - DATABASE_URL=postgresql://vkads:vkads_password@postgres:5432/vkads
+      - JWT_SECRET_KEY=local_dev_secret_key_minimum_32chars
+      - ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000
+    networks:
+      - dev-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: vkads-frontend-dev
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    networks:
+      - dev-network
+    depends_on:
+      - backend
+    command: npm run dev -- --host 0.0.0.0
+
+networks:
+  dev-network:
+    driver: bridge
+
+volumes:
+  postgres_dev_data:
