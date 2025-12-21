@@ -1,7 +1,7 @@
 """
 Authentication API routes
 """
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 from typing import Optional, List
@@ -18,6 +18,7 @@ from auth.security import (
     create_access_token,
     create_refresh_token,
     decode_refresh_token,
+    hash_token,
     Token
 )
 from auth.dependencies import get_current_user, get_current_superuser
@@ -75,13 +76,21 @@ class ChangePasswordRequest(BaseModel):
 # ===== Auth Endpoints =====
 
 @router.post("/login", response_model=Token)
-async def login(request: LoginRequest, db: Session = Depends(get_db)):
+async def login(
+    login_request: LoginRequest,
+    request: Request,
+    db: Session = Depends(get_db)
+):
     """
     Login with username and password.
     Returns access and refresh JWT tokens.
+    Stores refresh token in database for tracking and revocation.
+
+    Rate Limited: Default limit is 60 requests per minute per IP.
+    Configure via RATE_LIMIT_PER_MINUTE environment variable.
     """
     # Find user
-    user = crud.get_user_by_username(db, request.username)
+    user = crud.get_user_by_username(db, login_request.username)
 
     if not user:
         raise HTTPException(
@@ -90,7 +99,7 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
         )
 
     # Verify password
-    if not verify_password(request.password, user.password_hash):
+    if not verify_password(login_request.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password"
@@ -109,31 +118,73 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
     # Create tokens - sub must be a string for JWT
     token_data = {"sub": str(user.id), "username": user.username}
     access_token = create_access_token(data=token_data)
-    refresh_token = create_refresh_token(data=token_data)
+    refresh_token_str, jti, expires_at = create_refresh_token(data=token_data)
+
+    # Store refresh token in database
+    token_hash = hash_token(refresh_token_str)
+    user_agent = request.headers.get("user-agent", "")[:500] if request.headers.get("user-agent") else None
+    ip_address = request.client.host if request.client else None
+
+    crud.create_refresh_token(
+        db=db,
+        user_id=user.id,
+        token_hash=token_hash,
+        jti=jti,
+        expires_at=expires_at,
+        user_agent=user_agent,
+        ip_address=ip_address
+    )
 
     return Token(
         access_token=access_token,
-        refresh_token=refresh_token
+        refresh_token=refresh_token_str
     )
 
 
 @router.post("/refresh", response_model=Token)
-async def refresh_token(request: RefreshRequest, db: Session = Depends(get_db)):
+async def refresh_token(
+    refresh_request: RefreshRequest,
+    request: Request,
+    db: Session = Depends(get_db)
+):
     """
     Refresh access token using refresh token.
     Returns new access and refresh tokens.
+    Validates token against database and implements token rotation.
     """
     # Decode refresh token
-    token_data = decode_refresh_token(request.refresh_token)
+    token_payload = decode_refresh_token(refresh_request.refresh_token)
 
-    if not token_data:
+    if not token_payload:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired refresh token"
         )
 
+    # Verify token exists in database and is not revoked
+    db_token = crud.get_refresh_token_by_jti(db, token_payload["jti"])
+
+    if not db_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token not found"
+        )
+
+    if db_token.revoked:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token has been revoked"
+        )
+
+    # Verify token hasn't expired
+    if db_token.expires_at < get_moscow_time():
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token has expired"
+        )
+
     # Get user
-    user = crud.get_user_by_id(db, token_data.user_id)
+    user = crud.get_user_by_id(db, token_payload["user_id"])
 
     if not user:
         raise HTTPException(
@@ -147,15 +198,102 @@ async def refresh_token(request: RefreshRequest, db: Session = Depends(get_db)):
             detail="User account is disabled"
         )
 
+    # Revoke old refresh token (token rotation)
+    crud.revoke_refresh_token(db, token_payload["jti"])
+
     # Create new tokens - sub must be a string for JWT
     new_token_data = {"sub": str(user.id), "username": user.username}
     new_access_token = create_access_token(data=new_token_data)
-    new_refresh_token = create_refresh_token(data=new_token_data)
+    new_refresh_token_str, new_jti, new_expires_at = create_refresh_token(data=new_token_data)
+
+    # Store new refresh token in database
+    token_hash = hash_token(new_refresh_token_str)
+    user_agent = request.headers.get("user-agent", "")[:500] if request.headers.get("user-agent") else None
+    ip_address = request.client.host if request.client else None
+
+    crud.create_refresh_token(
+        db=db,
+        user_id=user.id,
+        token_hash=token_hash,
+        jti=new_jti,
+        expires_at=new_expires_at,
+        user_agent=user_agent,
+        ip_address=ip_address
+    )
 
     return Token(
         access_token=new_access_token,
-        refresh_token=new_refresh_token
+        refresh_token=new_refresh_token_str
     )
+
+
+@router.post("/logout")
+async def logout(
+    refresh_request: RefreshRequest,
+    current_user = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Logout current session by revoking the refresh token.
+    Access token will remain valid until expiration, but cannot be refreshed.
+    """
+    # Decode refresh token to get JTI
+    token_payload = decode_refresh_token(refresh_request.refresh_token)
+
+    if not token_payload:
+        # Token is invalid, but still return success (already logged out)
+        return {"message": "Logged out successfully"}
+
+    # Revoke the refresh token
+    revoked = crud.revoke_refresh_token(db, token_payload["jti"])
+
+    if revoked:
+        return {"message": "Logged out successfully"}
+    else:
+        # Token not found in DB, but still return success
+        return {"message": "Logged out successfully"}
+
+
+@router.post("/logout-all")
+async def logout_all(
+    current_user = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Logout from all devices by revoking all refresh tokens.
+    All active sessions will be terminated.
+    """
+    count = crud.revoke_all_user_tokens(db, current_user.id)
+
+    return {
+        "message": f"Logged out from all devices successfully",
+        "revoked_tokens_count": count
+    }
+
+
+@router.get("/sessions")
+async def get_active_sessions(
+    current_user = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get list of active sessions (refresh tokens) for current user.
+    """
+    tokens = crud.get_user_active_tokens(db, current_user.id)
+
+    sessions = []
+    for token in tokens:
+        sessions.append({
+            "id": token.id,
+            "device_name": token.device_name,
+            "user_agent": token.user_agent,
+            "ip_address": token.ip_address,
+            "created_at": token.created_at.isoformat() if token.created_at else None,
+            "last_used_at": token.last_used_at.isoformat() if token.last_used_at else None,
+            "expires_at": token.expires_at.isoformat() if token.expires_at else None
+        })
+
+    return {"sessions": sessions, "total": len(sessions)}
 
 
 @router.get("/me", response_model=UserResponse)
@@ -236,6 +374,7 @@ async def change_password(
 ):
     """
     Change current user's password.
+    Automatically revokes all refresh tokens for security.
     """
     # Verify current password
     if not verify_password(request.current_password, current_user.password_hash):
@@ -248,7 +387,13 @@ async def change_password(
     new_hash = get_password_hash(request.new_password)
     crud.update_user_password(db, current_user.id, new_hash)
 
-    return {"message": "Password changed successfully"}
+    # Revoke all refresh tokens for security
+    revoked_count = crud.revoke_all_user_tokens(db, current_user.id)
+
+    return {
+        "message": "Password changed successfully. All sessions have been logged out.",
+        "revoked_sessions": revoked_count
+    }
 
 
 # ===== Admin Endpoints =====

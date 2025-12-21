@@ -79,11 +79,62 @@ export const login = async (username: string, password: string): Promise<AuthTok
 };
 
 /**
- * Logout - clear tokens
+ * Logout - revoke current session and clear tokens
  */
-export const logout = (): void => {
+export const logout = async (): Promise<void> => {
+  const token = getAccessToken();
+  const refreshToken = getRefreshToken();
+
+  // Try to revoke refresh token on server
+  if (token && refreshToken) {
+    try {
+      await fetch(`${API_URL}/auth/logout`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      });
+    } catch (error) {
+      // Continue with local logout even if server request fails
+      console.error('Logout error:', error);
+    }
+  }
+
+  // Clear tokens locally
   clearTokens();
   window.location.href = '/login';
+};
+
+/**
+ * Logout from all devices - revoke all sessions
+ */
+export const logoutAll = async (): Promise<number> => {
+  const token = getAccessToken();
+
+  if (!token) {
+    throw new Error('Not authenticated');
+  }
+
+  const response = await fetch(`${API_URL}/auth/logout-all`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to logout from all devices');
+  }
+
+  const data = await response.json();
+
+  // Clear local tokens
+  clearTokens();
+  window.location.href = '/login';
+
+  return data.revoked_tokens_count;
 };
 
 /**
@@ -155,7 +206,7 @@ export const getCurrentUser = async (): Promise<User> => {
  */
 export const changePassword = async (currentPassword: string, newPassword: string): Promise<void> => {
   const token = getAccessToken();
-  
+
   if (!token) {
     throw new Error('Not authenticated');
   }
@@ -176,5 +227,57 @@ export const changePassword = async (currentPassword: string, newPassword: strin
     const error = await response.json();
     throw new Error(error.detail || 'Failed to change password');
   }
+
+  const data = await response.json();
+
+  // Password changed, all sessions revoked - need to re-login
+  clearTokens();
+  return data;
+};
+
+export interface Session {
+  id: number;
+  device_name: string | null;
+  user_agent: string | null;
+  ip_address: string | null;
+  created_at: string;
+  last_used_at: string;
+  expires_at: string;
+}
+
+/**
+ * Get list of active sessions
+ */
+export const getActiveSessions = async (): Promise<Session[]> => {
+  const token = getAccessToken();
+
+  if (!token) {
+    throw new Error('Not authenticated');
+  }
+
+  const response = await fetch(`${API_URL}/auth/sessions`, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+  });
+
+  if (response.status === 401) {
+    // Try to refresh token
+    try {
+      await refreshAccessToken();
+      // Retry with new token
+      return getActiveSessions();
+    } catch {
+      logout();
+      throw new Error('Session expired');
+    }
+  }
+
+  if (!response.ok) {
+    throw new Error('Failed to get active sessions');
+  }
+
+  const data = await response.json();
+  return data.sessions;
 };
 

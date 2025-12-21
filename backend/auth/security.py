@@ -3,6 +3,7 @@ Security utilities for JWT authentication
 """
 import os
 import hashlib
+import uuid
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -79,18 +80,26 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     return encoded_jwt
 
 
-def create_refresh_token(data: dict) -> str:
-    """Create a new refresh token"""
+def create_refresh_token(data: dict, jti: Optional[str] = None) -> tuple[str, str, datetime]:
+    """
+    Create a new refresh token with unique JTI.
+    Returns: (token, jti, expires_at)
+    """
     to_encode = data.copy()
     expire = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
 
+    # Generate unique JWT ID if not provided
+    if jti is None:
+        jti = str(uuid.uuid4())
+
     to_encode.update({
         "exp": expire,
-        "type": "refresh"
+        "type": "refresh",
+        "jti": jti
     })
 
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
+    return encoded_jwt, jti, expire
 
 
 def decode_token(token: str) -> Optional[TokenData]:
@@ -112,8 +121,11 @@ def decode_token(token: str) -> Optional[TokenData]:
         return None
 
 
-def decode_refresh_token(token: str) -> Optional[TokenData]:
-    """Decode and validate a refresh token"""
+def decode_refresh_token(token: str) -> Optional[dict]:
+    """
+    Decode and validate a refresh token.
+    Returns payload dict with user_id, username, jti, exp
+    """
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
 
@@ -121,12 +133,28 @@ def decode_refresh_token(token: str) -> Optional[TokenData]:
         if payload.get("type") != "refresh":
             return None
 
-        user_id: int = payload.get("sub")
-        username: str = payload.get("username")
+        user_id = payload.get("sub")
+        username = payload.get("username")
+        jti = payload.get("jti")
 
-        if user_id is None:
+        if user_id is None or jti is None:
             return None
 
-        return TokenData(user_id=user_id, username=username)
+        return {
+            "user_id": int(user_id),
+            "username": username,
+            "jti": jti,
+            "exp": payload.get("exp")
+        }
     except JWTError:
         return None
+
+
+def hash_token(token: str) -> str:
+    """Create SHA256 hash of token for secure storage"""
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def verify_token_hash(token: str, token_hash: str) -> bool:
+    """Verify token against stored hash"""
+    return hash_token(token) == token_hash
