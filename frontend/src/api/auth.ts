@@ -245,6 +245,46 @@ export interface Session {
   expires_at: string;
 }
 
+export interface UserFeatures {
+  features: string[];
+  is_superuser: boolean;
+}
+
+/**
+ * Get user features (access control)
+ */
+export const getUserFeatures = async (): Promise<UserFeatures> => {
+  const token = getAccessToken();
+
+  if (!token) {
+    throw new Error('Not authenticated');
+  }
+
+  const response = await fetch(`${API_URL}/auth/me/features`, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+  });
+
+  if (response.status === 401) {
+    // Try to refresh token
+    try {
+      await refreshAccessToken();
+      // Retry with new token
+      return getUserFeatures();
+    } catch {
+      logout();
+      throw new Error('Session expired');
+    }
+  }
+
+  if (!response.ok) {
+    throw new Error('Failed to get user features');
+  }
+
+  return await response.json();
+};
+
 /**
  * Get list of active sessions
  */

@@ -366,6 +366,29 @@ async def update_profile(
     )
 
 
+@router.get("/me/features")
+async def get_user_features(
+    current_user = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get list of features available to current user.
+    Used by frontend to show/hide functionality.
+    """
+    # Superusers have access to all features
+    if current_user.is_superuser:
+        return {
+            "features": crud.AVAILABLE_FEATURES,
+            "is_superuser": True
+        }
+
+    features = crud.get_user_features(db, current_user.id)
+    return {
+        "features": features,
+        "is_superuser": False
+    }
+
+
 @router.post("/change-password")
 async def change_password(
     request: ChangePasswordRequest,

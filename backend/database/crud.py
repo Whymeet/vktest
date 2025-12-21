@@ -10,6 +10,7 @@ from utils.time_utils import get_moscow_time
 
 from .models import (
     User,
+    UserFeature,
     RefreshToken,
     UserSettings,
     Account,
@@ -122,6 +123,79 @@ def delete_user(db: Session, user_id: int) -> bool:
     db.delete(user)
     db.commit()
     return True
+
+
+# ===== User Features (Access Control) =====
+
+# Available features
+AVAILABLE_FEATURES = ["auto_disable", "scaling", "leadstech", "logs"]
+
+
+def get_user_features(db: Session, user_id: int) -> List[str]:
+    """Get list of features available to user"""
+    features = db.query(UserFeature).filter(UserFeature.user_id == user_id).all()
+    return [f.feature for f in features]
+
+
+def user_has_feature(db: Session, user_id: int, feature: str) -> bool:
+    """Check if user has access to a specific feature"""
+    return db.query(UserFeature).filter(
+        UserFeature.user_id == user_id,
+        UserFeature.feature == feature
+    ).first() is not None
+
+
+def add_user_feature(db: Session, user_id: int, feature: str) -> Optional[UserFeature]:
+    """Add feature access to user"""
+    if feature not in AVAILABLE_FEATURES:
+        return None
+
+    # Check if already exists
+    existing = db.query(UserFeature).filter(
+        UserFeature.user_id == user_id,
+        UserFeature.feature == feature
+    ).first()
+    if existing:
+        return existing
+
+    user_feature = UserFeature(user_id=user_id, feature=feature)
+    db.add(user_feature)
+    db.commit()
+    db.refresh(user_feature)
+    return user_feature
+
+
+def remove_user_feature(db: Session, user_id: int, feature: str) -> bool:
+    """Remove feature access from user"""
+    user_feature = db.query(UserFeature).filter(
+        UserFeature.user_id == user_id,
+        UserFeature.feature == feature
+    ).first()
+    if not user_feature:
+        return False
+
+    db.delete(user_feature)
+    db.commit()
+    return True
+
+
+def set_user_features(db: Session, user_id: int, features: List[str]) -> List[str]:
+    """Set user features (replaces all existing features)"""
+    # Remove all existing features
+    db.query(UserFeature).filter(UserFeature.user_id == user_id).delete()
+
+    # Add new features
+    for feature in features:
+        if feature in AVAILABLE_FEATURES:
+            db.add(UserFeature(user_id=user_id, feature=feature))
+
+    db.commit()
+    return get_user_features(db, user_id)
+
+
+def add_all_features_to_user(db: Session, user_id: int) -> List[str]:
+    """Add all available features to user"""
+    return set_user_features(db, user_id, AVAILABLE_FEATURES)
 
 
 # ===== Refresh Tokens (JWT Authentication) =====

@@ -1,19 +1,21 @@
 import { useState, useEffect, useCallback } from 'react';
-import { getCurrentUser, isAuthenticated as checkToken, logout as authLogout, getAccessToken } from '../api/auth';
+import { getCurrentUser, getUserFeatures, isAuthenticated as checkToken, logout as authLogout, getAccessToken } from '../api/auth';
 import type { User } from '../api/auth';
 
 export const useAuth = () => {
   const [user, setUser] = useState<User | null>(null);
+  const [features, setFeatures] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAuth, setIsAuth] = useState(() => checkToken());
 
   const fetchUser = useCallback(async () => {
     const token = getAccessToken();
-    
+
     if (!token) {
       setLoading(false);
       setIsAuth(false);
       setUser(null);
+      setFeatures([]);
       return;
     }
 
@@ -21,8 +23,12 @@ export const useAuth = () => {
     setIsAuth(true);
 
     try {
-      const userData = await getCurrentUser();
+      const [userData, featuresData] = await Promise.all([
+        getCurrentUser(),
+        getUserFeatures()
+      ]);
       setUser(userData);
+      setFeatures(featuresData.features);
     } catch (error) {
       console.error('Failed to fetch user:', error);
       // Token might be invalid - but don't logout automatically
@@ -39,9 +45,14 @@ export const useAuth = () => {
   const logout = useCallback(() => {
     authLogout();
     setUser(null);
+    setFeatures([]);
     setIsAuth(false);
   }, []);
 
-  return { user, loading, isAuthenticated: isAuth, logout, refetch: fetchUser };
-};
+  // Helper to check if user has a specific feature
+  const hasFeature = useCallback((feature: string): boolean => {
+    return features.includes(feature);
+  }, [features]);
 
+  return { user, features, hasFeature, loading, isAuthenticated: isAuth, logout, refetch: fetchUser };
+};
