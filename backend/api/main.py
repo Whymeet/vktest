@@ -926,6 +926,7 @@ async def get_account_stats(
     account_name: Optional[str] = None,
     stats_date: Optional[str] = None,
     limit: int = 100,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Get account statistics with optional filters"""
@@ -939,6 +940,7 @@ async def get_account_stats(
 @app.get("/api/stats/accounts/today")
 async def get_today_account_stats(
     account_name: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Get today's account statistics"""
@@ -955,6 +957,7 @@ async def get_account_stats_range(
     date_from: str,
     date_to: str,
     account_name: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Get account statistics for date range"""
@@ -970,6 +973,7 @@ async def get_account_stats_range(
 @app.get("/api/stats/accounts/summary")
 async def get_account_stats_summary(
     days: int = 7,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Get aggregated summary for last N days"""
@@ -978,7 +982,9 @@ async def get_account_stats_summary(
 
 
 @app.get("/api/logs")
-async def list_log_files():
+async def list_log_files(
+    current_user: User = Depends(get_current_user)
+):
     """
     List available log files.
     Returns list of log files with metadata for the frontend.
@@ -1368,7 +1374,12 @@ async def kill_all_processes(db: Session = Depends(get_db)):
 # === Logs ===
 
 @app.get("/api/logs/{log_type}/{filename}")
-async def get_log_content(log_type: str, filename: str, tail: int = 500):
+async def get_log_content(
+    log_type: str,
+    filename: str,
+    tail: int = 500,
+    current_user: User = Depends(get_current_user)
+):
     """Get log file contents"""
     # Validate log type
     if log_type not in ["main", "scheduler"]:
@@ -2726,7 +2737,10 @@ class AutoDisableConfigUpdate(BaseModel):
 
 
 @app.get("/api/auto-disable/configs")
-async def get_auto_disable_configs_endpoint(db: Session = Depends(get_db)):
+async def get_auto_disable_configs_endpoint(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """Get all auto-disable configurations"""
     configs = crud.get_auto_disable_configs(db)
     result = []
@@ -2757,7 +2771,11 @@ async def get_auto_disable_configs_endpoint(db: Session = Depends(get_db)):
 
 
 @app.post("/api/auto-disable/configs")
-async def create_auto_disable_config_endpoint(data: AutoDisableConfigCreate, db: Session = Depends(get_db)):
+async def create_auto_disable_config_endpoint(
+    data: AutoDisableConfigCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """Create new auto-disable configuration"""
     config = crud.create_auto_disable_config(
         db,
@@ -2779,7 +2797,12 @@ async def create_auto_disable_config_endpoint(data: AutoDisableConfigCreate, db:
 
 
 @app.put("/api/auto-disable/configs/{config_id}")
-async def update_auto_disable_config_endpoint(config_id: int, data: AutoDisableConfigUpdate, db: Session = Depends(get_db)):
+async def update_auto_disable_config_endpoint(
+    config_id: int,
+    data: AutoDisableConfigUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """Update auto-disable configuration"""
     config = crud.update_auto_disable_config(
         db,
@@ -2805,7 +2828,11 @@ async def update_auto_disable_config_endpoint(config_id: int, data: AutoDisableC
 
 
 @app.delete("/api/auto-disable/configs/{config_id}")
-async def delete_auto_disable_config_endpoint(config_id: int, db: Session = Depends(get_db)):
+async def delete_auto_disable_config_endpoint(
+    config_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """Delete auto-disable configuration"""
     if not crud.delete_auto_disable_config(db, config_id):
         raise HTTPException(status_code=404, detail="Configuration not found")
@@ -2818,6 +2845,7 @@ async def get_auto_disable_logs_endpoint(
     config_id: Optional[int] = None,
     limit: int = 100,
     offset: int = 0,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Get auto-disable logs"""
@@ -2847,7 +2875,10 @@ async def get_auto_disable_logs_endpoint(
 
 
 @app.get("/api/auto-disable/summary")
-async def get_auto_disable_summary_endpoint(db: Session = Depends(get_db)):
+async def get_auto_disable_summary_endpoint(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """Get summary of auto-disable rules and recent activity"""
     configs = crud.get_auto_disable_configs(db)
     enabled_count = sum(1 for c in configs if c.enabled)

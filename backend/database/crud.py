@@ -3,13 +3,14 @@ CRUD operations for database models
 Multi-tenant architecture with user isolation
 """
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, and_
 from utils.time_utils import get_moscow_time
 
 from .models import (
     User,
+    RefreshToken,
     UserSettings,
     Account,
     WhitelistBanner,
@@ -121,6 +122,114 @@ def delete_user(db: Session, user_id: int) -> bool:
     db.delete(user)
     db.commit()
     return True
+
+
+# ===== Refresh Tokens (JWT Authentication) =====
+
+def create_refresh_token(
+    db: Session,
+    user_id: int,
+    token_hash: str,
+    jti: str,
+    expires_at: datetime,
+    user_agent: Optional[str] = None,
+    ip_address: Optional[str] = None,
+    device_name: Optional[str] = None
+) -> RefreshToken:
+    """Create a new refresh token record"""
+    token = RefreshToken(
+        user_id=user_id,
+        token_hash=token_hash,
+        jti=jti,
+        expires_at=expires_at,
+        user_agent=user_agent,
+        ip_address=ip_address,
+        device_name=device_name,
+        revoked=False
+    )
+    db.add(token)
+    db.commit()
+    db.refresh(token)
+    return token
+
+
+def get_refresh_token_by_jti(db: Session, jti: str) -> Optional[RefreshToken]:
+    """Get refresh token by JTI"""
+    return db.query(RefreshToken).filter(RefreshToken.jti == jti).first()
+
+
+def get_refresh_token_by_hash(db: Session, token_hash: str) -> Optional[RefreshToken]:
+    """Get refresh token by hash"""
+    return db.query(RefreshToken).filter(RefreshToken.token_hash == token_hash).first()
+
+
+def get_user_active_tokens(db: Session, user_id: int) -> List[RefreshToken]:
+    """Get all active (non-revoked, non-expired) tokens for a user"""
+    now = get_moscow_time()
+    return db.query(RefreshToken).filter(
+        RefreshToken.user_id == user_id,
+        RefreshToken.revoked == False,
+        RefreshToken.expires_at > now
+    ).order_by(desc(RefreshToken.created_at)).all()
+
+
+def update_token_last_used(db: Session, token_id: int) -> Optional[RefreshToken]:
+    """Update token's last_used_at timestamp"""
+    token = db.query(RefreshToken).filter(RefreshToken.id == token_id).first()
+    if not token:
+        return None
+
+    token.last_used_at = get_moscow_time()
+    db.commit()
+    db.refresh(token)
+    return token
+
+
+def revoke_refresh_token(db: Session, jti: str) -> bool:
+    """Revoke a refresh token by JTI"""
+    token = get_refresh_token_by_jti(db, jti)
+    if not token:
+        return False
+
+    token.revoked = True
+    token.revoked_at = get_moscow_time()
+    db.commit()
+    return True
+
+
+def revoke_all_user_tokens(db: Session, user_id: int) -> int:
+    """Revoke all refresh tokens for a user. Returns count of revoked tokens."""
+    now = get_moscow_time()
+    count = db.query(RefreshToken).filter(
+        RefreshToken.user_id == user_id,
+        RefreshToken.revoked == False
+    ).update({
+        "revoked": True,
+        "revoked_at": now
+    }, synchronize_session=False)
+    db.commit()
+    return count
+
+
+def delete_expired_tokens(db: Session) -> int:
+    """Delete expired tokens. Returns count of deleted tokens."""
+    now = get_moscow_time()
+    count = db.query(RefreshToken).filter(
+        RefreshToken.expires_at < now
+    ).delete(synchronize_session=False)
+    db.commit()
+    return count
+
+
+def delete_revoked_tokens(db: Session, older_than_days: int = 30) -> int:
+    """Delete revoked tokens older than specified days. Returns count of deleted tokens."""
+    cutoff_date = get_moscow_time() - timedelta(days=older_than_days)
+    count = db.query(RefreshToken).filter(
+        RefreshToken.revoked == True,
+        RefreshToken.revoked_at < cutoff_date
+    ).delete(synchronize_session=False)
+    db.commit()
+    return count
 
 
 # ===== User Settings (per-user key-value store) =====

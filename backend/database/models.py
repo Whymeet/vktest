@@ -40,9 +40,47 @@ class User(Base):
     scaling_configs = relationship("ScalingConfig", back_populates="user", cascade="all, delete-orphan")
     process_states = relationship("ProcessState", back_populates="user", cascade="all, delete-orphan")
     leadstech_config = relationship("LeadsTechConfig", back_populates="user", cascade="all, delete-orphan", uselist=False)
+    refresh_tokens = relationship("RefreshToken", back_populates="user", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<User(id={self.id}, username='{self.username}')>"
+
+
+class RefreshToken(Base):
+    """Refresh token storage for JWT authentication"""
+    __tablename__ = "refresh_tokens"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    # Token identification
+    token_hash = Column(String(255), unique=True, nullable=False, index=True)  # SHA256 hash of token
+    jti = Column(String(36), unique=True, nullable=False, index=True)  # JWT ID (UUID)
+
+    # Device/Session info
+    user_agent = Column(String(500), nullable=True)
+    ip_address = Column(String(45), nullable=True)  # IPv6 max length
+    device_name = Column(String(255), nullable=True)  # User-friendly device name
+
+    # Token validity
+    expires_at = Column(DateTime, nullable=False, index=True)
+    revoked = Column(Boolean, default=False, nullable=False, index=True)
+    revoked_at = Column(DateTime, nullable=True)
+
+    # Timestamps
+    created_at = Column(DateTime, default=get_moscow_time, nullable=False)
+    last_used_at = Column(DateTime, default=get_moscow_time, onupdate=get_moscow_time, nullable=False)
+
+    # Composite index for common queries
+    __table_args__ = (
+        Index('ix_refresh_tokens_user_active', 'user_id', 'revoked', 'expires_at'),
+    )
+
+    # Relationship
+    user = relationship("User", back_populates="refresh_tokens")
+
+    def __repr__(self):
+        return f"<RefreshToken(id={self.id}, user_id={self.user_id}, jti='{self.jti}', revoked={self.revoked})>"
 
 
 class UserSettings(Base):
