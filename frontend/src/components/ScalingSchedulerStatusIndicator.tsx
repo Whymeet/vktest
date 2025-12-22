@@ -4,6 +4,7 @@ import { Copy, CircleDot, RefreshCw, X } from 'lucide-react';
 import { getScalingTasks, cancelScalingTask } from '../api/client';
 import type { ScalingTask } from '../api/client';
 import { useToast } from './Toast';
+import { useWebSocketStatus } from '../contexts/WebSocketContext';
 
 function TaskProgressBar({ task }: { task: ScalingTask }) {
   const progress = task.total_operations > 0
@@ -94,6 +95,8 @@ function ActiveTaskCard({ task, onCancel }: { task: ScalingTask; onCancel: () =>
 export function ScalingSchedulerStatusIndicator() {
   const queryClient = useQueryClient();
   const toast = useToast();
+  const wsStatus = useWebSocketStatus();
+  const isWsConnected = wsStatus === 'connected';
 
   // Track which tasks we've already shown notifications for
   const notifiedTasksRef = useRef<Set<number>>(new Set());
@@ -103,7 +106,8 @@ export function ScalingSchedulerStatusIndicator() {
   const { data: tasksData } = useQuery({
     queryKey: ['scalingTasks'],
     queryFn: () => getScalingTasks().then((r) => r.data),
-    refetchInterval: 2000, // Poll every 2 seconds for active tasks
+    // Only poll if WebSocket is disconnected (fallback)
+    refetchInterval: isWsConnected ? false : 2000,
   });
 
   const cancelMutation = useMutation({

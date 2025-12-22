@@ -3,18 +3,24 @@ import { Users, Clock, TestTube, MessageSquare, Activity, AlertCircle, RefreshCw
 import { getDashboard, getProcessStatus } from '../api/client';
 import { StatCard } from '../components/Card';
 import { StatusBadge } from '../components/StatusBadge';
+import { useWebSocketStatus } from '../contexts/WebSocketContext';
 
 export function Dashboard() {
+  const wsStatus = useWebSocketStatus();
+  const isWsConnected = wsStatus === 'connected';
+
   const { data: dashboard, isLoading, error, refetch } = useQuery({
     queryKey: ['dashboard'],
     queryFn: () => getDashboard().then((r) => r.data),
-    refetchInterval: 5000,
+    // Only poll if WebSocket is disconnected (fallback)
+    refetchInterval: isWsConnected ? false : 5000,
   });
 
   const { data: processStatus } = useQuery({
     queryKey: ['processStatus'],
     queryFn: () => getProcessStatus().then((r) => r.data),
-    refetchInterval: 3000,
+    // Only poll if WebSocket is disconnected (fallback)
+    refetchInterval: isWsConnected ? false : 3000,
   });
 
   if (isLoading) {

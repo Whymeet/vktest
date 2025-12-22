@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, Dict, List, Any
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, Request
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, Request, WebSocket, WebSocketDisconnect, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel, Field
@@ -24,6 +24,17 @@ import psutil
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+
+from api.websocket_manager import manager as ws_manager
+from api.websocket_events import (
+    emit_process_status,
+    emit_accounts_changed,
+    emit_settings_changed,
+    emit_whitelist_changed,
+    emit_scaling_config_changed,
+    emit_disable_rules_changed,
+)
+from auth.security import decode_token
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -396,6 +407,125 @@ async def startup_event():
     print("🚀 Starting scaling schedulers for all users...")
     autostart_scaling_schedulers()
     print("✅ Scaling schedulers started")
+
+    # Start WebSocket broadcaster
+    global _ws_broadcaster_task
+    _ws_broadcaster_task = asyncio.create_task(websocket_status_broadcaster())
+    print("🔌 WebSocket broadcaster started")
+
+
+# === WebSocket ===
+
+# Background task for periodic status check
+_ws_broadcaster_task = None
+
+# Cache of last known status per user (to detect changes)
+_last_process_status: Dict[int, dict] = {}
+
+
+async def websocket_status_broadcaster():
+    """Background task that checks process status and broadcasts ONLY when changed"""
+    while True:
+        try:
+            connected_users = ws_manager.get_connected_user_ids()
+            if connected_users:
+                db = SessionLocal()
+                try:
+                    for user_id in connected_users:
+                        # Get current process status for this user
+                        scheduler_running, scheduler_pid = is_process_running_by_db("scheduler", db, user_id)
+                        scaling_running, scaling_pid = is_process_running_by_db("scaling_scheduler", db, user_id)
+                        analysis_running, analysis_pid = is_process_running_by_db("analysis", db)
+                        bot_running, bot_pid = is_process_running_by_db("bot", db)
+
+                        current_status = {
+                            "scheduler": {"running": scheduler_running, "pid": scheduler_pid},
+                            "scaling_scheduler": {"running": scaling_running, "pid": scaling_pid},
+                            "analysis": {"running": analysis_running, "pid": analysis_pid},
+                            "bot": {"running": bot_running, "pid": bot_pid}
+                        }
+
+                        # Check if status changed since last check
+                        last_status = _last_process_status.get(user_id)
+                        if last_status != current_status:
+                            # Status changed - push update
+                            await emit_process_status(user_id, current_status)
+                            _last_process_status[user_id] = current_status
+                finally:
+                    db.close()
+
+            # Clean up cache for disconnected users
+            for user_id in list(_last_process_status.keys()):
+                if user_id not in connected_users:
+                    del _last_process_status[user_id]
+
+        except Exception as e:
+            print(f"WebSocket broadcaster error: {e}")
+
+        await asyncio.sleep(3)  # Check every 3 seconds, but only push on change
+
+
+@app.websocket("/api/ws")
+async def websocket_endpoint(
+    websocket: WebSocket,
+    token: str = Query(...)
+):
+    """WebSocket endpoint for real-time updates"""
+    # Authenticate via JWT token in query param
+    token_data = decode_token(token)
+    if not token_data:
+        await websocket.close(code=4001, reason="Invalid token")
+        return
+
+    db = SessionLocal()
+    try:
+        user = crud.get_user_by_id(db, token_data.user_id)
+        if not user or not user.is_active:
+            await websocket.close(code=4001, reason="User not found or inactive")
+            return
+
+        user_id = user.id
+
+        # Connect
+        conn = await ws_manager.connect(websocket, user_id)
+        print(f"🔌 WebSocket connected: user {user.username} (total connections: {ws_manager.get_total_connections()})")
+
+        # Send initial process status
+        scheduler_running, scheduler_pid = is_process_running_by_db("scheduler", db, user_id)
+        scaling_running, scaling_pid = is_process_running_by_db("scaling_scheduler", db, user_id)
+        analysis_running, analysis_pid = is_process_running_by_db("analysis", db)
+        bot_running, bot_pid = is_process_running_by_db("bot", db)
+
+        await emit_process_status(user_id, {
+            "scheduler": {"running": scheduler_running, "pid": scheduler_pid},
+            "scaling_scheduler": {"running": scaling_running, "pid": scaling_pid},
+            "analysis": {"running": analysis_running, "pid": analysis_pid},
+            "bot": {"running": bot_running, "pid": bot_pid}
+        })
+
+        try:
+            while True:
+                # Handle incoming messages (ping/pong, subscriptions)
+                data = await websocket.receive_json()
+                msg_type = data.get("type")
+
+                if msg_type == "ping":
+                    await websocket.send_json({"type": "pong"})
+                elif msg_type == "subscribe":
+                    events = data.get("events", [])
+                    conn.subscriptions.update(events)
+                elif msg_type == "unsubscribe":
+                    events = data.get("events", [])
+                    conn.subscriptions.difference_update(events)
+
+        except WebSocketDisconnect:
+            pass
+        finally:
+            await ws_manager.disconnect(conn)
+            print(f"🔌 WebSocket disconnected: user {user.username} (total connections: {ws_manager.get_total_connections()})")
+
+    finally:
+        db.close()
 
 
 # === Health Check ===
@@ -1107,6 +1237,12 @@ async def start_scheduler(
         running_processes[process_name] = process
 
         print(f"✅ Scheduler started with PID: {process.pid} for user {current_user.username}")
+
+        # Emit WebSocket event
+        asyncio.create_task(emit_process_status(current_user.id, {
+            "scheduler": {"running": True, "pid": process.pid}
+        }))
+
         return {"message": "Scheduler started", "pid": process.pid}
     except Exception as e:
         print(f"❌ Failed to start scheduler: {e}")
@@ -1136,6 +1272,12 @@ async def stop_scheduler(
             del running_processes[process_name]
 
         print(f"✅ Scheduler stopped (PID: {pid}) for user {current_user.username}")
+
+        # Emit WebSocket event
+        asyncio.create_task(emit_process_status(current_user.id, {
+            "scheduler": {"running": False, "pid": None}
+        }))
+
         return {"message": "Scheduler stopped", "pid": pid}
     else:
         raise HTTPException(status_code=500, detail=f"Failed to stop scheduler (PID: {pid})")
@@ -1309,6 +1451,12 @@ async def start_scaling_scheduler(
         running_processes[process_name] = process
 
         print(f"✅ Scaling scheduler started with PID: {process.pid} for user {current_user.username}")
+
+        # Emit WebSocket event
+        asyncio.create_task(emit_process_status(current_user.id, {
+            "scaling_scheduler": {"running": True, "pid": process.pid}
+        }))
+
         return {"message": "Scaling scheduler started", "pid": process.pid}
     except Exception as e:
         print(f"❌ Failed to start scaling scheduler: {e}")
@@ -1338,6 +1486,12 @@ async def stop_scaling_scheduler(
             del running_processes[process_name]
 
         print(f"✅ Scaling scheduler stopped (PID: {pid}) for user {current_user.username}")
+
+        # Emit WebSocket event
+        asyncio.create_task(emit_process_status(current_user.id, {
+            "scaling_scheduler": {"running": False, "pid": None}
+        }))
+
         return {"message": "Scaling scheduler stopped", "pid": pid}
     else:
         raise HTTPException(status_code=500, detail=f"Failed to stop scaling scheduler (PID: {pid})")

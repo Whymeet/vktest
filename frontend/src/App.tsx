@@ -4,6 +4,7 @@ import { Layout } from './components/Layout';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { FeatureRoute } from './components/FeatureRoute';
 import { ToastProvider } from './components/Toast';
+import { WebSocketProvider } from './contexts/WebSocketContext';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
 import { Accounts } from './pages/Accounts';
@@ -32,10 +33,11 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <ToastProvider>
-        <BrowserRouter>
-          <Routes>
-          {/* Login page - not protected */}
-          <Route path="/login" element={<Login />} />
+        <WebSocketProvider>
+          <BrowserRouter>
+            <Routes>
+            {/* Login page - not protected */}
+            <Route path="/login" element={<Login />} />
 
           {/* Protected routes */}
           <Route
@@ -62,10 +64,11 @@ function App() {
           {/* 404 page */}
           <Route path="/404" element={<NotFound />} />
 
-          {/* Catch all - redirect to home or login */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </BrowserRouter>
+            {/* Catch all - redirect to home or login */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </BrowserRouter>
+        </WebSocketProvider>
       </ToastProvider>
     </QueryClientProvider>
   );

@@ -151,3 +151,4 @@ DATABASE_MIGRATION.md
 
 .gitignore
 certbot/
+.claude/settings.local.json

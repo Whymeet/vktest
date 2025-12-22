@@ -11,6 +11,7 @@ import { StatusBadge } from '../components/StatusBadge';
 import { useState } from 'react';
 import { Modal } from '../components/Modal';
 import { Link } from 'react-router-dom';
+import { useWebSocketStatus } from '../contexts/WebSocketContext';
 
 interface ProcessCardProps {
   title: string;
@@ -90,11 +91,14 @@ function ProcessCard({
 export function Control() {
   const queryClient = useQueryClient();
   const [killConfirm, setKillConfirm] = useState(false);
+  const wsStatus = useWebSocketStatus();
+  const isWsConnected = wsStatus === 'connected';
 
   const { data: status, isLoading, refetch } = useQuery({
     queryKey: ['processStatus'],
     queryFn: () => getProcessStatus().then((r) => r.data),
-    refetchInterval: 3000,
+    // Only poll if WebSocket is disconnected (fallback)
+    refetchInterval: isWsConnected ? false : 3000,
   });
 
   const startSchedulerMutation = useMutation({

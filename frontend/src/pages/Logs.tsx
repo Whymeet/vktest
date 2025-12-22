@@ -4,6 +4,7 @@ import { FileText, RefreshCw, Clock, HardDrive, ChevronRight, Download, Search }
 import { getLogs, getLogContent } from '../api/client';
 import type { LogFile } from '../api/client';
 import { Card } from '../components/Card';
+import { useWebSocketStatus } from '../contexts/WebSocketContext';
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B';
@@ -44,11 +45,14 @@ export function Logs() {
   const [selectedLog, setSelectedLog] = useState<LogFile | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [tailLines, setTailLines] = useState(500);
+  const wsStatus = useWebSocketStatus();
+  const isWsConnected = wsStatus === 'connected';
 
   const { data: logs, isLoading: logsLoading, refetch: refetchLogs } = useQuery({
     queryKey: ['logs'],
     queryFn: () => getLogs().then((r) => r.data),
-    refetchInterval: 10000, // Auto-refresh every 10 seconds
+    // Only poll if WebSocket is disconnected (fallback)
+    refetchInterval: isWsConnected ? false : 10000,
   });
 
   const { data: logContent, isLoading: contentLoading, refetch: refetchContent } = useQuery({
@@ -56,7 +60,8 @@ export function Logs() {
     queryFn: () =>
       selectedLog ? getLogContent(selectedLog.type, selectedLog.name, tailLines).then((r) => r.data) : null,
     enabled: !!selectedLog,
-    refetchInterval: 5000, // Auto-refresh every 5 seconds when log is selected
+    // Keep polling for log content - real-time log streaming is complex
+    refetchInterval: 5000,
   });
 
   const filteredLogs = logs?.filter((log) =>

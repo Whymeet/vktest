@@ -15,6 +15,7 @@ import {
 import { getDisabledBanners, getDisabledBannersAccounts } from '../api/client';
 import { Card } from '../components/Card';
 import { Pagination } from '../components/Pagination';
+import { useWebSocketStatus } from '../contexts/WebSocketContext';
 
 type SortField = 'created_at' | 'banner_id' | 'spend' | 'clicks' | 'shows' | 'ctr' | 'conversions';
 type SortOrder = 'asc' | 'desc';
@@ -45,25 +46,29 @@ export function Statistics() {
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 500;
+  const wsStatus = useWebSocketStatus();
+  const isWsConnected = wsStatus === 'connected';
 
   // Queries - load with pagination and sorting
   const { data: disabledData, refetch: refetchDisabled, isLoading } = useQuery({
     queryKey: ['disabledBanners', currentPage, selectedAccount, sortField, sortOrder],
     queryFn: () => getDisabledBanners(
-      currentPage, 
-      pageSize, 
+      currentPage,
+      pageSize,
       selectedAccount || undefined,
       sortField,
       sortOrder
     ).then((r: any) => r.data),
-    refetchInterval: 5000, // Auto-refresh every 5 seconds
+    // Only poll if WebSocket is disconnected (fallback)
+    refetchInterval: isWsConnected ? false : 5000,
   });
 
   // Get all unique account names for filter dropdown (separate query)
   const { data: accountsData } = useQuery({
     queryKey: ['disabledBannersAccountsList'],
     queryFn: () => getDisabledBannersAccounts().then((r: any) => r.data),
-    refetchInterval: 10000, // Auto-refresh every 10 seconds
+    // Only poll if WebSocket is disconnected (fallback)
+    refetchInterval: isWsConnected ? false : 10000,
   });
 
   const accountNames = accountsData?.accounts || [];

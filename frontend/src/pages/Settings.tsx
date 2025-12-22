@@ -16,17 +16,21 @@ import type {
 } from '../api/client';
 import { Card } from '../components/Card';
 import { Toggle } from '../components/Toggle';
+import { useWebSocketStatus } from '../contexts/WebSocketContext';
 
 export function Settings() {
   const queryClient = useQueryClient();
   const [showToken, setShowToken] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [chatIdInput, setChatIdInput] = useState<string>('');
+  const wsStatus = useWebSocketStatus();
+  const isWsConnected = wsStatus === 'connected';
 
   const { data: settings, isLoading } = useQuery({
     queryKey: ['settings'],
     queryFn: () => getSettings().then((r) => r.data),
-    refetchInterval: 30000, // Auto-refresh every 30 seconds
+    // Only poll if WebSocket is disconnected (fallback)
+    refetchInterval: isWsConnected ? false : 30000,
   });
 
   // Local state for forms

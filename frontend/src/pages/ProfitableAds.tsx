@@ -45,6 +45,7 @@ import {
   type LeadsTechConfigCreate,
 } from '../api/client';
 import { Card } from '../components/Card';
+import { useWebSocketStatus } from '../contexts/WebSocketContext';
 
 type TabType = 'results' | 'settings';
 type SortField = 'roi_percent' | 'profit' | 'vk_spent' | 'lt_revenue' | 'banner_id';
@@ -66,6 +67,8 @@ export function ProfitableAds() {
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 500;
+  const wsStatus = useWebSocketStatus();
+  const isWsConnected = wsStatus === 'connected';
 
   // Config form state
   const [configForm, setConfigForm] = useState<LeadsTechConfigCreate>({
@@ -104,7 +107,8 @@ export function ProfitableAds() {
   const { data: configData } = useQuery({
     queryKey: ['leadstechConfig'],
     queryFn: () => getLeadsTechConfig().then((r: any) => r.data),
-    refetchInterval: 10000, // Auto-refresh every 10 seconds
+    // Only poll if WebSocket is disconnected (fallback)
+    refetchInterval: isWsConnected ? false : 10000,
   });
 
   // Initialize config form when data loads
@@ -123,13 +127,15 @@ export function ProfitableAds() {
   const { data: cabinetsData, isLoading: isLoadingCabinets, refetch: refetchCabinets } = useQuery({
     queryKey: ['leadstechCabinets'],
     queryFn: () => getLeadsTechCabinets().then((r: any) => r.data),
-    refetchInterval: 10000, // Auto-refresh every 10 seconds
+    // Only poll if WebSocket is disconnected (fallback)
+    refetchInterval: isWsConnected ? false : 10000,
   });
 
   const { data: accountsData } = useQuery({
     queryKey: ['accounts'],
     queryFn: () => getAccounts().then(r => r.data),
-    refetchInterval: 10000, // Auto-refresh every 10 seconds
+    // Only poll if WebSocket is disconnected (fallback)
+    refetchInterval: isWsConnected ? false : 10000,
   });
 
   const { data: analysisResults, refetch: refetchResults } = useQuery({
@@ -141,26 +147,30 @@ export function ProfitableAds() {
       sortField,
       sortOrder
     ).then((r: any) => r.data),
-    refetchInterval: 5000, // Auto-refresh every 5 seconds
+    // Only poll if WebSocket is disconnected (fallback)
+    refetchInterval: isWsConnected ? false : 5000,
   });
 
   // Get all unique cabinet names for filter dropdown (separate query)
   const { data: analysisCabinetsData } = useQuery({
     queryKey: ['leadstechAnalysisCabinets'],
     queryFn: () => getLeadsTechAnalysisCabinets().then((r: any) => r.data),
-    refetchInterval: 10000, // Auto-refresh every 10 seconds
+    // Only poll if WebSocket is disconnected (fallback)
+    refetchInterval: isWsConnected ? false : 10000,
   });
 
   const { data: analysisStatus, refetch: refetchStatus } = useQuery({
     queryKey: ['leadstechStatus'],
     queryFn: () => getLeadsTechAnalysisStatus().then((r: any) => r.data),
-    refetchInterval: 3000, // Auto-refresh every 3 seconds
+    // Only poll if WebSocket is disconnected (fallback)
+    refetchInterval: isWsConnected ? false : 3000,
   });
 
   const { data: whitelistStatus, refetch: refetchWhitelistStatus } = useQuery({
     queryKey: ['whitelistStatus'],
     queryFn: () => getWhitelistProfitableStatus().then((r: any) => r.data),
-    refetchInterval: 3000,
+    // Only poll if WebSocket is disconnected (fallback)
+    refetchInterval: isWsConnected ? false : 3000,
   });
 
   // Mutations

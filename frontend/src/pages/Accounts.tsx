@@ -5,6 +5,7 @@ import { getAccounts, createAccount, updateAccount, deleteAccount } from '../api
 import type { Account } from '../api/client';
 import { Modal } from '../components/Modal';
 import { Card } from '../components/Card';
+import { useWebSocketStatus } from '../contexts/WebSocketContext';
 
 interface AccountFormProps {
   account?: Account | null;
@@ -90,11 +91,14 @@ export function Accounts() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const wsStatus = useWebSocketStatus();
+  const isWsConnected = wsStatus === 'connected';
 
   const { data: accountsData, isLoading, refetch } = useQuery({
     queryKey: ['accounts'],
     queryFn: () => getAccounts().then((r) => r.data),
-    refetchInterval: 10000, // Auto-refresh every 10 seconds
+    // Only poll if WebSocket is disconnected (fallback)
+    refetchInterval: isWsConnected ? false : 10000,
   });
 
   // Convert accounts object to array

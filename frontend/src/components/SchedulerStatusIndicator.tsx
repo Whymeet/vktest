@@ -1,14 +1,18 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Clock, CircleDot, RefreshCw } from 'lucide-react';
 import { getProcessStatus, startScheduler, stopScheduler } from '../api/client';
+import { useWebSocketStatus } from '../contexts/WebSocketContext';
 
 export function SchedulerStatusIndicator() {
   const queryClient = useQueryClient();
+  const wsStatus = useWebSocketStatus();
+  const isWsConnected = wsStatus === 'connected';
 
   const { data: status } = useQuery({
     queryKey: ['processStatus'],
     queryFn: () => getProcessStatus().then((r) => r.data),
-    refetchInterval: 3000,
+    // Only poll if WebSocket is disconnected (fallback)
+    refetchInterval: isWsConnected ? false : 3000,
   });
 
   const startMutation = useMutation({

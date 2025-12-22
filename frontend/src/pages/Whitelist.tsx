@@ -4,6 +4,7 @@ import { Shield, Plus, Trash2, RefreshCw, Search, AlertCircle, Copy, Check } fro
 import { getWhitelist, bulkAddToWhitelist, bulkRemoveFromWhitelist, addToWhitelist, removeFromWhitelist } from '../api/client';
 import { Card } from '../components/Card';
 import { Modal } from '../components/Modal';
+import { useWebSocketStatus } from '../contexts/WebSocketContext';
 
 export function Whitelist() {
   const queryClient = useQueryClient();
@@ -16,11 +17,14 @@ export function Whitelist() {
   const [bulkRemoveInput, setBulkRemoveInput] = useState('');
   const [isBulkRemoveModalOpen, setIsBulkRemoveModalOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const wsStatus = useWebSocketStatus();
+  const isWsConnected = wsStatus === 'connected';
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['whitelist'],
     queryFn: () => getWhitelist().then((r) => r.data),
-    refetchInterval: 10000, // Auto-refresh every 10 seconds
+    // Only poll if WebSocket is disconnected (fallback)
+    refetchInterval: isWsConnected ? false : 10000,
   });
 
   const addMutation = useMutation({
