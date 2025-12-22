@@ -834,7 +834,7 @@ async def get_disabled_banners(
     account_name: Optional[str] = None,
     sort_by: str = 'created_at',
     sort_order: str = 'desc',
-    current_user: User = Depends(require_feature("logs")),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
@@ -889,7 +889,7 @@ async def get_disabled_banners(
 
 @app.get("/api/banners/disabled/accounts")
 async def get_disabled_banners_accounts(
-    current_user: User = Depends(require_feature("logs")),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Get all unique account names from disabled banners for filter dropdown (for current user only)"""
