@@ -46,6 +46,31 @@ class User(Base):
         return f"<User(id={self.id}, username='{self.username}')>"
 
 
+class UserFeature(Base):
+    """User feature access control - determines which features a user can access"""
+    __tablename__ = "user_features"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    # Feature name: auto_disable, scaling, leadstech, logs
+    feature = Column(String(50), nullable=False)
+
+    # Unique constraint: one feature per user
+    __table_args__ = (
+        UniqueConstraint('user_id', 'feature', name='uix_user_feature'),
+    )
+
+    # Timestamps
+    created_at = Column(DateTime, default=get_moscow_time, nullable=False)
+
+    # Relationship
+    user = relationship("User", backref="features")
+
+    def __repr__(self):
+        return f"<UserFeature(user_id={self.user_id}, feature='{self.feature}')>"
+
+
 class RefreshToken(Base):
     """Refresh token storage for JWT authentication"""
     __tablename__ = "refresh_tokens"

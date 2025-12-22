@@ -31,7 +31,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from database import get_db, init_db, SessionLocal
 from database import crud
 from utils.time_utils import get_moscow_time
-from auth.dependencies import get_current_user, get_current_superuser, get_optional_current_user
+from auth.dependencies import get_current_user, get_current_superuser, get_optional_current_user, require_feature
 from database.models import User
 from api.auth_routes import router as auth_router
 
@@ -649,7 +649,7 @@ async def update_statistics_trigger(
 
 @app.get("/api/whitelist")
 async def get_whitelist(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature("auto_disable")),
     db: Session = Depends(get_db)
 ):
     """Get whitelist for current user"""
@@ -660,7 +660,7 @@ async def get_whitelist(
 @app.put("/api/whitelist")
 async def update_whitelist(
     data: dict,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature("auto_disable")),
     db: Session = Depends(get_db)
 ):
     """Replace entire whitelist for current user"""
@@ -672,7 +672,7 @@ async def update_whitelist(
 @app.post("/api/whitelist/bulk-add")
 async def bulk_add_to_whitelist(
     data: dict,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature("auto_disable")),
     db: Session = Depends(get_db)
 ):
     """Add multiple banners to whitelist without removing existing ones"""
@@ -692,7 +692,7 @@ async def bulk_add_to_whitelist(
 @app.post("/api/whitelist/bulk-remove")
 async def bulk_remove_from_whitelist(
     data: dict,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature("auto_disable")),
     db: Session = Depends(get_db)
 ):
     """Remove multiple banners from whitelist"""
@@ -711,7 +711,7 @@ async def bulk_remove_from_whitelist(
 @app.post("/api/whitelist/add/{banner_id}")
 async def add_to_whitelist(
     banner_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature("auto_disable")),
     db: Session = Depends(get_db)
 ):
     """Add banner to whitelist for current user"""
@@ -722,7 +722,7 @@ async def add_to_whitelist(
 @app.delete("/api/whitelist/{banner_id}")
 async def remove_from_whitelist(
     banner_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature("auto_disable")),
     db: Session = Depends(get_db)
 ):
     """Remove banner from whitelist for current user"""
@@ -834,7 +834,7 @@ async def get_disabled_banners(
     account_name: Optional[str] = None,
     sort_by: str = 'created_at',
     sort_order: str = 'desc',
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature("logs")),
     db: Session = Depends(get_db)
 ):
     """
@@ -889,7 +889,7 @@ async def get_disabled_banners(
 
 @app.get("/api/banners/disabled/accounts")
 async def get_disabled_banners_accounts(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature("logs")),
     db: Session = Depends(get_db)
 ):
     """Get all unique account names from disabled banners for filter dropdown (for current user only)"""
@@ -983,7 +983,7 @@ async def get_account_stats_summary(
 
 @app.get("/api/logs")
 async def list_log_files(
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_feature("logs"))
 ):
     """
     List available log files.
@@ -1414,7 +1414,7 @@ async def get_log_content(
 
 @app.get("/api/leadstech/config")
 async def get_leadstech_config(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature("leadstech")),
     db: Session = Depends(get_db)
 ):
     """Get LeadsTech configuration"""
@@ -1436,7 +1436,7 @@ async def get_leadstech_config(
 @app.put("/api/leadstech/config")
 async def update_leadstech_config(
     config: LeadsTechConfigCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature("leadstech")),
     db: Session = Depends(get_db)
 ):
     """Create or update LeadsTech configuration"""
@@ -1464,7 +1464,7 @@ async def update_leadstech_config(
 
 @app.delete("/api/leadstech/config")
 async def delete_leadstech_config(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature("leadstech")),
     db: Session = Depends(get_db)
 ):
     """Delete LeadsTech configuration"""
@@ -1478,7 +1478,7 @@ async def delete_leadstech_config(
 @app.get("/api/leadstech/cabinets")
 async def get_leadstech_cabinets(
     enabled_only: bool = False,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature("leadstech")),
     db: Session = Depends(get_db)
 ):
     """Get all LeadsTech cabinets with their linked accounts"""
@@ -1504,7 +1504,7 @@ async def get_leadstech_cabinets(
 @app.post("/api/leadstech/cabinets")
 async def create_leadstech_cabinet(
     cabinet: LeadsTechCabinetCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature("leadstech")),
     db: Session = Depends(get_db)
 ):
     """Create or update LeadsTech cabinet mapping"""
@@ -1522,6 +1522,7 @@ async def create_leadstech_cabinet(
 async def update_leadstech_cabinet(
     cabinet_id: int,
     cabinet: LeadsTechCabinetUpdate,
+    current_user: User = Depends(require_feature("leadstech")),
     db: Session = Depends(get_db)
 ):
     """Update LeadsTech cabinet"""
@@ -1537,7 +1538,11 @@ async def update_leadstech_cabinet(
 
 
 @app.delete("/api/leadstech/cabinets/{cabinet_id}")
-async def delete_leadstech_cabinet(cabinet_id: int, db: Session = Depends(get_db)):
+async def delete_leadstech_cabinet(
+    cabinet_id: int,
+    current_user: User = Depends(require_feature("leadstech")),
+    db: Session = Depends(get_db)
+):
     """Delete LeadsTech cabinet"""
     if crud.delete_leadstech_cabinet(db, cabinet_id):
         return {"message": "LeadsTech cabinet deleted"}
@@ -1553,7 +1558,7 @@ async def get_leadstech_analysis_results(
     page_size: int = 500,
     sort_by: str = 'created_at',
     sort_order: str = 'desc',
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature("leadstech")),
     db: Session = Depends(get_db)
 ):
     """Get LeadsTech analysis results with pagination and sorting"""
@@ -1612,7 +1617,7 @@ async def get_leadstech_analysis_results(
 
 @app.get("/api/leadstech/analysis/cabinets")
 async def get_leadstech_analysis_cabinets(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature("leadstech")),
     db: Session = Depends(get_db)
 ):
     """Get all unique cabinet names from analysis results for filter dropdown"""
@@ -1622,7 +1627,7 @@ async def get_leadstech_analysis_cabinets(
 
 @app.post("/api/leadstech/analysis/start")
 async def start_leadstech_analysis(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature("leadstech")),
     db: Session = Depends(get_db)
 ):
     """Start LeadsTech analysis for enabled cabinets"""
@@ -1687,7 +1692,7 @@ async def start_leadstech_analysis(
 
 @app.post("/api/leadstech/analysis/stop")
 async def stop_leadstech_analysis(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature("leadstech")),
     db: Session = Depends(get_db)
 ):
     """Stop running LeadsTech analysis"""
@@ -1709,7 +1714,7 @@ async def stop_leadstech_analysis(
 
 @app.get("/api/leadstech/analysis/status")
 async def get_leadstech_analysis_status(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature("leadstech")),
     db: Session = Depends(get_db)
 ):
     """Get LeadsTech analysis process status"""
@@ -1718,7 +1723,10 @@ async def get_leadstech_analysis_status(
 
 
 @app.get("/api/leadstech/analysis/logs")
-async def get_leadstech_analysis_logs(lines: int = 100):
+async def get_leadstech_analysis_logs(
+    lines: int = 100,
+    current_user: User = Depends(require_feature("leadstech"))
+):
     """Get last N lines from LeadsTech analysis logs"""
     try:
         # Get latest analyzer log file
@@ -1746,7 +1754,7 @@ async def get_leadstech_analysis_logs(lines: int = 100):
 @app.post("/api/leadstech/whitelist-profitable")
 async def whitelist_profitable_banners(
     data: dict,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature("leadstech")),
     db: Session = Depends(get_db)
 ):
     """
@@ -1817,7 +1825,7 @@ async def whitelist_profitable_banners(
 
 @app.get("/api/leadstech/whitelist-profitable/status")
 async def get_whitelist_status(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature("leadstech")),
     db: Session = Depends(get_db)
 ):
     """Get whitelist worker status"""
@@ -1827,7 +1835,7 @@ async def get_whitelist_status(
 
 @app.post("/api/leadstech/whitelist-profitable/stop")
 async def stop_whitelist_worker(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature("leadstech")),
     db: Session = Depends(get_db)
 ):
     """Stop whitelist worker"""
@@ -1890,7 +1898,7 @@ class ManualDuplicateRequest(BaseModel):
 
 @app.get("/api/scaling/configs")
 async def get_scaling_configs_endpoint(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature("scaling")),
     db: Session = Depends(get_db)
 ):
     """Get all scaling configurations"""
@@ -1930,7 +1938,7 @@ async def get_scaling_configs_endpoint(
 @app.get("/api/scaling/configs/{config_id}")
 async def get_scaling_config_endpoint(
     config_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature("scaling")),
     db: Session = Depends(get_db)
 ):
     """Get a single scaling configuration by ID"""
@@ -1973,7 +1981,7 @@ async def get_scaling_config_endpoint(
 @app.post("/api/scaling/configs")
 async def create_scaling_config_endpoint(
     data: ScalingConfigCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature("scaling")),
     db: Session = Depends(get_db)
 ):
     """Create new scaling configuration"""
@@ -2031,7 +2039,7 @@ async def create_scaling_config_endpoint(
 async def update_scaling_config_endpoint(
     config_id: int,
     data: ScalingConfigUpdate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature("scaling")),
     db: Session = Depends(get_db)
 ):
     """Update scaling configuration"""
@@ -2093,7 +2101,7 @@ async def update_scaling_config_endpoint(
 @app.delete("/api/scaling/configs/{config_id}")
 async def delete_scaling_config_endpoint(
     config_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature("scaling")),
     db: Session = Depends(get_db)
 ):
     """Delete scaling configuration"""
@@ -2108,7 +2116,7 @@ async def get_scaling_logs_endpoint(
     config_id: Optional[int] = None,
     limit: int = 100,
     offset: int = 0,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature("scaling")),
     db: Session = Depends(get_db)
 ):
     """Get scaling logs"""
@@ -2143,7 +2151,7 @@ async def get_scaling_logs_endpoint(
 
 @app.get("/api/scaling/tasks")
 async def get_scaling_tasks(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature("scaling")),
     db: Session = Depends(get_db)
 ):
     """Get active and recent scaling tasks"""
@@ -2179,7 +2187,7 @@ async def get_scaling_tasks(
 @app.get("/api/scaling/tasks/{task_id}")
 async def get_scaling_task(
     task_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature("scaling")),
     db: Session = Depends(get_db)
 ):
     """Get specific scaling task"""
@@ -2210,7 +2218,7 @@ async def get_scaling_task(
 @app.post("/api/scaling/tasks/{task_id}/cancel")
 async def cancel_scaling_task(
     task_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature("scaling")),
     db: Session = Depends(get_db)
 ):
     """Cancel a scaling task"""
@@ -2229,7 +2237,7 @@ async def cancel_scaling_task(
 async def get_account_ad_groups_with_stats(
     account_name: str,
     lookback_days: int = 7,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature("scaling")),
     db: Session = Depends(get_db)
 ):
     """Get ad groups with statistics for an account"""
@@ -2407,7 +2415,7 @@ def run_duplication_task(
 async def manual_duplicate_ad_group(
     data: ManualDuplicateRequest,
     background_tasks: BackgroundTasks,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature("scaling")),
     db: Session = Depends(get_db)
 ):
     """Manually duplicate ad groups (runs in background with progress tracking)"""
@@ -2627,7 +2635,7 @@ def run_auto_scaling_task(
 async def run_scaling_config(
     config_id: int,
     background_tasks: BackgroundTasks,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature("scaling")),
     db: Session = Depends(get_db)
 ):
     """Manually run a scaling configuration (runs in background with progress tracking)"""
@@ -2845,7 +2853,7 @@ async def get_auto_disable_logs_endpoint(
     config_id: Optional[int] = None,
     limit: int = 100,
     offset: int = 0,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature("auto_disable")),
     db: Session = Depends(get_db)
 ):
     """Get auto-disable logs"""
@@ -2920,7 +2928,7 @@ async def get_auto_disable_summary_endpoint(
 @app.get("/api/disable-rules")
 async def get_disable_rules_endpoint(
     enabled_only: bool = False,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature("auto_disable")),
     db: Session = Depends(get_db)
 ):
     """Get all disable rules with their conditions and linked accounts for current user"""
@@ -2962,7 +2970,9 @@ async def get_disable_rules_endpoint(
 
 
 @app.get("/api/disable-rules/metrics")
-async def get_disable_rule_metrics_endpoint():
+async def get_disable_rule_metrics_endpoint(
+    current_user: User = Depends(require_feature("auto_disable"))
+):
     """Get available metrics and operators for disable rules"""
     return {
         "metrics": [
@@ -2990,6 +3000,7 @@ async def get_disable_rule_metrics_endpoint():
 async def get_rules_for_account_endpoint(
     account_id: int,
     enabled_only: bool = True,
+    current_user: User = Depends(require_feature("auto_disable")),
     db: Session = Depends(get_db)
 ):
     """Get all disable rules that apply to a specific account"""
@@ -3021,7 +3032,11 @@ async def get_rules_for_account_endpoint(
 
 
 @app.get("/api/disable-rules/{rule_id}")
-async def get_disable_rule_endpoint(rule_id: int, db: Session = Depends(get_db)):
+async def get_disable_rule_endpoint(
+    rule_id: int,
+    current_user: User = Depends(require_feature("auto_disable")),
+    db: Session = Depends(get_db)
+):
     """Get a specific disable rule by ID"""
     rule = crud.get_disable_rule_by_id(db, rule_id)
     if not rule:
@@ -3059,7 +3074,7 @@ async def get_disable_rule_endpoint(rule_id: int, db: Session = Depends(get_db))
 @app.post("/api/disable-rules")
 async def create_disable_rule_endpoint(
     data: DisableRuleCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature("auto_disable")),
     db: Session = Depends(get_db)
 ):
     """Create a new disable rule for current user"""
@@ -3116,7 +3131,7 @@ async def create_disable_rule_endpoint(
 async def update_disable_rule_endpoint(
     rule_id: int,
     data: DisableRuleUpdate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature("auto_disable")),
     db: Session = Depends(get_db)
 ):
     """Update an existing disable rule for current user"""
@@ -3175,7 +3190,11 @@ async def update_disable_rule_endpoint(
 
 
 @app.delete("/api/disable-rules/{rule_id}")
-async def delete_disable_rule_endpoint(rule_id: int, db: Session = Depends(get_db)):
+async def delete_disable_rule_endpoint(
+    rule_id: int,
+    current_user: User = Depends(require_feature("auto_disable")),
+    db: Session = Depends(get_db)
+):
     """Delete a disable rule"""
     if not crud.delete_disable_rule(db, rule_id):
         raise HTTPException(status_code=404, detail="Rule not found")

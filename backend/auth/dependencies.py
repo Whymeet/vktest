@@ -92,3 +92,28 @@ async def get_optional_current_user(
         return None
 
     return user
+
+
+def require_feature(feature: str):
+    """
+    Factory for dependency that checks if user has access to a specific feature.
+    Usage: Depends(require_feature("scaling"))
+
+    Features: auto_disable, scaling, leadstech, logs
+    """
+    async def feature_checker(
+        current_user = Depends(get_current_user),
+        db: Session = Depends(get_db)
+    ):
+        # Superusers have access to all features
+        if current_user.is_superuser:
+            return current_user
+
+        if not crud.user_has_feature(db, current_user.id, feature):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Access denied. Feature '{feature}' is not available for your account."
+            )
+        return current_user
+
+    return feature_checker

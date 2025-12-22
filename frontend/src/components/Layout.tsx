@@ -20,23 +20,30 @@ import {
 import { useAuth } from '../hooks/useAuth';
 import { SchedulerStatusIndicator } from './SchedulerStatusIndicator';
 
+// Feature requirements for navigation items
+// undefined = no feature required (always visible)
 const navItems = [
-  { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/accounts', icon: Users, label: 'Кабинеты' },
-  { to: '/statistics', icon: BarChart3, label: 'Статистика' },
-  { to: '/profitable-ads', icon: TrendingUp, label: 'Прибыльные объявления' },
-  { to: '/scaling', icon: Copy, label: 'Масштабирование' },
-  { to: '/disable-rules', icon: Ban, label: 'Правила отключения' },
-  { to: '/settings', icon: Settings, label: 'Настройки' },
-  { to: '/control', icon: PlayCircle, label: 'Управление' },
-  { to: '/logs', icon: FileText, label: 'Логи' },
-  { to: '/whitelist', icon: Shield, label: 'Whitelist' },
+  { to: '/', icon: LayoutDashboard, label: 'Dashboard', feature: undefined },
+  { to: '/accounts', icon: Users, label: 'Кабинеты', feature: undefined },
+  { to: '/statistics', icon: BarChart3, label: 'Статистика', feature: undefined },
+  { to: '/profitable-ads', icon: TrendingUp, label: 'Прибыльные объявления', feature: 'leadstech' },
+  { to: '/scaling', icon: Copy, label: 'Масштабирование', feature: 'scaling' },
+  { to: '/disable-rules', icon: Ban, label: 'Правила отключения', feature: 'auto_disable' },
+  { to: '/settings', icon: Settings, label: 'Настройки', feature: undefined },
+  { to: '/control', icon: PlayCircle, label: 'Управление', feature: undefined },
+  { to: '/logs', icon: FileText, label: 'Логи', feature: 'logs' },
+  { to: '/whitelist', icon: Shield, label: 'Whitelist', feature: 'auto_disable' },
 ];
 
 export function Layout() {
-  const { user, logout } = useAuth();
+  const { user, hasFeature, logout } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
+
+  // Filter nav items based on user features
+  const visibleNavItems = navItems.filter(item =>
+    !item.feature || hasFeature(item.feature)
+  );
 
   // Close sidebar on route change (mobile)
   useEffect(() => {
@@ -101,7 +108,7 @@ export function Layout() {
         {/* Navigation */}
         <nav className="flex-1 p-4 overflow-y-auto">
           <ul className="space-y-1">
-            {navItems.map((item) => (
+            {visibleNavItems.map((item) => (
               <li key={item.to}>
                 <NavLink
                   to={item.to}
