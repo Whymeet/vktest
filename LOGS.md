@@ -169,3 +169,28 @@ Invoke-RestMethod -Uri "http://localhost:8000/api/control/scheduler/start" -Meth
 | `Нет активных правил` | Кабинет пропущен | Добавить правила для кабинета |
 | `spent_limit is not defined` | Баг в коде | Обновить код бэкенда |
 | `0 активных объявлений` | Нет рекламы в кабинете | Нормально, если кабинет пустой |
+
+
+
+
+очитска бд 
+Сейчас ты внутри psql. Давай пошагово: Шаг 1: Выйди из psql
+
+\q
+Шаг 2: Теперь в PowerShell выполни команды по порядку:
+
+# Копируем дамп в контейнер
+docker cp "c:\Users\matve\dev\переконтаваться\vktest2\dump.custom" vkads-postgres-dev:/tmp/dump.custom
+
+# Удаляем старую БД
+docker exec -it vkads-postgres-dev psql -U vkads postgres -c "DROP DATABASE IF EXISTS vkads;"
+
+# Создаём новую БД
+docker exec -it vkads-postgres-dev psql -U vkads postgres -c "CREATE DATABASE vkads;"
+
+# Восстанавливаем дамп
+docker exec -it vkads-postgres-dev pg_restore -U vkads -d vkads -v /tmp/dump.custom
+
+# Проверяем что получилось
+docker exec -it vkads-postgres-dev psql -U vkads -d vkads -c "\dt"
+Начни с \q чтобы выйти из psql, потом выполняй команды выше одну за другой.
