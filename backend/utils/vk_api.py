@@ -587,8 +587,8 @@ def get_banners_by_ad_group(token: str, base_url: str, ad_group_id: int, include
     Returns:
         list: Список объявлений (активные + остановленные, без удалённых)
     """
-    # VK Ads API v2: GET /ad_groups/{ad_group_id}/banners.json
-    url = f"{base_url}/ad_groups/{ad_group_id}/banners.json"
+    # VK Ads API v2: GET /banners.json с фильтром по группе
+    url = f"{base_url}/banners.json"
     offset = 0
     limit = 200
     all_banners = []
@@ -597,12 +597,14 @@ def get_banners_by_ad_group(token: str, base_url: str, ad_group_id: int, include
         params = {
             "limit": limit,
             "offset": offset,
+            # Фильтр по группе объявлений
+            "_ad_group_id": ad_group_id,
             # Запрашиваем все writable поля согласно документации VK Ads API
             "fields": "id,name,status,ad_group_id,content,textblocks,urls"
         }
-        
+
         try:
-            logger.info(f"📥 Загружаем объявления группы {ad_group_id}: GET {url}")
+            logger.info(f"📥 Загружаем объявления группы {ad_group_id}: GET {url} с фильтром _ad_group_id={ad_group_id}")
             response = requests.get(url, headers=_headers(token), params=params, timeout=20)
 
             if response.status_code != 200:
@@ -772,7 +774,8 @@ def duplicate_ad_group_full(
     rate_limit_delay: float = 0.03
 ):
     """
-    Полное дублирование рекламной группы со всеми НЕудалёнными объявлениями
+    Полное дублирование рекламной группы со всеми НЕудалёнными объявлениями.
+    Использует метод создания группы с баннерами в одном запросе (POST /ad_groups.json с полем banners).
 
     Args:
         token: VK Ads API токен
@@ -802,81 +805,93 @@ def duplicate_ad_group_full(
         'efficiency_status', 'vkads_status', 'or_status', 'or_migrated',
         'budget_limit_day', 'budget_limit', 'budget_limit_per_day'  # Не копируем, устанавливаем отдельно
     }
-    
+
     # Исключаемые поля баннеров (read-only согласно документации VK Ads)
     EXCLUDED_BANNER_FIELDS = {
-        'id', 'ad_group_id', 'created', 'updated', 'created_at', 'updated_at', 
-        'moderation_status', 'moderation_reasons', 'delivery', 'deleted', 
+        'id', 'ad_group_id', 'created', 'updated', 'created_at', 'updated_at',
+        'moderation_status', 'moderation_reasons', 'delivery', 'deleted',
         'issues', 'ord_marker', 'user_id', 'read_only', 'interface_read_only',
         # Статистика
         'clicks', 'shows', 'spent', 'ctr', 'conversions',
         'cost_per_conversion', 'impressions',
         # Другие read-only поля
-        'stats_info', 'preview_url', 'audit_pixels'
+        'stats_info', 'preview_url', 'audit_pixels',
+        # Поле status - убираем, т.к. при создании группы с баннерами статус наследуется от группы
+        'status', 'name'
     }
-    
+
+    def clean_content(content_data):
+        """Очищает content, оставляя только id медиа-объектов"""
+        if not content_data:
+            return None
+        cleaned = {}
+        for key, value in content_data.items():
+            if isinstance(value, dict) and 'id' in value:
+                # Для медиа-объектов оставляем только id
+                cleaned[key] = {'id': value['id']}
+        return cleaned if cleaned else None
+
+    def clean_urls(urls_data):
+        """Очищает urls, оставляя только id"""
+        if not urls_data:
+            return None
+        cleaned = {}
+        for key, value in urls_data.items():
+            if isinstance(value, dict) and 'id' in value:
+                cleaned[key] = {'id': value['id']}
+        return cleaned if cleaned else None
+
     try:
         print(f"")
         print(f"{'='*80}")
         print(f"🎯 ДУБЛИРОВАНИЕ ГРУППЫ {ad_group_id}")
         print(f"{'='*80}")
-        
+
         # ===== ШАГ 1: Загружаем данные группы =====
-        print(f"📥 Шаг 1/3: Загружаем данные группы...")
+        print(f"📥 Шаг 1/2: Загружаем данные группы и объявлений...")
         original_group = get_ad_group_full(token, base_url, ad_group_id)
-        
+
         if not original_group:
             return {"success": False, "error": "Не удалось загрузить группу"}
-        
+
         print(f"✅ Загружена группа: {original_group.get('name', 'Unknown')}")
-        print(f"📋 Поля оригинальной группы: {list(original_group.keys())}")
-        print(f"📋 Данные группы: {original_group}")
-        
-        # Копируем все поля кроме исключённых
+
+        time.sleep(rate_limit_delay)
+
+        # Загружаем объявления группы
+        banners = get_banners_by_ad_group(token, base_url, ad_group_id, include_stopped=True)
+        print(f"✅ Найдено {len(banners)} объявлений для копирования")
+
+        # Копируем все поля группы кроме исключённых
         new_group_data = {}
         for key, value in original_group.items():
             if key not in EXCLUDED_GROUP_FIELDS and value is not None:
                 new_group_data[key] = value
-        
+
         # Если objective отсутствует, получаем его из кампании (ad_plan)
         if 'objective' not in new_group_data or not new_group_data.get('objective'):
-            # В VK Ads API campaign_id называется ad_plan_id
             campaign_id = original_group.get('ad_plan_id') or original_group.get('campaign_id')
             print(f"⚠️ objective не найден в группе, ищем в кампании {campaign_id}")
             if campaign_id:
-                print(f"📥 Получаем objective из кампании {campaign_id}...")
+                time.sleep(rate_limit_delay)
                 campaign = get_campaign_full(token, base_url, campaign_id)
-                print(f"📋 Данные кампании: {campaign}")
                 if campaign and campaign.get('objective'):
                     new_group_data['objective'] = campaign['objective']
                     print(f"✅ Получен objective: {campaign['objective']}")
-                else:
-                    print(f"⚠️ Не удалось получить objective из кампании")
-        
-        print(f"📋 Поля для создания: {list(new_group_data.keys())}")
-        print(f"📋 Данные для создания: {new_group_data}")
 
         # Изменяем имя
         if new_name:
             new_group_data['name'] = new_name
         else:
-            # Используем умную генерацию имени
             new_group_data['name'] = _generate_copy_name(original_group.get('name', 'Копия'))
 
         # Устанавливаем бюджет
-        # ВАЖНО: VK Ads API требует минимальный бюджет 100 руб
-        # Если бюджет меньше минимума или не указан - НЕ передаём budget_limit_day вообще
         budget_to_set = None
-
         if new_budget is not None and new_budget > 0:
-            # Указан новый бюджет
             if new_budget >= VK_MIN_DAILY_BUDGET:
                 budget_to_set = int(new_budget)
                 logger.info(f"💰 Установлен новый дневной бюджет: {budget_to_set} руб")
-            else:
-                logger.warning(f"⚠️ Указанный бюджет {new_budget} меньше минимума VK ({VK_MIN_DAILY_BUDGET} руб). Бюджет не будет установлен.")
         else:
-            # Пробуем скопировать бюджет из оригинала
             original_budget = original_group.get('budget_limit_day')
             if original_budget:
                 try:
@@ -884,159 +899,114 @@ def duplicate_ad_group_full(
                     if budget_int >= VK_MIN_DAILY_BUDGET:
                         budget_to_set = budget_int
                         logger.info(f"💰 Скопирован бюджет из оригинала: {budget_int} руб")
-                    else:
-                        logger.info(f"ℹ️ Бюджет оригинала ({budget_int} руб) меньше минимума VK, пропускаем")
                 except (ValueError, TypeError):
-                    logger.warning(f"⚠️ Некорректный бюджет оригинала: {original_budget}, пропускаем")
+                    pass
 
-        # Устанавливаем бюджет только если он валидный
         if budget_to_set is not None:
             new_group_data['budget_limit_day'] = str(budget_to_set)
 
-        # Статус
-        new_group_data['status'] = 'active' if auto_activate else 'blocked'
-        
-        logger.info(f"📋 Настройки новой группы:")
-        logger.info(f"   • Название: {new_group_data['name']}")
-        logger.info(f"   • Статус: {new_group_data['status']}")
-        logger.info(f"   • Objective: {new_group_data.get('objective', 'NOT SET')}")
-        
-        time.sleep(rate_limit_delay)
-        
-        # Создаём новую группу
-        logger.info(f"🔄 Создаём новую группу...")
-        create_result = create_ad_group(token, base_url, new_group_data)
-        
-        if not create_result.get("success"):
-            return {"success": False, "error": create_result.get("error", "Ошибка создания группы")}
-        
-        new_group_id = create_result["data"].get("id")
-        logger.info(f"✅ Группа создана! ID: {new_group_id}")
-        
-        time.sleep(rate_limit_delay)
-        
-        # ===== ШАГ 2: Получаем объявления =====
-        logger.info(f"📥 Шаг 2/3: Загружаем объявления...")
-        banners = get_banners_by_ad_group(token, base_url, ad_group_id, include_stopped=True)
-        
-        logger.info(f"✅ Найдено {len(banners)} объявлений для копирования")
-        
-        if len(banners) == 0:
-            return {
-                "success": True,
-                "original_group_id": ad_group_id,
-                "original_group_name": original_group.get('name'),
-                "new_group_id": new_group_id,
-                "new_group_name": new_group_data['name'],
-                "duplicated_banners": [],
-                "skipped_banners": [],
-                "errors": [],
-                "message": "Группа скопирована без объявлений"
-            }
-        
-        # ===== ШАГ 3: Копируем объявления =====
-        logger.info(f"🔄 Шаг 3/3: Копируем {len(banners)} объявлений...")
-        
-        duplicated_banners = []
-        errors = []
-        
-        # Read-only поля внутри content/urls объектов
-        CONTENT_READONLY_FIELDS = {'variants', 'type', 'flags', 'text_percent'}
-        URL_READONLY_FIELDS = {'url', 'url_types', 'url_object_id', 'url_object_type', 'preview_link'}
-        
-        def clean_content(content_data):
-            """Очищает content, оставляя только id медиа-объектов"""
-            if not content_data:
-                return None
-            cleaned = {}
-            for key, value in content_data.items():
-                if isinstance(value, dict) and 'id' in value:
-                    # Для медиа-объектов оставляем только id
-                    cleaned[key] = {'id': value['id']}
-            return cleaned if cleaned else None
-        
-        def clean_urls(urls_data):
-            """Очищает urls, оставляя только id"""
-            if not urls_data:
-                return None
-            cleaned = {}
-            for key, value in urls_data.items():
-                if isinstance(value, dict) and 'id' in value:
-                    cleaned[key] = {'id': value['id']}
-            return cleaned if cleaned else None
-        
-        for i, banner in enumerate(banners, 1):
+        # ВАЖНО: Всегда создаём группу со статусом 'blocked', чтобы обойти лимит активных баннеров
+        # Если нужна автоактивация - активируем после создания
+        new_group_data['status'] = 'blocked'
+
+        # ===== ШАГ 2: Подготавливаем баннеры для создания вместе с группой =====
+        banners_for_create = []
+        original_banner_info = []  # Для отслеживания оригинальных ID
+
+        for banner in banners:
             banner_id = banner.get('id')
             banner_name = banner.get('name', 'Unknown')
-            banner_status = banner.get('status', 'unknown')
-            
-            try:
-                print(f"   [{i}/{len(banners)}] Баннер: {banner_name}")
-                print(f"   📋 Поля баннера: {list(banner.keys())}")
-                
-                # Копируем все поля кроме исключённых
-                new_banner_data = {}
-                for key, value in banner.items():
-                    if key not in EXCLUDED_BANNER_FIELDS and value is not None:
-                        new_banner_data[key] = value
-                
-                # Очищаем content и urls от read-only полей
-                if 'content' in new_banner_data:
-                    cleaned_content = clean_content(new_banner_data['content'])
-                    if cleaned_content:
-                        new_banner_data['content'] = cleaned_content
-                    else:
-                        del new_banner_data['content']  # Удаляем если пустой
-                        
-                if 'urls' in new_banner_data:
-                    cleaned_urls = clean_urls(new_banner_data['urls'])
-                    if cleaned_urls:
-                        new_banner_data['urls'] = cleaned_urls
-                    else:
-                        del new_banner_data['urls']  # Удаляем если пустой
-                
-                print(f"   📋 Поля для создания баннера: {list(new_banner_data.keys())}")
-                print(f"   📋 Content: {new_banner_data.get('content', 'NOT SET')}")
-                print(f"   📋 URLs: {new_banner_data.get('urls', 'NOT SET')}")
-                
-                # Привязываем к новой группе
-                new_banner_data['ad_group_id'] = new_group_id
-                
-                # Статус
-                if auto_activate:
-                    new_banner_data['status'] = 'active'
+
+            # Копируем поля баннера
+            new_banner_data = {}
+            for key, value in banner.items():
+                if key not in EXCLUDED_BANNER_FIELDS and value is not None:
+                    new_banner_data[key] = value
+
+            # Очищаем content - оставляем только id
+            if 'content' in new_banner_data:
+                cleaned_content = clean_content(new_banner_data['content'])
+                if cleaned_content:
+                    new_banner_data['content'] = cleaned_content
                 else:
-                    new_banner_data['status'] = banner_status if banner_status in ['active', 'blocked'] else 'blocked'
-                
-                time.sleep(rate_limit_delay)
-                
-                # Создаём объявление
-                banner_result = create_banner(token, base_url, new_banner_data)
-                
-                if banner_result.get("success"):
-                    new_banner_id = banner_result["data"].get("id")
-                    duplicated_banners.append({
-                        "original_id": banner_id,
-                        "new_id": new_banner_id,
-                        "name": banner_name,
-                        "status": new_banner_data['status']
-                    })
-                    logger.info(f"      ✅ ID={new_banner_id}")
+                    del new_banner_data['content']
+
+            # Очищаем urls - оставляем только id
+            if 'urls' in new_banner_data:
+                cleaned_urls = clean_urls(new_banner_data['urls'])
+                if cleaned_urls:
+                    new_banner_data['urls'] = cleaned_urls
                 else:
-                    errors.append({
-                        "banner_id": banner_id,
-                        "banner_name": banner_name,
-                        "error": banner_result.get("error", "Unknown error")
-                    })
-                    logger.error(f"      ❌ {banner_result.get('error', 'Unknown error')[:100]}")
-                
-            except Exception as e:
-                errors.append({
-                    "banner_id": banner_id,
-                    "banner_name": banner_name,
-                    "error": str(e)
+                    del new_banner_data['urls']
+
+            print(f"   📋 Баннер {banner_id}: content={new_banner_data.get('content')}, urls={new_banner_data.get('urls')}, textblocks={list(new_banner_data.get('textblocks', {}).keys()) if new_banner_data.get('textblocks') else None}")
+
+            banners_for_create.append(new_banner_data)
+            original_banner_info.append({
+                "original_id": banner_id,
+                "name": banner_name
+            })
+
+        # Добавляем баннеры в данные группы
+        if banners_for_create:
+            new_group_data['banners'] = banners_for_create
+            print(f"📋 Подготовлено {len(banners_for_create)} баннеров для создания вместе с группой")
+
+        # ===== Создаём группу с баннерами в одном запросе =====
+        print(f"🔄 Шаг 2/2: Создаём группу с баннерами (статус: blocked)...")
+        logger.info(f"📋 Настройки новой группы:")
+        logger.info(f"   • Название: {new_group_data['name']}")
+        logger.info(f"   • Статус: blocked (для обхода лимита активных баннеров)")
+        logger.info(f"   • Автоактивация после создания: {auto_activate}")
+        logger.info(f"   • Objective: {new_group_data.get('objective', 'NOT SET')}")
+        logger.info(f"   • Баннеров: {len(banners_for_create)}")
+
+        time.sleep(rate_limit_delay)
+
+        create_result = create_ad_group(token, base_url, new_group_data)
+
+        if not create_result.get("success"):
+            return {"success": False, "error": create_result.get("error", "Ошибка создания группы")}
+
+        new_group_id = create_result["data"].get("id")
+        created_banners = create_result["data"].get("banners", [])
+
+        logger.info(f"✅ Группа создана! ID: {new_group_id}")
+        logger.info(f"✅ Создано баннеров: {len(created_banners)}")
+
+        # Финальный статус (может измениться после активации)
+        final_status = 'blocked'
+
+        # Если нужна автоактивация - активируем группу после создания
+        if auto_activate:
+            logger.info(f"🔄 Активируем группу {new_group_id}...")
+            time.sleep(rate_limit_delay)
+            activate_result = update_ad_group(token, base_url, new_group_id, {"status": "active"})
+            if activate_result.get("success"):
+                final_status = 'active'
+                logger.info(f"✅ Группа {new_group_id} активирована")
+            else:
+                logger.warning(f"⚠️ Не удалось активировать группу: {activate_result.get('error', 'Unknown error')[:100]}")
+
+        # Формируем результат
+        duplicated_banners = []
+        for i, created_banner in enumerate(created_banners):
+            new_banner_id = created_banner.get("id")
+            if i < len(original_banner_info):
+                orig_info = original_banner_info[i]
+                duplicated_banners.append({
+                    "original_id": orig_info["original_id"],
+                    "new_id": new_banner_id,
+                    "name": orig_info["name"],
+                    "status": final_status
                 })
-                logger.error(f"      ❌ Exception: {str(e)}")
+            else:
+                duplicated_banners.append({
+                    "original_id": None,
+                    "new_id": new_banner_id,
+                    "name": "Unknown",
+                    "status": final_status
+                })
         
         # ===== ИТОГИ =====
         logger.info(f"")
@@ -1046,10 +1016,8 @@ def duplicate_ad_group_full(
         logger.info(f"Исходная группа: {ad_group_id} - {original_group.get('name')}")
         logger.info(f"Новая группа: {new_group_id} - {new_group_data['name']}")
         logger.info(f"Скопировано объявлений: {len(duplicated_banners)}/{len(banners)}")
-        if errors:
-            logger.warning(f"Ошибок: {len(errors)}")
         logger.info(f"{'='*80}")
-        
+
         return {
             "success": True,
             "original_group_id": ad_group_id,
@@ -1059,12 +1027,14 @@ def duplicate_ad_group_full(
             "total_banners": len(banners),
             "duplicated_banners": duplicated_banners,
             "skipped_banners": [],
-            "errors": errors
+            "errors": []
         }
-        
+
     except Exception as e:
         error_msg = f"Неожиданная ошибка: {str(e)}"
         logger.error(f"❌ {error_msg}")
+        import traceback
+        traceback.print_exc()
         return {"success": False, "error": error_msg}
 
 
