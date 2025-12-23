@@ -577,24 +577,24 @@ def get_ad_group_full(token: str, base_url: str, group_id: int):
 def get_banners_by_ad_group(token: str, base_url: str, ad_group_id: int, include_stopped: bool = True):
     """
     Получает все НЕудалённые объявления из группы
-    
+
     Args:
         token: VK Ads API токен
         base_url: Базовый URL VK Ads API
         ad_group_id: ID группы объявлений
         include_stopped: Включать остановленные объявления
-    
+
     Returns:
         list: Список объявлений (активные + остановленные, без удалённых)
     """
-    url = f"{base_url}/banners.json"
+    # VK Ads API v2: GET /ad_groups/{ad_group_id}/banners.json
+    url = f"{base_url}/ad_groups/{ad_group_id}/banners.json"
     offset = 0
     limit = 200
     all_banners = []
-    
+
     while True:
         params = {
-            "_ad_group_id": ad_group_id,
             "limit": limit,
             "offset": offset,
             # Запрашиваем все writable поля согласно документации VK Ads API
@@ -602,14 +602,16 @@ def get_banners_by_ad_group(token: str, base_url: str, ad_group_id: int, include
         }
         
         try:
+            logger.info(f"📥 Загружаем объявления группы {ad_group_id}: GET {url}")
             response = requests.get(url, headers=_headers(token), params=params, timeout=20)
-            
+
             if response.status_code != 200:
-                logger.error(f"❌ Ошибка загрузки объявлений группы {ad_group_id}: HTTP {response.status_code}")
+                logger.error(f"❌ Ошибка загрузки объявлений группы {ad_group_id}: HTTP {response.status_code} - {response.text[:500] if response.text else 'empty'}")
                 break
-            
+
             data = response.json()
             items = data.get("items", [])
+            logger.info(f"📋 Группа {ad_group_id}: получено {len(items)} объявлений (offset={offset})")
             
             # Фильтруем: убираем удалённые
             for banner in items:
