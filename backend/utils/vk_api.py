@@ -23,7 +23,7 @@ def _interruptible_sleep(seconds):
 
 # Константы для ретраев (импортируются из main.py при необходимости)
 API_MAX_RETRIES = 3
-API_RETRY_DELAY_SECONDS = 30  # Уменьшили с 90 до 30 секунд
+API_RETRY_DELAY_SECONDS = 15  # Уменьшили с 90 до 30, теперь до 15 секунд
 API_RETRY_STATUS_CODES = {429, 500, 502, 503, 504}
 
 def _headers(token: str):
@@ -107,7 +107,7 @@ def _request_with_retries(
 
             # Специальный случай — 429 Too Many Requests
             if resp.status_code == 429:
-                wait = 60  # 1 минута для rate limit
+                wait = 15  # Уменьшено с 60 до 15 секунд для rate limit
                 try:
                     retry_after = int(resp.headers.get("Retry-After", "0"))
                     if retry_after > 0:

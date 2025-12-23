@@ -13,7 +13,7 @@ logger = getLogger("vk_ads_manager")
 
 # Константы для ретраев
 API_MAX_RETRIES = 3
-API_RETRY_DELAY_SECONDS = 30
+API_RETRY_DELAY_SECONDS = 15  # Уменьшено с 30 до 15 секунд
 API_RETRY_STATUS_CODES = {429, 500, 502, 503, 504}
 
 
@@ -70,7 +70,7 @@ async def _request_with_retries(
 
             # 429 Too Many Requests
             if resp.status == 429:
-                wait = 60
+                wait = 15  # Уменьшено с 60 до 15 секунд
                 retry_after = resp.headers.get("Retry-After")
                 if retry_after:
                     try:
