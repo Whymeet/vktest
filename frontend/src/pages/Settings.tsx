@@ -259,10 +259,12 @@ export function Settings() {
               <input
                 type="number"
                 value={schedulerForm.interval_minutes}
-                onChange={(e) => setSchedulerForm({ ...schedulerForm, interval_minutes: parseInt(e.target.value) || 60 })}
+                onChange={(e) => setSchedulerForm({ ...schedulerForm, interval_minutes: parseFloat(e.target.value) || 1 })}
                 className="input"
-                min="1"
+                min="0.1"
+                step="0.1"
               />
+              <p className="text-xs text-slate-500 mt-1">0.5 = 30 сек, 0.1 = 6 сек</p>
             </div>
             <div>
               <label className="label">Макс. запусков (0 = ∞)</label>
@@ -394,12 +396,13 @@ export function Settings() {
                   value={schedulerForm.reenable?.interval_minutes || 120}
                   onChange={(e) => setSchedulerForm({
                     ...schedulerForm,
-                    reenable: { ...schedulerForm.reenable, interval_minutes: parseInt(e.target.value) || 120 },
+                    reenable: { ...schedulerForm.reenable, interval_minutes: parseFloat(e.target.value) || 120 },
                   })}
                   className="input"
-                  min="1"
+                  min="0.1"
+                  step="0.1"
                 />
-                <p className="text-xs text-slate-500 mt-1">Как часто запускать автовключение</p>
+                <p className="text-xs text-slate-500 mt-1">0.5 = 30 сек, 1 = 1 мин</p>
               </div>
               <div>
                 <label className="label">Период просмотра (часов)</label>

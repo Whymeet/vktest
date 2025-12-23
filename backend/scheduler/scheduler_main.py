@@ -495,9 +495,9 @@ class VKAdsScheduler:
         if self.should_stop:
             return success1
         
-        # Пауза между проходами
-        self.logger.info("⏳ Пауза 1 минута между проходами...")
-        time.sleep(60)
+        # Пауза между проходами (фиксированная 10 секунд)
+        self.logger.info("⏳ Пауза 10 сек между проходами...")
+        time.sleep(10)
         
         if self.should_stop:
             return success1
@@ -957,7 +957,13 @@ class VKAdsScheduler:
 
         self.logger.info("=" * 60)
         self.logger.info("🕐 VK Ads Scheduler запущен")
-        self.logger.info(f"   Интервал: {self.settings.get('interval_minutes', 60)} минут")
+        interval = self.settings.get('interval_minutes', 60)
+        # Показываем интервал в удобном формате
+        if interval < 1:
+            interval_str = f"{interval * 60:.0f} сек"
+        else:
+            interval_str = f"{interval} мин"
+        self.logger.info(f"   Интервал: {interval_str}")
         self.logger.info(f"   Макс. запусков: {max_runs if max_runs > 0 else 'без ограничений'}")
         self.logger.info("=" * 60)
 
