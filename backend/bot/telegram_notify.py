@@ -102,9 +102,12 @@ def format_telegram_unprofitable_groups(unprofitable_groups):
             group_id = group.get("id", "N/A")
             group_name = group.get("name", "Без названия")[:30]  # Ограничиваем длину
             spent = group.get("spent", 0)
-            
+            goals = int(group.get("vk_goals", 0))  # Получаем количество результатов
+            matched_rule = group.get("matched_rule", "Без результата")  # Получаем название правила
+
             message += f"{i}. <code>{group_id}</code> {group_name}\n"
-            message += f"   Потрачено: <b>{spent:.2f}₽</b>\n\n"
+            message += f"   Потрачено: <b>{spent:.2f}₽</b> | Резов: <b>{goals}</b>\n"
+            message += f"   Правило: {matched_rule}\n\n"
         
         messages.append(message)
     
@@ -142,9 +145,12 @@ def format_telegram_account_statistics(account_name, unprofitable_count, effecti
                 group_id = group.get("id", "N/A")
                 group_name = group.get("name", "Без названия")[:25]  # Ограничиваем длину
                 spent = group.get("spent", 0)
-                
+                goals = int(group.get("vk_goals", 0))  # Получаем количество результатов
+                matched_rule = group.get("matched_rule", "Без результата")  # Получаем название правила
+
                 groups_message += f"{i}. <code>{group_id}</code> {group_name}\n"
-                groups_message += f"   Потрачено: <b>{spent:.2f}₽</b> (без результата)\n\n"
+                groups_message += f"   Потрачено: <b>{spent:.2f}₽</b> | Рез: <b>{goals}</b>\n"
+                groups_message += f"   Правило: {matched_rule}\n\n"
             
             messages.append(groups_message)
     
