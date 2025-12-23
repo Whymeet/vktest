@@ -322,6 +322,91 @@ app.add_middleware(
 app.include_router(auth_router)
 
 
+def autostart_schedulers():
+    """Auto-start processes that were running before server restart (status='running' in DB)"""
+    db = SessionLocal()
+    try:
+        # Get all processes with status='running' - they should be restarted
+        from database.models import ProcessState, User
+        running_processes_db = db.query(ProcessState).filter(ProcessState.status == 'running').all()
+
+        if not running_processes_db:
+            print("  ℹ️  No processes in 'running' state to auto-start")
+            return
+
+        print(f"  🔍 Found {len(running_processes_db)} processes in 'running' state")
+
+        for process_state in running_processes_db:
+            user_id = process_state.user_id
+            process_name = process_state.name
+
+            # Extract process type from name (e.g., "scheduler_1" -> "scheduler")
+            if "_" in process_name:
+                process_type = process_name.rsplit("_", 1)[0]
+            else:
+                process_type = process_name
+
+            # Get user info
+            user = db.query(User).filter(User.id == user_id).first()
+            if not user:
+                print(f"  ⚠️  User ID {user_id} not found for process {process_name}, skipping")
+                continue
+
+            # Check if process is actually running (PID check)
+            is_running, existing_pid = is_process_running_by_db(process_type, db, user_id)
+            if is_running:
+                print(f"  ⏭️  {process_type} already running for user {user.username} (PID: {existing_pid})")
+                continue
+
+            # Determine which script to run
+            if process_type == "scheduler":
+                script_path = SCHEDULER_SCRIPT
+            elif process_type == "scaling_scheduler":
+                script_path = SCALING_SCHEDULER_SCRIPT
+            elif process_type == "bot":
+                script_path = BOT_SCRIPT
+            elif process_type == "analysis":
+                script_path = MAIN_SCRIPT
+            else:
+                print(f"  ⚠️  Unknown process type: {process_type}, skipping")
+                continue
+
+            # Start process
+            try:
+                LOGS_DIR.mkdir(parents=True, exist_ok=True)
+
+                user_log_prefix = f"user_{user_id}"
+                stdout_log = open(LOGS_DIR / f"{user_log_prefix}_{process_type}_stdout.log", "a", encoding="utf-8")
+                stderr_log = open(LOGS_DIR / f"{user_log_prefix}_{process_type}_stderr.log", "a", encoding="utf-8")
+
+                env = os.environ.copy()
+                env["VK_ADS_USER_ID"] = str(user_id)
+                env["VK_ADS_USERNAME"] = user.username
+
+                process = subprocess.Popen(
+                    [sys.executable, str(script_path)],
+                    stdout=stdout_log,
+                    stderr=stderr_log,
+                    cwd=str(PROJECT_ROOT),
+                    start_new_session=True,
+                    env=env
+                )
+
+                # Update DB with new PID, keep status as 'running'
+                crud.set_process_running(db, process_name, process.pid, str(script_path), user_id=user_id, auto_start=True)
+
+                # Cache in memory
+                running_processes[process_name] = process
+
+                print(f"  ✅ {process_type} auto-started for user {user.username} (PID: {process.pid}) - was 'running' in DB")
+            except Exception as e:
+                print(f"  ❌ Failed to auto-start {process_type} for user {user.username}: {e}")
+                # Mark as crashed in DB
+                crud.set_process_stopped(db, process_name, error=str(e))
+    finally:
+        db.close()
+
+
 def autostart_scaling_schedulers():
     """Auto-start scaling scheduler for all users on application startup"""
     db = SessionLocal()
@@ -392,7 +477,12 @@ async def startup_event():
     recover_processes_on_startup()
     print("✅ Process recovery complete")
 
-    # Auto-start scaling scheduler for all users
+    # Auto-start processes with auto_start=True (scheduler, scaling_scheduler, etc.)
+    print("🚀 Auto-starting processes with auto_start enabled...")
+    autostart_schedulers()
+    print("✅ Auto-start complete")
+
+    # Auto-start scaling scheduler for all users (legacy support)
     print("🚀 Starting scaling schedulers for all users...")
     autostart_scaling_schedulers()
     print("✅ Scaling schedulers started")
@@ -1068,7 +1158,7 @@ async def start_scheduler(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Start scheduler with persistent PID tracking for current user"""
+    """Start scheduler with persistent PID tracking and auto-start enabled for current user"""
     is_running, existing_pid = is_process_running_by_db("scheduler", db, current_user.id)
 
     if is_running:
@@ -1099,15 +1189,15 @@ async def start_scheduler(
             env=env
         )
 
-        # Save to DB for persistence with user-specific name
+        # Save to DB for persistence with user-specific name and enable auto_start
         process_name = f"scheduler_{current_user.id}"
-        crud.set_process_running(db, process_name, process.pid, str(SCHEDULER_SCRIPT), user_id=current_user.id)
+        crud.set_process_running(db, process_name, process.pid, str(SCHEDULER_SCRIPT), user_id=current_user.id, auto_start=True)
 
         # Also keep in memory cache for current session
         running_processes[process_name] = process
 
-        print(f"✅ Scheduler started with PID: {process.pid} for user {current_user.username}")
-        return {"message": "Scheduler started", "pid": process.pid}
+        print(f"✅ Scheduler started with PID: {process.pid} for user {current_user.username} (auto_start=True)")
+        return {"message": "Scheduler started", "pid": process.pid, "auto_start": True}
     except Exception as e:
         print(f"❌ Failed to start scheduler: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to start scheduler: {str(e)}")
@@ -1118,7 +1208,7 @@ async def stop_scheduler(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Stop scheduler for current user - works even after API restart"""
+    """Stop scheduler for current user and disable auto-start"""
     is_running, pid = is_process_running_by_db("scheduler", db, current_user.id)
 
     if not is_running:
@@ -1131,12 +1221,15 @@ async def stop_scheduler(
         process_name = f"scheduler_{current_user.id}"
         crud.set_process_stopped(db, process_name)
 
+        # Disable auto_start when manually stopped
+        crud.set_process_autostart(db, process_name, current_user.id, False)
+
         # Remove from memory cache if present
         if process_name in running_processes:
             del running_processes[process_name]
 
-        print(f"✅ Scheduler stopped (PID: {pid}) for user {current_user.username}")
-        return {"message": "Scheduler stopped", "pid": pid}
+        print(f"✅ Scheduler stopped (PID: {pid}) for user {current_user.username} (auto_start=False)")
+        return {"message": "Scheduler stopped", "pid": pid, "auto_start": False}
     else:
         raise HTTPException(status_code=500, detail=f"Failed to stop scheduler (PID: {pid})")
 

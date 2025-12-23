@@ -387,6 +387,7 @@ class ProcessState(Base):
     # Unique constraint: one process type per user
     __table_args__ = (
         UniqueConstraint('user_id', 'name', name='uix_user_process'),
+        Index('ix_process_states_autostart', 'user_id', 'auto_start'),
     )
 
     # Process info
@@ -396,6 +397,9 @@ class ProcessState(Base):
 
     # Status: 'running', 'stopped', 'crashed', 'unknown'
     status = Column(String(20), default='stopped', nullable=False)
+
+    # Auto-start on server restart
+    auto_start = Column(Boolean, default=False, nullable=False)
 
     # Last error if crashed
     last_error = Column(Text, nullable=True)
@@ -408,7 +412,7 @@ class ProcessState(Base):
     user = relationship("User", back_populates="process_states")
 
     def __repr__(self):
-        return f"<ProcessState(name='{self.name}', pid={self.pid}, status='{self.status}')>"
+        return f"<ProcessState(name='{self.name}', pid={self.pid}, status='{self.status}', auto_start={self.auto_start})>"
 
 
 class LeadsTechConfig(Base):

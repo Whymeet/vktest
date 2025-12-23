@@ -957,7 +957,8 @@ def set_process_running(
     name: str,
     pid: int,
     script_path: Optional[str] = None,
-    user_id: Optional[int] = None
+    user_id: Optional[int] = None,
+    auto_start: bool = False
 ) -> ProcessState:
     """Mark process as running with PID"""
     state = get_process_state(db, name)
@@ -970,6 +971,7 @@ def set_process_running(
         state.started_at = now
         state.stopped_at = None
         state.last_error = None
+        state.auto_start = auto_start
         state.updated_at = now
         if user_id:
             state.user_id = user_id
@@ -980,7 +982,8 @@ def set_process_running(
             script_path=script_path,
             status='running',
             started_at=now,
-            user_id=user_id
+            user_id=user_id,
+            auto_start=auto_start
         )
         db.add(state)
 
@@ -1026,6 +1029,39 @@ def clear_all_process_states(db: Session) -> int:
     count = db.query(ProcessState).delete()
     db.commit()
     return count
+
+
+def get_autostart_processes(db: Session, user_id: Optional[int] = None) -> List[ProcessState]:
+    """Get all processes that should auto-start"""
+    query = db.query(ProcessState).filter(ProcessState.auto_start == True)
+    if user_id is not None:
+        query = query.filter(ProcessState.user_id == user_id)
+    return query.all()
+
+
+def set_process_autostart(db: Session, name: str, user_id: int, auto_start: bool) -> Optional[ProcessState]:
+    """Enable or disable auto-start for a process"""
+    state = db.query(ProcessState).filter(
+        ProcessState.name == name,
+        ProcessState.user_id == user_id
+    ).first()
+
+    if not state:
+        # Create new process state with auto_start
+        state = ProcessState(
+            name=name,
+            user_id=user_id,
+            status='stopped',
+            auto_start=auto_start
+        )
+        db.add(state)
+    else:
+        state.auto_start = auto_start
+        state.updated_at = get_moscow_time()
+
+    db.commit()
+    db.refresh(state)
+    return state
 
 
 # ===== Daily Account Stats =====
