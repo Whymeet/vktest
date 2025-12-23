@@ -7,7 +7,6 @@ import {
   PlayCircle,
   FileText,
   Shield,
-  Activity,
   BarChart3,
   TrendingUp,
   Copy,
@@ -19,6 +18,18 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { SchedulerStatusIndicator } from './SchedulerStatusIndicator';
+
+// Custom Stats Icon Component
+const StatsIcon = ({ className }: { className?: string }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    className={className}
+  >
+    <path d="M4,23a1,1,0,0,1-1-1V19a1,1,0,0,1,2,0v3A1,1,0,0,1,4,23Zm9-1V15a1,1,0,0,0-2,0v7a1,1,0,0,0,2,0Zm7-11a1,1,0,0,0-1,1V22a1,1,0,0,0,2,0V12A1,1,0,0,0,20,11Zm.382-9.923A.991.991,0,0,0,20,1H16a1,1,0,0,0,0,2h1.586L12,8.586,8.707,5.293a1,1,0,0,0-1.414,0l-4,4a1,1,0,0,0,1.414,1.414L8,7.414l3.293,3.293a1,1,0,0,0,1.414,0L19,4.414V6a1,1,0,0,0,2,0V2a1,1,0,0,0-.618-.923Z"/>
+  </svg>
+);
 
 // Feature requirements for navigation items
 // undefined = no feature required (always visible)
@@ -61,9 +72,9 @@ export function Layout() {
       <header className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-slate-800 border-b border-slate-700 px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-            <Activity className="w-5 h-5 text-white" />
+            <StatsIcon className="w-5 h-5 text-white" />
           </div>
-          <h1 className="text-lg font-bold text-white">VK Ads</h1>
+          <h1 className="text-lg font-bold text-white">Ads Manager</h1>
         </div>
         <button
           onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -93,11 +104,10 @@ export function Layout() {
         <div className="p-6 border-b border-slate-700 hidden lg:block">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
-              <Activity className="w-6 h-6 text-white" />
+              <StatsIcon className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h1 className="text-lg font-bold text-white">VK Ads</h1>
-              <p className="text-xs text-slate-400">Manager v4.0</p>
+              <h1 className="text-lg font-bold text-white">Ads Manager</h1>
             </div>
           </div>
         </div>
