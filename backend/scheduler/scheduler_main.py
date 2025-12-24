@@ -14,7 +14,6 @@ import subprocess
 import signal
 import random
 import json
-import logging
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Dict, Optional
@@ -141,43 +140,19 @@ class VKAdsScheduler:
             self._log_scheduler_event("PROCESS_TERMINATED", f"Процесс {self.current_process.pid} остановлен")
 
     def setup_logging(self):
-        """Настройка логирования с файлами по пользователям"""
+        """Настройка логирования с файлами по пользователям через loguru"""
         LOGS_DIR.mkdir(exist_ok=True)
 
         # Создаем директорию для логов планировщика
         scheduler_logs_dir = LOGS_DIR / "scheduler"
         scheduler_logs_dir.mkdir(exist_ok=True)
 
-        self.logger = logging.getLogger(f"vk_ads_scheduler_{self.username}")
-        self.logger.setLevel(logging.DEBUG)
-        self.logger.handlers.clear()
+        # Используем loguru логгер с контекстом
+        user_id_int = int(self.user_id) if self.user_id else None
+        self.logger = get_logger(service="scheduler", function="auto_disable", user_id=user_id_int)
 
-        formatter = logging.Formatter(
-            '%(asctime)s | %(levelname)-8s | %(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S'
-        )
-
-        # Консольный хендлер
-        console_handler = logging.StreamHandler()
-        console_handler.setLevel(logging.INFO)
-        console_handler.setFormatter(formatter)
-        self.logger.addHandler(console_handler)
-
-        # Файловый хендлер для конкретного пользователя
         timestamp = get_moscow_time().strftime("%Y%m%d")
         log_file = scheduler_logs_dir / f"scheduler_{self.username}_{timestamp}.log"
-        file_handler = logging.FileHandler(log_file, encoding='utf-8')
-        file_handler.setLevel(logging.DEBUG)
-        file_handler.setFormatter(formatter)
-        self.logger.addHandler(file_handler)
-
-        # Хендлер для критических событий (общий файл для всех пользователей)
-        events_log = scheduler_logs_dir / "scheduler_events.log"
-        events_handler = logging.FileHandler(events_log, encoding='utf-8')
-        events_handler.setLevel(logging.ERROR)
-        events_handler.setFormatter(formatter)
-        self.logger.addHandler(events_handler)
-
         self.logger.info(f"📝 Логирование в файл: {log_file}")
 
     def load_settings(self):
