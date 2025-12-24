@@ -265,13 +265,13 @@ function ConfigFormModal({
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white"
+            className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm sm:text-base"
             placeholder="Например: Масштабирование прибыльных"
             required
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
           <div>
             <label className="block text-sm font-medium text-slate-300 mb-1">
               <Clock className="w-4 h-4 inline mr-1" />
@@ -281,7 +281,7 @@ function ConfigFormModal({
               type="time"
               value={scheduleTime}
               onChange={(e) => setScheduleTime(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white"
+              className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm sm:text-base"
             />
           </div>
 
@@ -291,7 +291,7 @@ function ConfigFormModal({
               type="number"
               value={lookbackDays}
               onChange={(e) => setLookbackDays(parseInt(e.target.value) || 7)}
-              className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white"
+              className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm sm:text-base"
               min="1"
               max="90"
             />
@@ -307,7 +307,7 @@ function ConfigFormModal({
                 onClick={selectAllAccounts}
                 className="text-xs text-blue-400 hover:text-blue-300"
               >
-                Выбрать все
+                Все
               </button>
               <span className="text-slate-600">|</span>
               <button
@@ -319,7 +319,7 @@ function ConfigFormModal({
               </button>
             </div>
           </div>
-          <div className="max-h-40 overflow-y-auto bg-slate-800 border border-slate-700 rounded p-2 space-y-1">
+          <div className="max-h-32 sm:max-h-40 overflow-y-auto bg-slate-800 border border-slate-700 rounded p-2 space-y-1">
             {accounts.length === 0 ? (
               <p className="text-sm text-slate-500 italic">Нет кабинетов</p>
             ) : (
@@ -334,14 +334,14 @@ function ConfigFormModal({
                     onChange={() => toggleAccount(acc.id!)}
                     className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-blue-600 focus:ring-blue-500"
                   />
-                  <span className="text-sm text-white">{acc.name}</span>
+                  <span className="text-sm text-white truncate">{acc.name}</span>
                 </label>
               ))
             )}
           </div>
           <p className="text-xs text-slate-500 mt-1">
             {accountIds.length === 0
-              ? 'Не выбрано ни одного кабинета - правило будет применяться ко ВСЕМ'
+              ? 'Не выбрано - применится ко ВСЕМ'
               : `Выбрано: ${accountIds.length} из ${accounts.length}`}
           </p>
         </div>
@@ -354,42 +354,36 @@ function ConfigFormModal({
             type="text"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white"
-            placeholder="Оставьте пустым для сохранения оригинального названия"
+            className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm sm:text-base"
+            placeholder="Пусто = оригинальное название"
           />
-          <p className="text-xs text-slate-500 mt-1">
-            Если пусто - используется оригинальное название группы
-          </p>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
           <div>
             <label className="block text-sm font-medium text-slate-300 mb-1">
-              Новый дневной бюджет (₽)
+              Бюджет (₽)
             </label>
             <input
               type="number"
               value={newBudget}
               onChange={(e) => setNewBudget(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white"
+              className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm sm:text-base"
               placeholder="Как в оригинале"
               min="0"
               step="0.01"
             />
-            <p className="text-xs text-slate-500 mt-1">
-              Если пусто - используется бюджет оригинала
-            </p>
           </div>
 
           <div>
             <label className="block text-sm font-medium text-slate-300 mb-1">
-              Кол-во дублей на группу
+              Кол-во дублей
             </label>
             <input
               type="number"
               value={duplicatesCount}
               onChange={(e) => setDuplicatesCount(Math.max(1, Math.min(100, parseInt(e.target.value) || 1)))}
-              className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white"
+              className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm sm:text-base"
               min="1"
               max="100"
             />
@@ -398,7 +392,7 @@ function ConfigFormModal({
 
         <div className="flex items-center gap-3">
           <Toggle checked={autoActivate} onChange={setAutoActivate} />
-          <span className="text-sm text-slate-300">Автоматически активировать после создания</span>
+          <span className="text-sm text-slate-300">Авто-активация после создания</span>
         </div>
 
         <ConditionEditor
@@ -408,17 +402,17 @@ function ConfigFormModal({
           operators={operators}
         />
 
-        <div className="flex justify-end gap-3 pt-4 border-t border-slate-700">
+        <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 pt-4 border-t border-slate-700">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-slate-400 hover:text-white transition-colors"
+            className="px-4 py-2 text-slate-400 hover:text-white transition-colors text-sm sm:text-base"
           >
             Отмена
           </button>
           <button
             type="submit"
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-white transition-colors"
+            className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-white transition-colors text-sm sm:text-base"
           >
             <Save className="w-4 h-4" />
             Сохранить
@@ -513,7 +507,7 @@ function ManualDuplicateModal({
               setSelectedAccountId(e.target.value ? parseInt(e.target.value) : null);
               resetForm();
             }}
-            className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white"
+            className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm sm:text-base"
             disabled={duplicateMutation.isPending || taskStarted}
           >
             <option value="">-- Выберите кабинет --</option>
@@ -536,44 +530,43 @@ function ManualDuplicateModal({
                 value={groupIdsInput}
                 onChange={(e) => setGroupIdsInput(e.target.value)}
                 className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm resize-none"
-                placeholder="Например: 12345, 67890, 11111"
+                placeholder="12345, 67890, 11111"
                 rows={2}
                 disabled={duplicateMutation.isPending || taskStarted}
               />
               {groupIds.length > 0 && (
                 <p className="text-xs text-slate-400 mt-1">
-                  Найдено ID: {groupIds.length} ({groupIds.slice(0, 5).join(', ')}{groupIds.length > 5 ? '...' : ''})
+                  Найдено: {groupIds.length} ID
                 </p>
               )}
             </div>
 
             {/* Duplicates Count & Budget */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-300 mb-1">
-                  Количество дублей
+                  Кол-во дублей
                 </label>
                 <input
                   type="number"
                   value={duplicatesCount}
                   onChange={(e) => setDuplicatesCount(Math.max(1, Math.min(100, parseInt(e.target.value) || 1)))}
-                  className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white"
+                  className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm sm:text-base"
                   min="1"
                   max="100"
                   disabled={duplicateMutation.isPending || taskStarted}
                 />
-                <p className="text-xs text-slate-500 mt-1">От 1 до 100</p>
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-slate-300 mb-1">
-                  Новый бюджет (₽)
+                  Бюджет (₽)
                 </label>
                 <input
                   type="number"
                   value={newBudget}
                   onChange={(e) => setNewBudget(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white"
+                  className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm sm:text-base"
                   placeholder="Как в оригинале"
                   min="0"
                   step="0.01"
@@ -584,24 +577,21 @@ function ManualDuplicateModal({
 
             <div>
               <label className="block text-sm font-medium text-slate-300 mb-1">
-                Новое название для дублей
+                Новое название
               </label>
               <input
                 type="text"
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white"
-                placeholder="Оставьте пустым для сохранения оригинального"
+                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm sm:text-base"
+                placeholder="Пусто = оригинальное"
                 disabled={duplicateMutation.isPending || taskStarted}
               />
-              <p className="text-xs text-slate-500 mt-1">
-                Если пусто - копируется оригинальное название
-              </p>
             </div>
 
             <div className="flex items-center gap-2">
               <Toggle checked={autoActivate} onChange={setAutoActivate} disabled={duplicateMutation.isPending || taskStarted} />
-              <span className="text-sm text-slate-300">Автоматически активировать</span>
+              <span className="text-sm text-slate-300">Авто-активация</span>
             </div>
 
             {/* Summary */}
@@ -610,7 +600,7 @@ function ManualDuplicateModal({
                 <p className="text-sm text-slate-300">
                   Будет создано: <span className="text-white font-medium">{totalOperations}</span> копий
                   {groupIds.length > 1 && (
-                    <span className="text-slate-400"> ({groupIds.length} групп × {duplicatesCount} дублей)</span>
+                    <span className="text-slate-400 text-xs sm:text-sm"> ({groupIds.length} × {duplicatesCount})</span>
                   )}
                 </p>
 
@@ -622,16 +612,9 @@ function ManualDuplicateModal({
                     <AlertTriangle className={`w-4 h-4 mt-0.5 flex-shrink-0 ${
                       totalOperations > 50 ? 'text-orange-400' : 'text-yellow-400'
                     }`} />
-                    <div className="text-xs">
-                      <p className={totalOperations > 50 ? 'text-orange-300' : 'text-yellow-300'}>
-                        {totalOperations > 50
-                          ? 'Большое количество операций. Возможны задержки из-за лимитов VK API.'
-                          : 'Операция может занять некоторое время.'}
-                      </p>
-                      <p className="text-slate-400 mt-0.5">
-                        Примерное время: {Math.ceil(totalOperations * 0.5)} - {Math.ceil(totalOperations * 2)} сек
-                      </p>
-                    </div>
+                    <p className={`text-xs ${totalOperations > 50 ? 'text-orange-300' : 'text-yellow-300'}`}>
+                      {totalOperations > 50 ? 'Много операций - возможны задержки' : 'Может занять время'}
+                    </p>
                   </div>
                 )}
               </div>
@@ -641,46 +624,33 @@ function ManualDuplicateModal({
 
         {/* Task Started Indicator */}
         {taskStarted && (
-          <div className="p-4 bg-green-900/30 border border-green-700 rounded-lg space-y-3">
-            <div className="flex items-center gap-3">
+          <div className="p-3 sm:p-4 bg-green-900/30 border border-green-700 rounded-lg space-y-2">
+            <div className="flex items-center gap-2">
               <CheckCircle className="w-5 h-5 text-green-400" />
-              <span className="text-green-400 font-medium">Задача запущена!</span>
+              <span className="text-green-400 font-medium text-sm sm:text-base">Задача запущена!</span>
             </div>
-
-            <p className="text-sm text-slate-300">
-              Дублирование выполняется в фоновом режиме. Вы можете закрыть это окно -
-              прогресс будет отображаться в панели статуса выше.
-            </p>
-
-            <p className="text-xs text-slate-500">
-              Следите за прогрессом в разделе "Активные задачи"
+            <p className="text-xs sm:text-sm text-slate-300">
+              Дублирование выполняется в фоне. Следите за прогрессом выше.
             </p>
           </div>
         )}
 
         {/* Processing Indicator */}
         {duplicateMutation.isPending && (
-          <div className="p-4 bg-blue-900/30 border border-blue-700 rounded-lg space-y-3">
-            <div className="flex items-center gap-3">
+          <div className="p-3 sm:p-4 bg-blue-900/30 border border-blue-700 rounded-lg">
+            <div className="flex items-center gap-2">
               <RefreshCw className="w-5 h-5 text-blue-400 animate-spin" />
-              <span className="text-blue-400 font-medium">Запуск задачи...</span>
+              <span className="text-blue-400 font-medium text-sm sm:text-base">Запуск...</span>
             </div>
           </div>
         )}
 
-        {/* Legacy result display removed - now using task tracking */}
-        {false && (
-          <div className="p-4 rounded-lg bg-slate-800 border border-slate-700 space-y-3">
-            <h4 className="font-medium text-white">Результат</h4>
-          </div>
-        )}
-
         {/* Actions */}
-        <div className="flex justify-end gap-3 pt-4 border-t border-slate-700">
+        <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 pt-4 border-t border-slate-700">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-slate-400 hover:text-white transition-colors"
+            className="px-4 py-2 text-slate-400 hover:text-white transition-colors text-sm sm:text-base"
           >
             {taskStarted ? 'Закрыть' : 'Отмена'}
           </button>
@@ -688,7 +658,7 @@ function ManualDuplicateModal({
             <button
               onClick={handleDuplicate}
               disabled={!selectedAccountId || groupIds.length === 0 || duplicateMutation.isPending}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 disabled:text-slate-500 rounded text-white transition-colors"
+              className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 disabled:text-slate-500 rounded text-white transition-colors text-sm sm:text-base"
             >
               {duplicateMutation.isPending ? (
                 <RefreshCw className="w-4 h-4 animate-spin" />
@@ -834,32 +804,32 @@ export function Scaling() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white">Масштабирование</h1>
-          <p className="text-slate-400 mt-1">
+          <h1 className="text-xl sm:text-2xl font-bold text-white">Масштабирование</h1>
+          <p className="text-slate-400 text-sm sm:text-base mt-1">
             Автоматическое и ручное дублирование рекламных групп
           </p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
           <button
             onClick={() => setDuplicateModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded text-white transition-colors"
+            className="flex items-center justify-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded text-white transition-colors text-sm sm:text-base"
           >
             <Copy className="w-4 h-4" />
-            Ручное дублирование
+            <span className="sm:inline">Ручное дублирование</span>
           </button>
           <button
             onClick={() => {
               setEditingConfig(null);
               setConfigModalOpen(true);
             }}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-white transition-colors"
+            className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-white transition-colors text-sm sm:text-base"
           >
             <Plus className="w-4 h-4" />
-            Новая конфигурация
+            <span className="sm:inline">Новая конфигурация</span>
           </button>
         </div>
       </div>
@@ -894,86 +864,93 @@ export function Scaling() {
                 className="border border-slate-700 rounded-lg overflow-hidden"
               >
                 {/* Config Header */}
-                <div className="flex items-center justify-between p-4 bg-slate-800/50">
-                  <div className="flex items-center gap-4">
-                    <Toggle
-                      checked={config.scheduled_enabled}
-                      onChange={() => updateMutation.mutate({
-                        id: config.id,
-                        data: { scheduled_enabled: !config.scheduled_enabled }
-                      })}
-                    />
-                    <div>
-                      <h3 className="font-medium text-white">{config.name}</h3>
-                      <div className="flex items-center gap-4 text-sm text-slate-400 mt-1">
-                        <span className="flex items-center gap-1">
-                          <Clock className="w-3 h-3" />
-                          {config.schedule_time} МСК
-                        </span>
-                        <span>{config.lookback_days} дней</span>
-                        <span>
-                          {(!config.account_ids || config.account_ids.length === 0) 
-                            ? 'Все кабинеты' 
-                            : `${config.account_ids.length} каб.`}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <Copy className="w-3 h-3" />
-                          {config.duplicates_count || 1} {(config.duplicates_count || 1) === 1 ? 'копия' : (config.duplicates_count || 1) < 5 ? 'копии' : 'копий'}
-                        </span>
-                        {config.new_budget && (
-                          <span>Бюджет: {config.new_budget} ₽</span>
-                        )}
-                        {config.last_run_at && (
-                          <span className="text-slate-500">
-                            Последний запуск: {new Date(config.last_run_at).toLocaleString('ru')}
+                <div className="p-3 sm:p-4 bg-slate-800/50">
+                  {/* Mobile: Stack layout, Desktop: Flex row */}
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    {/* Left side: Toggle + Info */}
+                    <div className="flex items-start sm:items-center gap-3 sm:gap-4">
+                      <Toggle
+                        checked={config.scheduled_enabled}
+                        onChange={() => updateMutation.mutate({
+                          id: config.id,
+                          data: { scheduled_enabled: !config.scheduled_enabled }
+                        })}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-medium text-white text-sm sm:text-base truncate">{config.name}</h3>
+                        {/* Mobile: Wrap, Desktop: Inline */}
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs sm:text-sm text-slate-400 mt-1">
+                          <span className="flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            {config.schedule_time}
                           </span>
+                          <span>{config.lookback_days}д</span>
+                          <span>
+                            {(!config.account_ids || config.account_ids.length === 0)
+                              ? 'Все'
+                              : `${config.account_ids.length} каб.`}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <Copy className="w-3 h-3" />
+                            {config.duplicates_count || 1}
+                          </span>
+                          {config.new_budget && (
+                            <span>{config.new_budget}₽</span>
+                          )}
+                        </div>
+                        {/* Last run - показываем только на десктопе или отдельной строкой на мобильных */}
+                        {config.last_run_at && (
+                          <p className="text-xs text-slate-500 mt-1 hidden sm:block">
+                            Последний запуск: {new Date(config.last_run_at).toLocaleString('ru')}
+                          </p>
                         )}
                       </div>
                     </div>
-                  </div>
 
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => runMutation.mutate(config.id)}
-                      disabled={runMutation.isPending}
-                      className="p-2 text-green-400 hover:bg-green-900/20 rounded transition-colors"
-                      title="Запустить сейчас"
-                    >
-                      {runMutation.isPending ? (
-                        <RefreshCw className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Play className="w-4 h-4" />
-                      )}
-                    </button>
-                    <button
-                      onClick={() => {
-                        setEditingConfig(config);
-                        setConfigModalOpen(true);
-                      }}
-                      className="p-2 text-slate-400 hover:text-white hover:bg-slate-700 rounded transition-colors"
-                      title="Редактировать"
-                    >
-                      <Settings className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => deleteMutation.mutate(config.id)}
-                      className="p-2 text-red-400 hover:bg-red-900/20 rounded transition-colors"
-                      title="Удалить"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() =>
-                        setExpandedConfigId(expandedConfigId === config.id ? null : config.id)
-                      }
-                      className="p-2 text-slate-400 hover:text-white hover:bg-slate-700 rounded transition-colors"
-                    >
-                      {expandedConfigId === config.id ? (
-                        <ChevronUp className="w-4 h-4" />
-                      ) : (
-                        <ChevronDown className="w-4 h-4" />
-                      )}
-                    </button>
+                    {/* Right side: Actions */}
+                    <div className="flex items-center justify-end gap-1 sm:gap-2 ml-auto sm:ml-0">
+                      <button
+                        onClick={() => runMutation.mutate(config.id)}
+                        disabled={runMutation.isPending}
+                        className="p-2 text-green-400 hover:bg-green-900/20 rounded transition-colors"
+                        title="Запустить сейчас"
+                      >
+                        {runMutation.isPending ? (
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Play className="w-4 h-4" />
+                        )}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setEditingConfig(config);
+                          setConfigModalOpen(true);
+                        }}
+                        className="p-2 text-slate-400 hover:text-white hover:bg-slate-700 rounded transition-colors"
+                        title="Редактировать"
+                      >
+                        <Settings className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => deleteMutation.mutate(config.id)}
+                        className="p-2 text-red-400 hover:bg-red-900/20 rounded transition-colors"
+                        title="Удалить"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() =>
+                          setExpandedConfigId(expandedConfigId === config.id ? null : config.id)
+                        }
+                        className="p-2 text-slate-400 hover:text-white hover:bg-slate-700 rounded transition-colors"
+                      >
+                        {expandedConfigId === config.id ? (
+                          <ChevronUp className="w-4 h-4" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4" />
+                        )}
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -1034,69 +1011,113 @@ export function Scaling() {
         icon={BarChart3}
       >
         {logsData?.items?.length ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-700">
-                  <th className="px-4 py-3 text-left text-slate-400">Время</th>
-                  <th className="px-4 py-3 text-left text-slate-400">Конфигурация</th>
-                  <th className="px-4 py-3 text-left text-slate-400">Кабинет</th>
-                  <th className="px-4 py-3 text-left text-slate-400">Исходная группа</th>
-                  <th className="px-4 py-3 text-left text-slate-400">Новая группа</th>
-                  <th className="px-4 py-3 text-center text-slate-400">Объявления</th>
-                  <th className="px-4 py-3 text-center text-slate-400">Статус</th>
-                </tr>
-              </thead>
-              <tbody>
-                {logsData.items.map((log: ScalingLog) => (
-                  <tr key={log.id} className="border-b border-slate-800 hover:bg-slate-800/50">
-                    <td className="px-4 py-3 text-slate-300">
-                      {new Date(log.created_at).toLocaleString('ru')}
-                    </td>
-                    <td className="px-4 py-3 text-slate-300">{log.config_name || '—'}</td>
-                    <td className="px-4 py-3 text-slate-300">{log.account_name || '—'}</td>
-                    <td className="px-4 py-3">
-                      <div>
-                        <span className="text-white">{log.original_group_name || 'Без названия'}</span>
-                        {log.original_group_id && (
-                          <span className="block text-xs text-slate-400 font-mono">ID: {log.original_group_id}</span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      {log.new_group_id ? (
-                        <div>
-                          <span className="text-white">{log.new_group_name || 'Без названия'}</span>
-                          <span className="block text-xs text-slate-400 font-mono">ID: {log.new_group_id}</span>
-                        </div>
-                      ) : (
-                        <span className="text-slate-500">—</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <div className="text-slate-300">
-                        {log.duplicated_banners} / {log.total_banners}
-                      </div>
-                      {log.duplicated_banner_ids && log.duplicated_banner_ids.length > 0 && (
-                        <div className="text-xs text-slate-500 mt-1 font-mono">
-                          ({log.duplicated_banner_ids.map((b: DuplicatedBannerInfo) => b.new_id).join(', ')})
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      {log.success ? (
-                        <CheckCircle className="w-5 h-5 text-green-400 inline" />
-                      ) : (
-                        <span className="text-red-400" title={log.error_message || ''}>
-                          <XCircle className="w-5 h-5 inline" />
-                        </span>
-                      )}
-                    </td>
+          <>
+            {/* Desktop Table */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-700">
+                    <th className="px-4 py-3 text-left text-slate-400">Время</th>
+                    <th className="px-4 py-3 text-left text-slate-400">Конфигурация</th>
+                    <th className="px-4 py-3 text-left text-slate-400">Кабинет</th>
+                    <th className="px-4 py-3 text-left text-slate-400">Исходная группа</th>
+                    <th className="px-4 py-3 text-left text-slate-400">Новая группа</th>
+                    <th className="px-4 py-3 text-center text-slate-400">Объявления</th>
+                    <th className="px-4 py-3 text-center text-slate-400">Статус</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {logsData.items.map((log: ScalingLog) => (
+                    <tr key={log.id} className="border-b border-slate-800 hover:bg-slate-800/50">
+                      <td className="px-4 py-3 text-slate-300">
+                        {new Date(log.created_at).toLocaleString('ru')}
+                      </td>
+                      <td className="px-4 py-3 text-slate-300">{log.config_name || '—'}</td>
+                      <td className="px-4 py-3 text-slate-300">{log.account_name || '—'}</td>
+                      <td className="px-4 py-3">
+                        <div>
+                          <span className="text-white">{log.original_group_name || 'Без названия'}</span>
+                          {log.original_group_id && (
+                            <span className="block text-xs text-slate-400 font-mono">ID: {log.original_group_id}</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        {log.new_group_id ? (
+                          <div>
+                            <span className="text-white">{log.new_group_name || 'Без названия'}</span>
+                            <span className="block text-xs text-slate-400 font-mono">ID: {log.new_group_id}</span>
+                          </div>
+                        ) : (
+                          <span className="text-slate-500">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <div className="text-slate-300">
+                          {log.duplicated_banners} / {log.total_banners}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        {log.success ? (
+                          <CheckCircle className="w-5 h-5 text-green-400 inline" />
+                        ) : (
+                          <span className="text-red-400" title={log.error_message || ''}>
+                            <XCircle className="w-5 h-5 inline" />
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile Cards */}
+            <div className="md:hidden space-y-3">
+              {logsData.items.map((log: ScalingLog) => (
+                <div key={log.id} className="p-3 bg-slate-800/50 rounded-lg border border-slate-700">
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white text-sm font-medium truncate">
+                        {log.original_group_name || 'Без названия'}
+                      </p>
+                      <p className="text-xs text-slate-400">
+                        {new Date(log.created_at).toLocaleString('ru')}
+                      </p>
+                    </div>
+                    {log.success ? (
+                      <CheckCircle className="w-5 h-5 text-green-400 flex-shrink-0" />
+                    ) : (
+                      <XCircle className="w-5 h-5 text-red-400 flex-shrink-0" />
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <span className="text-slate-500">Конфиг:</span>
+                      <span className="text-slate-300 ml-1">{log.config_name || '—'}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500">Кабинет:</span>
+                      <span className="text-slate-300 ml-1">{log.account_name || '—'}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500">Объявления:</span>
+                      <span className="text-slate-300 ml-1">{log.duplicated_banners}/{log.total_banners}</span>
+                    </div>
+                    {log.new_group_id && (
+                      <div>
+                        <span className="text-slate-500">Новый ID:</span>
+                        <span className="text-slate-300 ml-1 font-mono">{log.new_group_id}</span>
+                      </div>
+                    )}
+                  </div>
+                  {!log.success && log.error_message && (
+                    <p className="text-xs text-red-400 mt-2 truncate">{log.error_message}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </>
         ) : (
           <div className="text-center py-8">
             <Copy className="w-12 h-12 text-slate-600 mx-auto mb-3" />
