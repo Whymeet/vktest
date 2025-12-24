@@ -3,7 +3,6 @@ import sys
 import os
 import json
 import argparse
-import logging
 from pathlib import Path
 from datetime import datetime
 
@@ -21,14 +20,11 @@ from utils.vk_api import (
     toggle_ad_group_status,
     toggle_campaign_status
 )
+from utils.logging_setup import get_logger, setup_logging
 
 # Setup logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s | %(levelname)-8s | %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
-logger = logging.getLogger("whitelist_worker")
+setup_logging()
+logger = get_logger(service="leadstech", function="whitelist")
 
 async def whitelist_profitable_banners(roi_threshold: float, enable_banners: bool = True):
     # Get user_id from environment

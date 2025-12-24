@@ -3,7 +3,6 @@ LeadsTech Analyzer - fetches data from LeadsTech and VK Ads, calculates ROI
 Reads configuration from database and saves results back to database
 """
 
-import logging
 import os
 import sys
 from datetime import date, datetime, timedelta
@@ -18,43 +17,19 @@ import requests
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from utils.time_utils import get_moscow_time
+from utils.logging_setup import get_logger, setup_logging as init_logging
 
 from database import SessionLocal
 from database import crud
 
 # Setup logging
-logger = logging.getLogger("leadstech_analyzer")
+logger = get_logger(service="leadstech")
 
 
 def setup_logging():
-    """Setup logging configuration"""
-    logger.setLevel(logging.DEBUG)
-    logger.handlers.clear()
-
-    fmt = logging.Formatter(
-        "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-
-    # Console handler
-    ch = logging.StreamHandler()
-    ch.setLevel(logging.INFO)
-    ch.setFormatter(fmt)
-    logger.addHandler(ch)
-
-    # File handler
-    logs_dir = Path(__file__).parent.parent.parent / "logs"
-    logs_dir.mkdir(parents=True, exist_ok=True)
-
-    ts = get_moscow_time().strftime("%Y%m%d_%H%M%S")
-    log_path = logs_dir / f"leadstech_analyzer_{ts}.log"
-
-    fh = logging.FileHandler(log_path, encoding="utf-8")
-    fh.setLevel(logging.DEBUG)
-    fh.setFormatter(fmt)
-    logger.addHandler(fh)
-
-    logger.info("Logs writing to %s", log_path)
+    """Setup logging configuration (совместимость со старым API)"""
+    init_logging()
+    logger.info("LeadsTech Analyzer инициализирован")
 
 
 # === LeadsTech Client ===

@@ -6,7 +6,6 @@ VK Ads Manager - Асинхронная версия с параллельной
 import asyncio
 import aiohttp
 import json
-import logging
 import os
 import sys
 from datetime import date, timedelta, datetime
@@ -14,6 +13,12 @@ from pathlib import Path
 
 # Добавляем родительскую директорию в путь для импорта модулей
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from utils.logging_setup import setup_logging, get_logger
+
+# Инициализация логирования
+setup_logging()
+logger = get_logger(service="vk_api", function="auto_disable")
 
 # Импортируем асинхронные функции VK API
 from utils.vk_api_async import (

@@ -9,11 +9,9 @@ Auto-Scaling Scheduler
 import os
 import sys
 import time
-import schedule
 import threading
 from datetime import datetime, timedelta
 from pathlib import Path
-from logging import getLogger
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -21,10 +19,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from database import SessionLocal
 from database import crud
 from utils.vk_api import get_ad_groups_with_stats, duplicate_ad_group_full
-from utils.logging_setup import setup_logging
 from utils.time_utils import get_moscow_time
+from utils.logging_setup import get_logger, setup_logging, add_user_log_file, set_context
 
-logger = getLogger("scaling_scheduler")
+# Инициализируем логирование
+setup_logging()
+logger = get_logger(service="scheduler", function="scaling")
 
 # Get user_id from environment variable (set by API when starting the scheduler)
 USER_ID = os.environ.get("VK_ADS_USER_ID")
@@ -49,8 +49,8 @@ def run_scaling_config_with_tracking(config_id: int):
             logger.error(f"❌ Конфигурация {config_id} не найдена")
             return
 
-        if not config.enabled:
-            logger.info(f"⏭️ Конфигурация '{config.name}' отключена, пропускаем")
+        if not config.scheduled_enabled:
+            logger.info(f"⏭️ Конфигурация '{config.name}' отключена для расписания, пропускаем")
             return
 
         # Check if already running
@@ -128,43 +128,85 @@ def _execute_scaling_config(db, config):
     failed = 0
     duplicates_count = config.duplicates_count or 1
 
+    # Получаем new_name из конфигурации
+    new_name = getattr(config, 'new_name', None)
+
+    # Проверяем есть ли ручные группы для масштабирования
+    manual_group_ids = crud.get_manual_scaling_groups(db, config.id)
+
     # Собираем все группы которые нужно обработать
     groups_to_process = []
 
-    for account in accounts:
-        logger.info(f"📁 Сканирование кабинета: {account.name}")
+    if manual_group_ids:
+        # Ручное масштабирование - берём указанные группы из всех кабинетов
+        logger.info(f"📋 Режим ручного масштабирования: {len(manual_group_ids)} групп")
 
-        try:
-            groups = get_ad_groups_with_stats(
-                token=account.api_token,
-                base_url=base_url,
-                date_from=date_from,
-                date_to=date_to
-            )
+        for account in accounts:
+            logger.info(f"📁 Поиск групп в кабинете: {account.name}")
 
-            logger.info(f"   Найдено {len(groups)} групп")
+            try:
+                groups = get_ad_groups_with_stats(
+                    token=account.api_token,
+                    base_url=base_url,
+                    date_from=date_from,
+                    date_to=date_to
+                )
 
-            for group in groups:
-                group_id = group.get("id")
-                group_name = group.get("name", "Unknown")
-                stats = group.get("stats", {})
+                for group in groups:
+                    group_id = group.get("id")
+                    if group_id in manual_group_ids:
+                        group_name = group.get("name", "Unknown")
+                        stats = group.get("stats", {})
+                        logger.info(f"   ✅ Найдена группа '{group_name}' (ID: {group_id})")
+                        groups_to_process.append({
+                            'account': account,
+                            'group_id': group_id,
+                            'group_name': group_name,
+                            'stats': stats
+                        })
 
-                # Проверяем условия
-                if crud.check_group_conditions(stats, conditions):
-                    logger.info(f"   ✅ Группа '{group_name}' соответствует условиям")
-                    groups_to_process.append({
-                        'account': account,
-                        'group_id': group_id,
-                        'group_name': group_name,
-                        'stats': stats
-                    })
+            except Exception as e:
+                logger.error(f"   ❌ Ошибка при сканировании кабинета {account.name}: {e}")
+                crud.update_scaling_task_progress(
+                    db, task_id,
+                    last_error=f"Ошибка сканирования {account.name}: {str(e)}"
+                )
+    else:
+        # Автомасштабирование - фильтруем по условиям
+        for account in accounts:
+            logger.info(f"📁 Сканирование кабинета: {account.name}")
 
-        except Exception as e:
-            logger.error(f"   ❌ Ошибка при сканировании кабинета {account.name}: {e}")
-            crud.update_scaling_task_progress(
-                db, task_id,
-                last_error=f"Ошибка сканирования {account.name}: {str(e)}"
-            )
+            try:
+                groups = get_ad_groups_with_stats(
+                    token=account.api_token,
+                    base_url=base_url,
+                    date_from=date_from,
+                    date_to=date_to
+                )
+
+                logger.info(f"   Найдено {len(groups)} групп")
+
+                for group in groups:
+                    group_id = group.get("id")
+                    group_name = group.get("name", "Unknown")
+                    stats = group.get("stats", {})
+
+                    # Проверяем условия
+                    if crud.check_group_conditions(stats, conditions, logger=logger):
+                        logger.info(f"   ✅ Группа '{group_name}' соответствует условиям")
+                        groups_to_process.append({
+                            'account': account,
+                            'group_id': group_id,
+                            'group_name': group_name,
+                            'stats': stats
+                        })
+
+            except Exception as e:
+                logger.error(f"   ❌ Ошибка при сканировании кабинета {account.name}: {e}")
+                crud.update_scaling_task_progress(
+                    db, task_id,
+                    last_error=f"Ошибка сканирования {account.name}: {str(e)}"
+                )
 
     # Обновляем общее количество операций
     total_operations = len(groups_to_process) * duplicates_count
@@ -183,8 +225,14 @@ def _execute_scaling_config(db, config):
         crud.update_scaling_config_last_run(db, config.id)
         return
 
+    # Флаг отмены
+    cancelled = False
+
     # Обрабатываем группы
     for item in groups_to_process:
+        if cancelled:
+            break
+
         account = item['account']
         group_id = item['group_id']
         group_name = item['group_name']
@@ -195,6 +243,13 @@ def _execute_scaling_config(db, config):
         logger.info(f"   Статистика: лиды={stats.get('goals', 0)}, расход={stats.get('spent', 0):.2f}₽, CPL={stats.get('cost_per_goal', 'N/A')}")
 
         for dup_num in range(1, duplicates_count + 1):
+            # Проверяем не отменена ли задача
+            task_check = crud.get_scaling_task(db, task_id)
+            if task_check and task_check.status == 'cancelled':
+                logger.warning(f"⛔ Задача #{task_id} отменена пользователем, останавливаем")
+                cancelled = True
+                break
+
             try:
                 # Обновляем текущую операцию
                 crud.update_scaling_task_progress(
@@ -208,7 +263,7 @@ def _execute_scaling_config(db, config):
                     token=account.api_token,
                     base_url=base_url,
                     ad_group_id=group_id,
-                    new_name=None,
+                    new_name=new_name,  # Передаём new_name (None = используем оригинальное имя)
                     new_budget=config.new_budget,
                     auto_activate=config.auto_activate,
                     rate_limit_delay=0.03
@@ -241,7 +296,8 @@ def _execute_scaling_config(db, config):
                     error_message=result.get("error"),
                     total_banners=result.get("total_banners", 0),
                     duplicated_banners=len(result.get("duplicated_banners", [])),
-                    duplicated_banner_ids=banner_ids_data
+                    duplicated_banner_ids=banner_ids_data,
+                    requested_name=new_name
                 )
 
                 if result.get("success"):
@@ -289,18 +345,25 @@ def _execute_scaling_config(db, config):
     # Обновляем время последнего запуска
     crud.update_scaling_config_last_run(db, config.id)
 
-    # Завершаем задачу
-    final_status = 'completed' if failed == 0 else ('failed' if successful == 0 else 'completed')
-    crud.complete_scaling_task(db, task_id, status=final_status)
+    # Завершаем задачу (если не была отменена)
+    if not cancelled:
+        final_status = 'completed' if failed == 0 else ('failed' if successful == 0 else 'completed')
+        crud.complete_scaling_task(db, task_id, status=final_status)
 
     # Итоги
     logger.info(f"")
     logger.info(f"{'='*80}")
-    logger.info(f"✅ АВТОМАСШТАБИРОВАНИЕ ЗАВЕРШЕНО: {config.name}")
+    if cancelled:
+        logger.info(f"⛔ АВТОМАСШТАБИРОВАНИЕ ОТМЕНЕНО: {config.name}")
+    else:
+        logger.info(f"✅ АВТОМАСШТАБИРОВАНИЕ ЗАВЕРШЕНО: {config.name}")
     logger.info(f"{'='*80}")
     logger.info(f"   Успешно: {successful}")
     logger.info(f"   Ошибок: {failed}")
-    logger.info(f"   Задача #{task_id} завершена со статусом: {final_status}")
+    if cancelled:
+        logger.info(f"   Задача #{task_id} отменена пользователем")
+    else:
+        logger.info(f"   Задача #{task_id} завершена со статусом: {final_status}")
     logger.info(f"{'='*80}")
 
 
@@ -314,6 +377,11 @@ def check_and_run_scheduled_configs():
     try:
         configs = crud.get_enabled_scaling_configs(db, user_id=USER_ID)
         current_time = get_moscow_time().strftime("%H:%M")
+
+        if configs:
+            logger.info(f"📋 Проверка расписания: {current_time} МСК, найдено {len(configs)} активных конфигураций")
+            for c in configs:
+                logger.debug(f"   - '{c.name}' (schedule: {c.schedule_time})")
 
         for config in configs:
             if config.schedule_time == current_time:
@@ -338,7 +406,18 @@ def main():
     """
     Основной цикл планировщика автомасштабирования
     """
-    setup_logging()
+    global logger
+
+    # Устанавливаем контекст для логирования
+    user_id = USER_ID if USER_ID else 0
+    set_context(user_id=user_id, service="scheduler", function="scaling")
+
+    # Создаём персональный лог-файл для пользователя
+    if user_id:
+        add_user_log_file(user_id, "scaling")
+
+    # Получаем логгер с контекстом
+    logger = get_logger(service="scheduler", function="scaling", user_id=user_id)
 
     logger.info(f"")
     logger.info(f"{'='*80}")
@@ -350,22 +429,25 @@ def main():
     logger.info(f"С трекингом через ScalingTask для UI-уведомлений")
     logger.info(f"{'='*80}")
 
-    # Запускаем проверку каждую минуту
-    schedule.every(1).minutes.do(check_and_run_scheduled_configs)
-
-    # Первая проверка сразу
-    check_and_run_scheduled_configs()
+    # Трекинг последней проверенной минуты чтобы не пропустить
+    last_checked_minute = None
 
     while True:
         try:
-            schedule.run_pending()
-            time.sleep(30)  # Проверяем каждые 30 секунд
+            current_minute = get_moscow_time().strftime("%H:%M")
+
+            # Проверяем только если минута изменилась (чтобы не дублировать)
+            if current_minute != last_checked_minute:
+                check_and_run_scheduled_configs()
+                last_checked_minute = current_minute
+
+            time.sleep(10)  # Проверяем каждые 10 секунд
         except KeyboardInterrupt:
             logger.info("🛑 Остановка планировщика автомасштабирования")
             break
         except Exception as e:
             logger.error(f"❌ Ошибка в основном цикле: {e}")
-            time.sleep(60)
+            time.sleep(10)
 
 
 if __name__ == "__main__":

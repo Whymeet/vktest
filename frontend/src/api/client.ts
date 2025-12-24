@@ -521,12 +521,15 @@ export interface ScalingConfig {
   name: string;
   enabled: boolean;
   schedule_time: string;
+  scheduled_enabled: boolean;  // TRUE = run by schedule, FALSE = manual only
   account_id: number | null;
   account_ids: number[];  // Multiple accounts selection
   new_budget: number | null;
+  new_name: string | null;  // New name for duplicates (NULL = use original)
   auto_activate: boolean;
   lookback_days: number;
-  duplicates_count: number;  // Number of duplicates per group
+  duplicates_count: number;  // Number of duplicates per group (1-100)
+  vk_ad_group_ids: number[];  // VK ad_group_id for manual scaling
   last_run_at: string | null;
   created_at: string;
   conditions: ScalingCondition[];
@@ -535,14 +538,17 @@ export interface ScalingConfig {
 export interface ScalingConfigCreate {
   name: string;
   schedule_time?: string;
+  scheduled_enabled?: boolean;  // TRUE = run by schedule, FALSE = manual only
   account_id?: number | null;
   account_ids?: number[];  // Multiple accounts selection
   new_budget?: number | null;
+  new_name?: string | null;  // New name for duplicates (NULL = use original)
   auto_activate?: boolean;
   lookback_days?: number;
-  duplicates_count?: number;  // Number of duplicates per group
+  duplicates_count?: number;  // Number of duplicates per group (1-100)
   enabled?: boolean;
   conditions?: ScalingCondition[];
+  vk_ad_group_ids?: number[];  // VK ad_group_id for manual scaling
 }
 
 export interface DuplicatedBannerInfo {
@@ -560,6 +566,7 @@ export interface ScalingLog {
   original_group_name: string | null;
   new_group_id: number | null;
   new_group_name: string | null;
+  requested_name: string | null;  // Requested name from config (NULL = used original)
   stats_snapshot: Record<string, number> | null;
   success: boolean;
   error_message: string | null;
@@ -584,11 +591,12 @@ export interface AdGroupWithStats {
 }
 
 export interface ManualDuplicateRequest {
-  account_name: string;
-  ad_group_ids: number[];  // Multiple group IDs
-  new_budget?: number | null;
+  account_id: number;  // DB account ID (not VK account_id)
+  ad_group_ids: number[];  // VK ad_group_id list
+  new_budget?: number | null;  // NULL = use original budget
+  new_name?: string | null;  // NULL/empty = use original name
   auto_activate?: boolean;
-  duplicates_count?: number;  // Number of duplicates per group
+  duplicates_count?: number;  // Number of duplicates per group (1-100)
 }
 
 export interface ManualDuplicateResponse {

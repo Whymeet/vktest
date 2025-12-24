@@ -1,8 +1,8 @@
 import requests
 from datetime import datetime
-from logging import getLogger
+from utils.logging_setup import get_logger
 
-logger = getLogger("vk_ads_manager")
+logger = get_logger(service="telegram")
 
 def send_telegram_message(config, message):
     telegram_config = config.get("telegram", {})

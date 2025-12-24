@@ -1,5 +1,6 @@
-import { useState, useMemo, useEffect } from 'react';
-import type { ReactNode } from 'react';
+import { useState, useMemo, useEffect, useRef, memo } from 'react';
+import type { ReactNode, CSSProperties } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Modal } from '../components/Modal';
 import { Pagination } from '../components/Pagination';
@@ -56,6 +57,331 @@ function formatMoney(amount: number | null): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   }) + ' ₽';
+}
+
+// Types for virtualization
+interface AnalysisResult {
+  id: number;
+  banner_id: number;
+  cabinet_name: string;
+  vk_spent: number;
+  lt_revenue: number;
+  profit: number;
+  roi_percent: number | null;
+}
+
+// Constants for virtualization
+const ROW_HEIGHT = 48;
+const MOBILE_CARD_HEIGHT = 120;
+
+// Memoized table row component
+const TableRow = memo(function TableRow({
+  result,
+  style,
+}: {
+  result: AnalysisResult;
+  style?: CSSProperties;
+}) {
+  return (
+    <tr
+      style={style}
+      className="border-b border-slate-700/50 hover:bg-slate-700/30 transition-colors"
+    >
+      <td className="py-3 pr-4">
+        <span className="text-white font-mono">{result.banner_id}</span>
+      </td>
+      <td className="py-3 pr-4">
+        <span className="text-sm text-slate-300">{result.cabinet_name}</span>
+      </td>
+      <td className="py-3 pr-4 text-right">
+        <span className="text-orange-400">{formatMoney(result.vk_spent)}</span>
+      </td>
+      <td className="py-3 pr-4 text-right">
+        <span className="text-blue-400">{formatMoney(result.lt_revenue)}</span>
+      </td>
+      <td className="py-3 pr-4 text-right">
+        <span className={result.profit >= 0 ? 'text-green-400' : 'text-red-400'}>
+          {formatMoney(result.profit)}
+        </span>
+      </td>
+      <td className="py-3 text-right">
+        <span
+          className={`font-medium ${
+            result.roi_percent === null
+              ? 'text-slate-400'
+              : result.roi_percent >= 0
+              ? 'text-green-400'
+              : 'text-red-400'
+          }`}
+        >
+          {result.roi_percent !== null ? `${result.roi_percent.toFixed(1)}%` : '-'}
+        </span>
+      </td>
+    </tr>
+  );
+});
+
+// Memoized mobile card component
+const MobileCard = memo(function MobileCard({
+  result,
+  style,
+}: {
+  result: AnalysisResult;
+  style?: CSSProperties;
+}) {
+  return (
+    <div
+      style={style}
+      className="bg-slate-700/30 rounded-lg p-3 border border-slate-700/50 space-y-2"
+    >
+      <div className="flex items-center justify-between">
+        <span className="text-white font-mono text-sm">ID: {result.banner_id}</span>
+        <span
+          className={`font-bold text-lg ${
+            result.roi_percent === null
+              ? 'text-slate-400'
+              : result.roi_percent >= 0
+              ? 'text-green-400'
+              : 'text-red-400'
+          }`}
+        >
+          {result.roi_percent !== null ? `${result.roi_percent.toFixed(1)}%` : '-'}
+        </span>
+      </div>
+      <div className="text-xs text-slate-400 truncate">{result.cabinet_name}</div>
+      <div className="flex items-center justify-between text-xs gap-2">
+        <div className="flex flex-col">
+          <span className="text-slate-500">Траты</span>
+          <span className="text-orange-400">{formatMoney(result.vk_spent)}</span>
+        </div>
+        <div className="flex flex-col">
+          <span className="text-slate-500">Доход</span>
+          <span className="text-blue-400">{formatMoney(result.lt_revenue)}</span>
+        </div>
+        <div className="flex flex-col">
+          <span className="text-slate-500">Прибыль</span>
+          <span className={result.profit >= 0 ? 'text-green-400' : 'text-red-400'}>
+            {formatMoney(result.profit)}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+// Virtualized mobile cards component
+function MobileCardsVirtualized({
+  results,
+  sortField,
+  onSort,
+  SortIcon,
+}: {
+  results: AnalysisResult[];
+  sortField: SortField;
+  onSort: (field: SortField) => void;
+  SortIcon: React.ComponentType<{ field: SortField }>;
+}) {
+  const parentRef = useRef<HTMLDivElement>(null);
+
+  const rowVirtualizer = useVirtualizer({
+    count: results.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => MOBILE_CARD_HEIGHT,
+    overscan: 5,
+  });
+
+  return (
+    <div className="lg:hidden space-y-3">
+      {/* Mobile sort controls */}
+      <div className="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1">
+        <button
+          onClick={() => onSort('roi_percent')}
+          className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition-colors ${
+            sortField === 'roi_percent'
+              ? 'bg-blue-600 text-white'
+              : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+          }`}
+        >
+          ROI <SortIcon field="roi_percent" />
+        </button>
+        <button
+          onClick={() => onSort('profit')}
+          className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition-colors ${
+            sortField === 'profit'
+              ? 'bg-blue-600 text-white'
+              : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+          }`}
+        >
+          Прибыль <SortIcon field="profit" />
+        </button>
+        <button
+          onClick={() => onSort('vk_spent')}
+          className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition-colors ${
+            sortField === 'vk_spent'
+              ? 'bg-blue-600 text-white'
+              : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+          }`}
+        >
+          Траты <SortIcon field="vk_spent" />
+        </button>
+      </div>
+
+      {/* Virtualized cards container */}
+      <div
+        ref={parentRef}
+        className="overflow-auto"
+        style={{ maxHeight: 'calc(100vh - 400px)', minHeight: '300px' }}
+      >
+        <div
+          style={{
+            height: `${rowVirtualizer.getTotalSize()}px`,
+            width: '100%',
+            position: 'relative',
+          }}
+        >
+          {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+            const result = results[virtualRow.index];
+            return (
+              <div
+                key={result.id}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  height: `${virtualRow.size}px`,
+                  transform: `translateY(${virtualRow.start}px)`,
+                  paddingBottom: '12px',
+                }}
+              >
+                <MobileCard result={result} />
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Virtualized desktop table component
+function DesktopTableVirtualized({
+  results,
+  onSort,
+  SortIcon,
+}: {
+  results: AnalysisResult[];
+  onSort: (field: SortField) => void;
+  SortIcon: React.ComponentType<{ field: SortField }>;
+}) {
+  const parentRef = useRef<HTMLDivElement>(null);
+
+  const rowVirtualizer = useVirtualizer({
+    count: results.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => ROW_HEIGHT,
+    overscan: 10,
+  });
+
+  if (results.length === 0) {
+    return (
+      <div className="hidden lg:block">
+        <div className="text-center py-8 text-slate-400">
+          Нет данных для отображения
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="hidden lg:block">
+      <div
+        ref={parentRef}
+        className="overflow-auto"
+        style={{ maxHeight: '600px' }}
+      >
+        <table className="w-full">
+          <thead className="sticky top-0 bg-slate-800 z-10">
+            <tr className="text-left text-sm text-slate-400 border-b border-slate-700">
+              <th className="pb-3 pr-4">
+                <button
+                  onClick={() => onSort('banner_id')}
+                  className="flex items-center gap-1 hover:text-white"
+                >
+                  ID объявления
+                  <SortIcon field="banner_id" />
+                </button>
+              </th>
+              <th className="pb-3 pr-4">Кабинет</th>
+              <th className="pb-3 pr-4 text-right">
+                <button
+                  onClick={() => onSort('vk_spent')}
+                  className="flex items-center gap-1 hover:text-white ml-auto"
+                >
+                  Траты VK
+                  <SortIcon field="vk_spent" />
+                </button>
+              </th>
+              <th className="pb-3 pr-4 text-right">
+                <button
+                  onClick={() => onSort('lt_revenue')}
+                  className="flex items-center gap-1 hover:text-white ml-auto"
+                >
+                  Доход LT
+                  <SortIcon field="lt_revenue" />
+                </button>
+              </th>
+              <th className="pb-3 pr-4 text-right">
+                <button
+                  onClick={() => onSort('profit')}
+                  className="flex items-center gap-1 hover:text-white ml-auto"
+                >
+                  Прибыль
+                  <SortIcon field="profit" />
+                </button>
+              </th>
+              <th className="pb-3 text-right">
+                <button
+                  onClick={() => onSort('roi_percent')}
+                  className="flex items-center gap-1 hover:text-white ml-auto"
+                >
+                  ROI
+                  <SortIcon field="roi_percent" />
+                </button>
+              </th>
+            </tr>
+          </thead>
+          <tbody
+            style={{
+              height: `${rowVirtualizer.getTotalSize()}px`,
+              position: 'relative',
+              display: 'block',
+            }}
+          >
+            {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+              const result = results[virtualRow.index];
+              return (
+                <TableRow
+                  key={result.id}
+                  result={result}
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    height: `${virtualRow.size}px`,
+                    transform: `translateY(${virtualRow.start}px)`,
+                    display: 'table',
+                    tableLayout: 'fixed',
+                  }}
+                />
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
 }
 
 export function ProfitableAds() {
@@ -621,176 +947,20 @@ export function ProfitableAds() {
               </div>
             ) : (
               <>
-                {/* Mobile: Card view */}
-                <div className="lg:hidden space-y-3">
-                  {/* Mobile sort controls */}
-                  <div className="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1">
-                    <button
-                      onClick={() => handleSort('roi_percent')}
-                      className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition-colors ${
-                        sortField === 'roi_percent' ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-                      }`}
-                    >
-                      ROI <SortIcon field="roi_percent" />
-                    </button>
-                    <button
-                      onClick={() => handleSort('profit')}
-                      className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition-colors ${
-                        sortField === 'profit' ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-                      }`}
-                    >
-                      Прибыль <SortIcon field="profit" />
-                    </button>
-                    <button
-                      onClick={() => handleSort('vk_spent')}
-                      className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition-colors ${
-                        sortField === 'vk_spent' ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-                      }`}
-                    >
-                      Траты <SortIcon field="vk_spent" />
-                    </button>
-                  </div>
+                {/* Mobile: Card view with virtualization */}
+                <MobileCardsVirtualized
+                  results={sortedResults}
+                  sortField={sortField}
+                  onSort={handleSort}
+                  SortIcon={SortIcon}
+                />
 
-                  {/* Mobile cards */}
-                  {sortedResults.map((result: any) => (
-                    <div
-                      key={result.id}
-                      className="bg-slate-700/30 rounded-lg p-3 border border-slate-700/50 space-y-2"
-                    >
-                      {/* Top row: Banner ID and ROI */}
-                      <div className="flex items-center justify-between">
-                        <span className="text-white font-mono text-sm">ID: {result.banner_id}</span>
-                        <span className={`font-bold text-lg ${
-                          result.roi_percent === null ? 'text-slate-400' :
-                          result.roi_percent >= 0 ? 'text-green-400' : 'text-red-400'
-                        }`}>
-                          {result.roi_percent !== null ? `${result.roi_percent.toFixed(1)}%` : '-'}
-                        </span>
-                      </div>
-
-                      {/* Cabinet */}
-                      <div className="text-xs text-slate-400 truncate">
-                        {result.cabinet_name}
-                      </div>
-
-                      {/* Stats row */}
-                      <div className="flex items-center justify-between text-xs gap-2">
-                        <div className="flex flex-col">
-                          <span className="text-slate-500">Траты</span>
-                          <span className="text-orange-400">{formatMoney(result.vk_spent)}</span>
-                        </div>
-                        <div className="flex flex-col">
-                          <span className="text-slate-500">Доход</span>
-                          <span className="text-blue-400">{formatMoney(result.lt_revenue)}</span>
-                        </div>
-                        <div className="flex flex-col">
-                          <span className="text-slate-500">Прибыль</span>
-                          <span className={result.profit >= 0 ? 'text-green-400' : 'text-red-400'}>
-                            {formatMoney(result.profit)}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Desktop: Table view */}
-                <div className="hidden lg:block overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="text-left text-sm text-slate-400 border-b border-slate-700">
-                        <th className="pb-3 pr-4">
-                          <button
-                            onClick={() => handleSort('banner_id')}
-                            className="flex items-center gap-1 hover:text-white"
-                          >
-                            ID объявления
-                            <SortIcon field="banner_id" />
-                          </button>
-                        </th>
-                        <th className="pb-3 pr-4">Кабинет</th>
-                        <th className="pb-3 pr-4 text-right">
-                          <button
-                            onClick={() => handleSort('vk_spent')}
-                            className="flex items-center gap-1 hover:text-white ml-auto"
-                          >
-                            Траты VK
-                            <SortIcon field="vk_spent" />
-                          </button>
-                        </th>
-                        <th className="pb-3 pr-4 text-right">
-                          <button
-                            onClick={() => handleSort('lt_revenue')}
-                            className="flex items-center gap-1 hover:text-white ml-auto"
-                          >
-                            Доход LT
-                            <SortIcon field="lt_revenue" />
-                          </button>
-                        </th>
-                        <th className="pb-3 pr-4 text-right">
-                          <button
-                            onClick={() => handleSort('profit')}
-                            className="flex items-center gap-1 hover:text-white ml-auto"
-                          >
-                            Прибыль
-                            <SortIcon field="profit" />
-                          </button>
-                        </th>
-                        <th className="pb-3 text-right">
-                          <button
-                            onClick={() => handleSort('roi_percent')}
-                            className="flex items-center gap-1 hover:text-white ml-auto"
-                          >
-                            ROI
-                            <SortIcon field="roi_percent" />
-                          </button>
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {sortedResults.length === 0 ? (
-                        <tr>
-                          <td colSpan={6} className="text-center py-8 text-slate-400">
-                            Нет данных для отображения
-                          </td>
-                        </tr>
-                      ) : (
-                        sortedResults.map((result: any) => (
-                          <tr
-                            key={result.id}
-                            className="border-b border-slate-700/50 hover:bg-slate-700/30 transition-colors"
-                          >
-                            <td className="py-3 pr-4">
-                              <span className="text-white font-mono">{result.banner_id}</span>
-                            </td>
-                            <td className="py-3 pr-4">
-                              <span className="text-sm text-slate-300">{result.cabinet_name}</span>
-                            </td>
-                            <td className="py-3 pr-4 text-right">
-                              <span className="text-orange-400">{formatMoney(result.vk_spent)}</span>
-                            </td>
-                            <td className="py-3 pr-4 text-right">
-                              <span className="text-blue-400">{formatMoney(result.lt_revenue)}</span>
-                            </td>
-                            <td className="py-3 pr-4 text-right">
-                              <span className={result.profit >= 0 ? 'text-green-400' : 'text-red-400'}>
-                                {formatMoney(result.profit)}
-                              </span>
-                            </td>
-                            <td className="py-3 text-right">
-                              <span className={`font-medium ${
-                                result.roi_percent === null ? 'text-slate-400' :
-                                result.roi_percent >= 0 ? 'text-green-400' : 'text-red-400'
-                              }`}>
-                                {result.roi_percent !== null ? `${result.roi_percent.toFixed(1)}%` : '-'}
-                              </span>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+                {/* Desktop: Table view with virtualization */}
+                <DesktopTableVirtualized
+                  results={sortedResults}
+                  onSort={handleSort}
+                  SortIcon={SortIcon}
+                />
               </>
             )}
             

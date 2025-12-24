@@ -1,9 +1,9 @@
 import requests
 import time
 from datetime import datetime
-from logging import getLogger
+from utils.logging_setup import get_logger
 
-logger = getLogger("vk_ads_manager")
+logger = get_logger(service="vk_api")
 
 
 def _interruptible_sleep(seconds):
@@ -781,8 +781,8 @@ def duplicate_ad_group_full(
         token: VK Ads API токен
         base_url: Базовый URL VK Ads API
         ad_group_id: ID группы для дублирования
-        new_name: Новое имя группы (если None, генерируется автоматически)
-        new_budget: Новый бюджет группы в рублях (если None или 0, бюджет не устанавливается)
+        new_name: Новое имя группы. Если None или пустая строка - используется ОРИГИНАЛЬНОЕ имя.
+        new_budget: Новый бюджет группы в рублях. Если None или 0 - копируется бюджет оригинала.
         auto_activate: Автоматически активировать группу и объявления
         rate_limit_delay: Задержка между запросами (по умолчанию 0.03 сек = ~33 req/sec)
 
@@ -880,10 +880,13 @@ def duplicate_ad_group_full(
                     print(f"✅ Получен objective: {campaign['objective']}")
 
         # Изменяем имя
-        if new_name:
-            new_group_data['name'] = new_name
+        # Если new_name указан и не пустой - используем его
+        # Если new_name пустой или None - используем ОРИГИНАЛЬНОЕ имя группы
+        if new_name and new_name.strip():
+            new_group_data['name'] = new_name.strip()
         else:
-            new_group_data['name'] = _generate_copy_name(original_group.get('name', 'Копия'))
+            # Используем оригинальное имя группы
+            new_group_data['name'] = original_group.get('name', 'Копия')
 
         # Устанавливаем бюджет
         budget_to_set = None
@@ -1070,29 +1073,68 @@ def get_ad_groups_with_stats(token: str, base_url: str, date_from: str, date_to:
         return []
 
     group_ids = [g['id'] for g in groups]
-    
+
     logger.info(f"📊 Получаем статистику для {len(group_ids)} групп за период {date_from} — {date_to}")
-    
-    # Получаем статистику по группам
+
+    # Получаем статистику по группам С БАТЧИРОВАНИЕМ
+    # Чтобы избежать ошибки 414 (Request-URI Too Large) при большом количестве групп
     stats_url = f"{base_url}/statistics/ad_groups/day.json"
-    params = {
-        "date_from": date_from,
-        "date_to": date_to,
-        "metrics": "base",
-        "id": ",".join(map(str, group_ids))
-    }
-    
+    STATS_BATCH_SIZE = 100  # Максимум групп в одном запросе
+
+    all_stats_data = []
+
     try:
-        response = requests.get(stats_url, headers=_headers(token), params=params, timeout=30)
-        
-        if response.status_code != 200:
-            logger.error(f"❌ Ошибка получения статистики групп: HTTP {response.status_code}, Response: {response.text[:500]}")
-            # Возвращаем группы без статистики
-            return groups
-        
-        stats_data = response.json().get("items", [])
-        logger.info(f"📊 Получено {len(stats_data)} записей статистики от VK API")
-        
+        # Разбиваем на батчи для избежания 414 ошибки
+        total_batches = (len(group_ids) + STATS_BATCH_SIZE - 1) // STATS_BATCH_SIZE
+        logger.info(f"📦 Разбиваем {len(group_ids)} групп на {total_batches} батчей по {STATS_BATCH_SIZE}")
+
+        for batch_num, i in enumerate(range(0, len(group_ids), STATS_BATCH_SIZE), 1):
+            batch_ids = group_ids[i:i + STATS_BATCH_SIZE]
+
+            params = {
+                "date_from": date_from,
+                "date_to": date_to,
+                "metrics": "base",
+                "id": ",".join(map(str, batch_ids))
+            }
+
+            logger.info(f"   📊 Батч {batch_num}/{total_batches}: запрашиваем статистику для {len(batch_ids)} групп...")
+
+            response = requests.get(stats_url, headers=_headers(token), params=params, timeout=30)
+
+            if response.status_code == 414:
+                # URL слишком длинный - попробуем меньший батч
+                logger.warning(f"⚠️ Батч {batch_num}: URL слишком длинный для {len(batch_ids)} групп, пробуем по 50")
+                for sub_i in range(0, len(batch_ids), 50):
+                    sub_batch = batch_ids[sub_i:sub_i + 50]
+                    params["id"] = ",".join(map(str, sub_batch))
+                    sub_response = requests.get(stats_url, headers=_headers(token), params=params, timeout=30)
+                    if sub_response.status_code == 200:
+                        sub_data = sub_response.json().get("items", [])
+                        all_stats_data.extend(sub_data)
+                    else:
+                        logger.error(f"❌ Ошибка при под-батче: HTTP {sub_response.status_code}")
+                continue
+
+            if response.status_code != 200:
+                logger.error(f"❌ Ошибка получения статистики батча {batch_num}: HTTP {response.status_code}, Response: {response.text[:300]}")
+                continue
+
+            batch_stats = response.json().get("items", [])
+            all_stats_data.extend(batch_stats)
+            logger.info(f"   ✅ Батч {batch_num}: получено {len(batch_stats)} записей")
+
+            # Небольшая пауза между батчами чтобы не превысить rate limit
+            if batch_num < total_batches:
+                time.sleep(0.1)
+
+        stats_data = all_stats_data
+        logger.info(f"📊 Всего получено {len(stats_data)} записей статистики от VK API")
+
+        # Логируем первую запись для отладки
+        if stats_data and len(stats_data) > 0:
+            logger.info(f"🔍 Пример первой записи статистики: {str(stats_data[0])[:500]}")
+
         # Агрегируем статистику по группам
         # Используем такую же логику как для баннеров в get_banners_stats_day
         stats_by_group = {}
@@ -1100,14 +1142,25 @@ def get_ad_groups_with_stats(token: str, base_url: str, date_from: str, date_to:
             gid = item.get("id")
             if gid is None:
                 continue
-                
+
             # Получаем total.base — агрегированные данные за весь период
             total = item.get("total", {})
             base = total.get("base", {}) if isinstance(total, dict) else {}
-            
+
             # VK goals находятся в total.base.vk.goals
             vk_data = base.get("vk", {}) if isinstance(base.get("vk"), dict) else {}
             vk_goals = float(vk_data.get("goals", 0) or 0)
+
+            # Дополнительное логирование для отладки (только для первой группы)
+            if gid and gid == stats_data[0].get("id") and (base or item.get("rows")):
+                logger.info(f"🔍 Детальная структура данных для группы {gid}:")
+                logger.info(f"   total keys: {list(total.keys()) if isinstance(total, dict) else 'not dict'}")
+                logger.info(f"   base keys: {list(base.keys()) if isinstance(base, dict) else 'not dict'}")
+                logger.info(f"   base content: {base}")
+                logger.info(f"   vk_data: {vk_data}")
+                logger.info(f"   vk_goals из total.base.vk.goals: {vk_goals}")
+                if item.get("rows"):
+                    logger.info(f"   rows (первые 2): {item.get('rows')[:2]}")
             
             # Основные метрики
             spent = float(base.get("spent", 0) or 0)
