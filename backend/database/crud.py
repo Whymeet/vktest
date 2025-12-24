@@ -5,7 +5,7 @@ Multi-tenant architecture with user isolation
 from typing import List, Optional
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, and_
+from sqlalchemy import desc, and_, func
 from utils.time_utils import get_moscow_time
 
 from .models import (
@@ -1381,7 +1381,7 @@ def get_leadstech_analysis_results(
     sort_order: str = 'desc',
     user_id: int = None
 ) -> tuple[List[LeadsTechAnalysisResult], int]:
-    """Get LeadsTech analysis results with pagination and sorting"""
+    """Get LeadsTech analysis results with pagination and sorting."""
     query = db.query(LeadsTechAnalysisResult)
 
     if user_id:
@@ -1391,7 +1391,7 @@ def get_leadstech_analysis_results(
         query = query.filter(LeadsTechAnalysisResult.cabinet_name == cabinet_name)
 
     total = query.count()
-    
+
     # Determine sort column
     sort_columns = {
         'created_at': LeadsTechAnalysisResult.created_at,
@@ -1401,14 +1401,14 @@ def get_leadstech_analysis_results(
         'lt_revenue': LeadsTechAnalysisResult.lt_revenue,
         'banner_id': LeadsTechAnalysisResult.banner_id,
     }
-    
+
     sort_column = sort_columns.get(sort_by, LeadsTechAnalysisResult.created_at)
-    
+
     if sort_order == 'asc':
         query = query.order_by(sort_column.asc().nullslast())
     else:
         query = query.order_by(sort_column.desc().nullslast())
-    
+
     items = query.offset(offset).limit(limit).all()
     return items, total
 
