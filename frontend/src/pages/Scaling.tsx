@@ -33,7 +33,6 @@ import type {
   ScalingConfig,
   ScalingCondition,
   ScalingLog,
-  DuplicatedBannerInfo,
 } from '../api/client';
 import { Card } from '../components/Card';
 import { Toggle } from '../components/Toggle';
