@@ -1957,41 +1957,56 @@ async def get_scaling_configs_endpoint(
     db: Session = Depends(get_db)
 ):
     """Get all scaling configurations"""
-    configs = crud.get_scaling_configs(db, user_id=current_user.id)
-    result = []
+    import traceback
+    try:
+        print(f"[SCALING GET] START - user_id={current_user.id}")
+        configs = crud.get_scaling_configs(db, user_id=current_user.id)
+        print(f"[SCALING GET] Found {len(configs)} configs")
+        result = []
 
-    for config in configs:
-        conditions = crud.get_scaling_conditions(db, config.id)
-        account_ids = crud.get_scaling_config_account_ids(db, config.id)
-        manual_groups = crud.get_manual_scaling_groups(db, config.id)
-        result.append({
-            "id": config.id,
-            "name": config.name,
-            "enabled": config.enabled,
-            "schedule_time": config.schedule_time,
-            "scheduled_enabled": getattr(config, 'scheduled_enabled', True),
-            "account_id": config.account_id,
-            "account_ids": account_ids,
-            "new_budget": config.new_budget,
-            "new_name": getattr(config, 'new_name', None),
-            "auto_activate": config.auto_activate,
-            "lookback_days": config.lookback_days,
-            "duplicates_count": config.duplicates_count or 1,
-            "vk_ad_group_ids": manual_groups,
-            "last_run_at": config.last_run_at.isoformat() if config.last_run_at else None,
-            "created_at": config.created_at.isoformat(),
-            "conditions": [
-                {
-                    "id": c.id,
-                    "metric": c.metric,
-                    "operator": c.operator,
-                    "value": c.value
-                }
-                for c in conditions
-            ]
-        })
+        for config in configs:
+            try:
+                print(f"[SCALING GET] Processing config id={config.id}")
+                conditions = crud.get_scaling_conditions(db, config.id)
+                account_ids = crud.get_scaling_config_account_ids(db, config.id)
+                manual_groups = crud.get_manual_scaling_groups(db, config.id)
+                result.append({
+                    "id": config.id,
+                    "name": config.name,
+                    "enabled": config.enabled,
+                    "schedule_time": config.schedule_time,
+                    "scheduled_enabled": getattr(config, 'scheduled_enabled', True),
+                    "account_id": config.account_id,
+                    "account_ids": account_ids,
+                    "new_budget": config.new_budget,
+                    "new_name": getattr(config, 'new_name', None),
+                    "auto_activate": config.auto_activate,
+                    "lookback_days": config.lookback_days,
+                    "duplicates_count": config.duplicates_count or 1,
+                    "vk_ad_group_ids": manual_groups,
+                    "last_run_at": config.last_run_at.isoformat() if config.last_run_at else None,
+                    "created_at": config.created_at.isoformat(),
+                    "conditions": [
+                        {
+                            "id": c.id,
+                            "metric": c.metric,
+                            "operator": c.operator,
+                            "value": c.value
+                        }
+                        for c in conditions
+                    ]
+                })
+            except Exception as e:
+                print(f"[SCALING GET] ERROR processing config id={config.id}: {e}")
+                traceback.print_exc()
+                raise
 
-    return result
+        print(f"[SCALING GET] SUCCESS - returning {len(result)} configs")
+        return result
+    except Exception as e:
+        print(f"[SCALING GET] FATAL ERROR: {e}")
+        traceback.print_exc()
+        raise
 
 
 @app.get("/api/scaling/configs/{config_id}")
