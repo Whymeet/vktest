@@ -28,12 +28,60 @@ from slowapi.errors import RateLimitExceeded
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+
+# === Настройка логирования в файл backend_all.log ===
+class TeeOutput:
+    """Дублирует stdout/stderr в файл и консоль"""
+    def __init__(self, log_file_path: Path, original_stream):
+        self.log_file_path = log_file_path
+        self.original = original_stream
+        self.log_file = None
+        self._open_file()
+
+    def _open_file(self):
+        try:
+            self.log_file_path.parent.mkdir(parents=True, exist_ok=True)
+            self.log_file = open(self.log_file_path, "a", encoding="utf-8")
+        except Exception:
+            self.log_file = None
+
+    def write(self, message):
+        self.original.write(message)
+        if self.log_file:
+            try:
+                self.log_file.write(message)
+                self.log_file.flush()
+            except Exception:
+                pass
+
+    def flush(self):
+        self.original.flush()
+        if self.log_file:
+            try:
+                self.log_file.flush()
+            except Exception:
+                pass
+
+# Определяем путь к логам и перенаправляем stdout/stderr
+_logs_dir = Path("/app/logs") if os.environ.get('IN_DOCKER', 'false').lower() == 'true' else Path(__file__).parent.parent / "logs"
+_logs_dir.mkdir(parents=True, exist_ok=True)
+_backend_log_file = _logs_dir / "backend_all.log"
+
+# Перенаправляем stdout и stderr в файл
+sys.stdout = TeeOutput(_backend_log_file, sys.__stdout__)
+sys.stderr = TeeOutput(_backend_log_file, sys.__stderr__)
+
 from database import get_db, init_db, SessionLocal
 from database import crud
 from utils.time_utils import get_moscow_time
+from utils.logging_setup import setup_logging, get_logger
 from auth.dependencies import get_current_user, get_current_superuser, get_optional_current_user, require_feature
 from database.models import User
 from api.auth_routes import router as auth_router
+
+# Инициализация Loguru
+setup_logging()
+logger = get_logger(service="vk_api")
 
 # Определяем окружение (Docker или локальное)
 IN_DOCKER = os.environ.get('IN_DOCKER', 'false').lower() == 'true'
@@ -1865,35 +1913,42 @@ class ScalingConditionModel(BaseModel):
 class ScalingConfigCreate(BaseModel):
     name: str
     schedule_time: str = "08:00"
+    scheduled_enabled: bool = True  # TRUE = run by schedule, FALSE = manual only
     account_id: Optional[int] = None
     account_ids: Optional[List[int]] = None  # Multiple accounts selection
-    new_budget: Optional[float] = None
+    new_budget: Optional[float] = None  # NULL = use original budget
+    new_name: Optional[str] = None  # NULL/empty = use original name
     auto_activate: bool = False
     lookback_days: int = 7
-    duplicates_count: int = 1  # Number of duplicates per group
+    duplicates_count: int = Field(default=1, ge=1, le=100)  # 1-100 duplicates per group
     enabled: bool = False
     conditions: List[ScalingConditionModel] = []
+    vk_ad_group_ids: Optional[List[int]] = None  # VK ad_group_id for manual scaling
 
 
 class ScalingConfigUpdate(BaseModel):
     name: Optional[str] = None
     schedule_time: Optional[str] = None
+    scheduled_enabled: Optional[bool] = None  # TRUE = run by schedule, FALSE = manual only
     account_id: Optional[int] = None
     account_ids: Optional[List[int]] = None  # Multiple accounts selection
-    new_budget: Optional[float] = None
+    new_budget: Optional[float] = None  # NULL = use original budget
+    new_name: Optional[str] = None  # NULL/empty = use original name
     auto_activate: Optional[bool] = None
     lookback_days: Optional[int] = None
-    duplicates_count: Optional[int] = None  # Number of duplicates per group
+    duplicates_count: Optional[int] = Field(default=None, ge=1, le=100)  # 1-100 duplicates per group
     enabled: Optional[bool] = None
     conditions: Optional[List[ScalingConditionModel]] = None
+    vk_ad_group_ids: Optional[List[int]] = None  # VK ad_group_id for manual scaling
 
 
 class ManualDuplicateRequest(BaseModel):
-    account_name: str
-    ad_group_ids: List[int]  # Multiple group IDs
-    new_budget: Optional[float] = None
+    account_id: int  # DB account ID (not VK account_id)
+    ad_group_ids: List[int]  # VK ad_group_id list
+    new_budget: Optional[float] = None  # NULL = use original budget
+    new_name: Optional[str] = None  # NULL/empty = use original name
     auto_activate: bool = False
-    duplicates_count: int = 1  # Number of duplicates per group
+    duplicates_count: int = Field(default=1, ge=1, le=100)  # 1-100 duplicates per group
 
 
 @app.get("/api/scaling/configs")
@@ -1904,21 +1959,25 @@ async def get_scaling_configs_endpoint(
     """Get all scaling configurations"""
     configs = crud.get_scaling_configs(db, user_id=current_user.id)
     result = []
-    
+
     for config in configs:
         conditions = crud.get_scaling_conditions(db, config.id)
         account_ids = crud.get_scaling_config_account_ids(db, config.id)
+        manual_groups = crud.get_manual_scaling_groups(db, config.id)
         result.append({
             "id": config.id,
             "name": config.name,
             "enabled": config.enabled,
             "schedule_time": config.schedule_time,
+            "scheduled_enabled": getattr(config, 'scheduled_enabled', True),
             "account_id": config.account_id,
             "account_ids": account_ids,
             "new_budget": config.new_budget,
+            "new_name": getattr(config, 'new_name', None),
             "auto_activate": config.auto_activate,
             "lookback_days": config.lookback_days,
             "duplicates_count": config.duplicates_count or 1,
+            "vk_ad_group_ids": manual_groups,
             "last_run_at": config.last_run_at.isoformat() if config.last_run_at else None,
             "created_at": config.created_at.isoformat(),
             "conditions": [
@@ -1931,7 +1990,7 @@ async def get_scaling_configs_endpoint(
                 for c in conditions
             ]
         })
-    
+
     return result
 
 
@@ -1952,18 +2011,22 @@ async def get_scaling_config_endpoint(
     
     conditions = crud.get_scaling_conditions(db, config_id)
     account_ids = crud.get_scaling_config_account_ids(db, config_id)
-    
+    manual_groups = crud.get_manual_scaling_groups(db, config_id)
+
     return {
         "id": config.id,
         "name": config.name,
         "enabled": config.enabled,
         "schedule_time": config.schedule_time,
+        "scheduled_enabled": getattr(config, 'scheduled_enabled', True),
         "account_id": config.account_id,
         "account_ids": account_ids,
         "new_budget": config.new_budget,
+        "new_name": getattr(config, 'new_name', None),
         "auto_activate": config.auto_activate,
         "lookback_days": config.lookback_days,
         "duplicates_count": config.duplicates_count or 1,
+        "vk_ad_group_ids": manual_groups,
         "last_run_at": config.last_run_at.isoformat() if config.last_run_at else None,
         "created_at": config.created_at.isoformat(),
         "conditions": [
@@ -2001,10 +2064,13 @@ async def create_scaling_config_endpoint(
             account_id=data.account_id,
             account_ids=data.account_ids,
             new_budget=data.new_budget,
+            new_name=data.new_name,
             auto_activate=data.auto_activate,
             lookback_days=data.lookback_days,
             duplicates_count=data.duplicates_count,
-            enabled=data.enabled
+            enabled=data.enabled,
+            scheduled_enabled=data.scheduled_enabled,
+            vk_ad_group_ids=data.vk_ad_group_ids
         )
         print(f"[SCALING CREATE] Step 1 DONE: config.id={config.id}, took {time.time() - start_time:.2f}s")
 
@@ -2059,10 +2125,13 @@ async def update_scaling_config_endpoint(
             account_id=data.account_id,
             account_ids=data.account_ids,
             new_budget=data.new_budget,
+            new_name=data.new_name,
             auto_activate=data.auto_activate,
             lookback_days=data.lookback_days,
             duplicates_count=data.duplicates_count,
-            enabled=data.enabled
+            enabled=data.enabled,
+            scheduled_enabled=data.scheduled_enabled,
+            vk_ad_group_ids=data.vk_ad_group_ids
         )
         print(f"[SCALING UPDATE] Step 1 DONE, took {time.time() - start_time:.2f}s")
 
@@ -2288,6 +2357,7 @@ def run_duplication_task(
     ad_group_ids: List[int],
     duplicates_count: int,
     new_budget: Optional[float],
+    new_name: Optional[str],
     auto_activate: bool
 ):
     """Background worker for duplication task"""
@@ -2328,7 +2398,7 @@ def run_duplication_task(
                         token=account_token,
                         base_url=base_url,
                         ad_group_id=group_id,
-                        new_name=None,
+                        new_name=new_name,  # Pass new_name (None = use original)
                         new_budget=new_budget,
                         auto_activate=auto_activate,
                         rate_limit_delay=0.03
@@ -2361,7 +2431,8 @@ def run_duplication_task(
                         error_message=result.get("error"),
                         total_banners=result.get("total_banners", 0),
                         duplicated_banners=len(result.get("duplicated_banners", [])),
-                        duplicated_banner_ids=banner_ids_data
+                        duplicated_banner_ids=banner_ids_data,
+                        requested_name=new_name
                     )
 
                     if result.get("success"):
@@ -2419,14 +2490,8 @@ async def manual_duplicate_ad_group(
     db: Session = Depends(get_db)
 ):
     """Manually duplicate ad groups (runs in background with progress tracking)"""
-    # Find account
-    accounts = crud.get_accounts(db, user_id=current_user.id)
-    target_account = None
-    for acc in accounts:
-        if acc.name == data.account_name:
-            target_account = acc
-            break
-
+    # Find account by DB ID
+    target_account = crud.get_account_by_db_id(db, current_user.id, data.account_id)
     if not target_account:
         raise HTTPException(status_code=404, detail="Account not found")
 
@@ -2438,7 +2503,7 @@ async def manual_duplicate_ad_group(
         db,
         user_id=current_user.id,
         task_type='manual',
-        account_name=data.account_name,
+        account_name=target_account.name,
         total_operations=total_operations
     )
 
@@ -2448,10 +2513,11 @@ async def manual_duplicate_ad_group(
         task_id=task.id,
         user_id=current_user.id,
         account_token=target_account.api_token,
-        account_name=data.account_name,
+        account_name=target_account.name,
         ad_group_ids=data.ad_group_ids,
         duplicates_count=duplicates_count,
         new_budget=data.new_budget,
+        new_name=data.new_name,
         auto_activate=data.auto_activate
     )
 
@@ -2471,6 +2537,7 @@ def run_auto_scaling_task(
     lookback_days: int,
     duplicates_count: int,
     new_budget: float,
+    new_name: Optional[str],
     auto_activate: bool
 ):
     """Background worker for auto-scaling configuration execution"""
@@ -2534,6 +2601,12 @@ def run_auto_scaling_task(
 
                         # Duplicate the group N times
                         for dup_num in range(1, duplicates_count + 1):
+                            # Check if task was cancelled
+                            task_check = crud.get_scaling_task(db, task_id)
+                            if task_check and task_check.status == 'cancelled':
+                                print(f"[TASK {task_id}] Task was cancelled, stopping...")
+                                raise Exception("CANCELLED")
+
                             try:
                                 # Update current operation
                                 crud.update_scaling_task_progress(
@@ -2546,7 +2619,7 @@ def run_auto_scaling_task(
                                     token=account_token,
                                     base_url=base_url,
                                     ad_group_id=group_id,
-                                    new_name=None,  # Auto-generate name
+                                    new_name=new_name,  # Pass new_name (None = use original)
                                     new_budget=new_budget,
                                     auto_activate=auto_activate,
                                     rate_limit_delay=0.03
@@ -2579,7 +2652,8 @@ def run_auto_scaling_task(
                                     error_message=result.get("error"),
                                     total_banners=result.get("total_banners", 0),
                                     duplicated_banners=len(result.get("duplicated_banners", [])),
-                                    duplicated_banner_ids=banner_ids_data
+                                    duplicated_banner_ids=banner_ids_data,
+                                    requested_name=new_name
                                 )
 
                                 if result.get("success"):
@@ -2610,6 +2684,8 @@ def run_auto_scaling_task(
                             )
 
             except Exception as e:
+                if str(e) == "CANCELLED":
+                    raise  # Re-raise to exit completely
                 print(f"[TASK {task_id}] Error processing account {account_name}: {e}")
                 crud.update_scaling_task_progress(
                     db, task_id,
@@ -2625,8 +2701,12 @@ def run_auto_scaling_task(
         print(f"[TASK {task_id}] Auto-scaling completed: {successful} success, {failed} failed")
 
     except Exception as e:
-        print(f"[TASK {task_id}] Fatal error in auto-scaling: {e}")
-        crud.complete_scaling_task(db, task_id, status='failed', last_error=str(e))
+        if str(e) == "CANCELLED":
+            print(f"[TASK {task_id}] Auto-scaling cancelled by user")
+            # Task already marked as cancelled, don't overwrite
+        else:
+            print(f"[TASK {task_id}] Fatal error in auto-scaling: {e}")
+            crud.complete_scaling_task(db, task_id, status='failed', last_error=str(e))
     finally:
         db.close()
 
@@ -2708,6 +2788,7 @@ async def run_scaling_config(
         lookback_days=config.lookback_days,
         duplicates_count=duplicates_count,
         new_budget=config.new_budget,
+        new_name=getattr(config, 'new_name', None),
         auto_activate=config.auto_activate
     )
 

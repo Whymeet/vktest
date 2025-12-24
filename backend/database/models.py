@@ -540,12 +540,14 @@ class ScalingConfig(Base):
 
     # Schedule settings
     schedule_time = Column(String(10), nullable=False, default="08:00")  # HH:MM format (MSK)
+    scheduled_enabled = Column(Boolean, default=True)  # TRUE = run by schedule, FALSE = manual only
 
     # Target account (deprecated - use scaling_config_accounts for multiple accounts)
     account_id = Column(Integer, ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True)
 
     # Scaling options
     new_budget = Column(Float, nullable=True)  # New budget for duplicated groups (NULL = same as original)
+    new_name = Column(String(500), nullable=True)  # New name for duplicated groups (NULL = same as original)
     auto_activate = Column(Boolean, default=False)  # Activate duplicated groups immediately
     lookback_days = Column(Integer, default=7)  # Period for statistics analysis
     duplicates_count = Column(Integer, default=1)  # Number of duplicates to create per group
@@ -560,9 +562,31 @@ class ScalingConfig(Base):
     conditions = relationship("ScalingCondition", back_populates="config", cascade="all, delete-orphan")
     account = relationship("Account", backref="scaling_configs_legacy", foreign_keys=[account_id])
     config_accounts = relationship("ScalingConfigAccount", backref="config", cascade="all, delete-orphan")
+    manual_groups = relationship("ManualScalingGroup", back_populates="config", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<ScalingConfig(id={self.id}, name='{self.name}', enabled={self.enabled})>"
+
+
+class ManualScalingGroup(Base):
+    """VK ad group IDs for manual scaling configurations"""
+    __tablename__ = "manual_scaling_groups"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    config_id = Column(Integer, ForeignKey("scaling_configs.id", ondelete="CASCADE"), nullable=False)
+    vk_ad_group_id = Column(BigInteger, nullable=False)
+    created_at = Column(DateTime, default=get_moscow_time, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint('config_id', 'vk_ad_group_id', name='uix_manual_scaling_group'),
+    )
+
+    # Relationships
+    config = relationship("ScalingConfig", back_populates="manual_groups")
+
+    def __repr__(self):
+        return f"<ManualScalingGroup(config_id={self.config_id}, vk_ad_group_id={self.vk_ad_group_id})>"
 
 
 class ScalingCondition(Base):
@@ -613,14 +637,15 @@ class ScalingLog(Base):
     # New group info
     new_group_id = Column(BigInteger, nullable=True)
     new_group_name = Column(String(500), nullable=True)
-    
+    requested_name = Column(String(500), nullable=True)  # Requested name from config (NULL = used original)
+
     # Statistics at the time of duplication
     stats_snapshot = Column(JSON, nullable=True)  # {spent, shows, clicks, goals, cost_per_goal}
-    
+
     # Result
     success = Column(Boolean, default=False)
     error_message = Column(Text, nullable=True)
-    
+
     # Banners info
     total_banners = Column(Integer, default=0)
     duplicated_banners = Column(Integer, default=0)

@@ -7,7 +7,6 @@ Telegram бот для управления VK Ads кабинетами
 """
 
 import json
-import logging
 import subprocess
 import sys
 from pathlib import Path
@@ -18,11 +17,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 from utils.vk_api import get_ad_groups_active, disable_ad_group
-from utils.logging_setup import setup_logging
+from utils.logging_setup import setup_logging, get_logger
 
 # Настройка логирования
 setup_logging()
-logger = logging.getLogger("telegram_bot")
+logger = get_logger(service="telegram")
 
 
 def load_config():

@@ -42,6 +42,11 @@ services:
       - REFRESH_TOKEN_EXPIRE_DAYS=${REFRESH_TOKEN_EXPIRE_DAYS:-7}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:5173}
       - RATE_LIMIT_PER_MINUTE=${RATE_LIMIT_PER_MINUTE:-60}
+    logging:
+      driver: "local"
+      options:
+        max-size: "50m"
+        max-file: "3"
     depends_on:
       postgres:
         condition: service_healthy

@@ -11,7 +11,6 @@ import os
 import sys
 import time
 import subprocess
-import logging
 import signal
 import random
 import json
@@ -25,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import requests
 
 from utils.time_utils import get_moscow_time
+from utils.logging_setup import setup_logging, get_logger
 from utils.vk_api import (
     get_banners_stats_day,
     get_banner_info,
@@ -37,6 +37,9 @@ from utils.vk_api import (
 from database import SessionLocal, init_db
 from database import crud
 from database.models import BannerAction, DisableRule
+
+# Инициализация логирования
+setup_logging()
 
 
 def send_telegram_message(telegram_config: dict, message: str, logger) -> bool:

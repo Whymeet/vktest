@@ -189,8 +189,10 @@ function ConfigFormModal({
 }) {
   const [name, setName] = useState('');
   const [scheduleTime, setScheduleTime] = useState('08:00');
+  const [scheduledEnabled, setScheduledEnabled] = useState(false);
   const [accountIds, setAccountIds] = useState<number[]>([]);
   const [newBudget, setNewBudget] = useState<string>('');
+  const [newName, setNewName] = useState<string>('');
   const [autoActivate, setAutoActivate] = useState(false);
   const [lookbackDays, setLookbackDays] = useState(7);
   const [duplicatesCount, setDuplicatesCount] = useState(1);
@@ -200,8 +202,10 @@ function ConfigFormModal({
     if (config) {
       setName(config.name);
       setScheduleTime(config.schedule_time);
+      setScheduledEnabled(config.scheduled_enabled ?? true);
       setAccountIds(config.account_ids || []);
       setNewBudget(config.new_budget?.toString() || '');
+      setNewName(config.new_name || '');
       setAutoActivate(config.auto_activate);
       setLookbackDays(config.lookback_days);
       setDuplicatesCount(config.duplicates_count || 1);
@@ -209,8 +213,10 @@ function ConfigFormModal({
     } else {
       setName('');
       setScheduleTime('08:00');
+      setScheduledEnabled(false);
       setAccountIds([]);
       setNewBudget('');
+      setNewName('');
       setAutoActivate(false);
       setLookbackDays(7);
       setDuplicatesCount(1);
@@ -223,8 +229,10 @@ function ConfigFormModal({
     onSave({
       name,
       schedule_time: scheduleTime,
+      scheduled_enabled: scheduledEnabled,
       account_ids: accountIds,
       new_budget: newBudget ? parseFloat(newBudget) : null,
+      new_name: newName.trim() || null,
       auto_activate: autoActivate,
       lookback_days: lookbackDays,
       duplicates_count: duplicatesCount,
@@ -332,9 +340,25 @@ function ConfigFormModal({
             )}
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            {accountIds.length === 0 
-              ? 'Не выбрано ни одного кабинета - правило будет применяться ко ВСЕМ' 
+            {accountIds.length === 0
+              ? 'Не выбрано ни одного кабинета - правило будет применяться ко ВСЕМ'
               : `Выбрано: ${accountIds.length} из ${accounts.length}`}
+          </p>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-slate-300 mb-1">
+            Новое название для дублей
+          </label>
+          <input
+            type="text"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white"
+            placeholder="Оставьте пустым для сохранения оригинального названия"
+          />
+          <p className="text-xs text-slate-500 mt-1">
+            Если пусто - используется оригинальное название группы
           </p>
         </div>
 
@@ -352,6 +376,9 @@ function ConfigFormModal({
               min="0"
               step="0.01"
             />
+            <p className="text-xs text-slate-500 mt-1">
+              Если пусто - используется бюджет оригинала
+            </p>
           </div>
 
           <div>
@@ -413,10 +440,11 @@ function ManualDuplicateModal({
   accounts: Account[];
 }) {
   const queryClient = useQueryClient();
-  const [selectedAccount, setSelectedAccount] = useState<string>('');
+  const [selectedAccountId, setSelectedAccountId] = useState<number | null>(null);
   const [groupIdsInput, setGroupIdsInput] = useState('');
   const [duplicatesCount, setDuplicatesCount] = useState(1);
   const [newBudget, setNewBudget] = useState('');
+  const [newName, setNewName] = useState('');
   const [autoActivate, setAutoActivate] = useState(false);
   const [taskStarted, setTaskStarted] = useState(false);
 
@@ -442,12 +470,13 @@ function ManualDuplicateModal({
 
   const handleDuplicate = () => {
     const groupIds = parseGroupIds();
-    if (!selectedAccount || groupIds.length === 0) return;
+    if (!selectedAccountId || groupIds.length === 0) return;
 
     duplicateMutation.mutate({
-      account_name: selectedAccount,
+      account_id: selectedAccountId,
       ad_group_ids: groupIds,
       new_budget: newBudget ? parseFloat(newBudget) : undefined,
+      new_name: newName.trim() || undefined,
       auto_activate: autoActivate,
       duplicates_count: duplicatesCount,
     });
@@ -457,6 +486,7 @@ function ManualDuplicateModal({
     setGroupIdsInput('');
     setDuplicatesCount(1);
     setNewBudget('');
+    setNewName('');
     setAutoActivate(false);
     setTaskStarted(false);
   };
@@ -464,7 +494,7 @@ function ManualDuplicateModal({
   useEffect(() => {
     if (!isOpen) {
       resetForm();
-      setSelectedAccount('');
+      setSelectedAccountId(null);
     }
   }, [isOpen]);
 
@@ -478,9 +508,9 @@ function ManualDuplicateModal({
         <div>
           <label className="block text-sm font-medium text-slate-300 mb-1">Выберите кабинет</label>
           <select
-            value={selectedAccount}
+            value={selectedAccountId ?? ''}
             onChange={(e) => {
-              setSelectedAccount(e.target.value);
+              setSelectedAccountId(e.target.value ? parseInt(e.target.value) : null);
               resetForm();
             }}
             className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white"
@@ -488,14 +518,14 @@ function ManualDuplicateModal({
           >
             <option value="">-- Выберите кабинет --</option>
             {accounts.map((acc) => (
-              <option key={acc.name} value={acc.name}>
+              <option key={acc.id} value={acc.id}>
                 {acc.name}
               </option>
             ))}
           </select>
         </div>
 
-        {selectedAccount && (
+        {selectedAccountId && (
           <>
             {/* Group IDs Input */}
             <div>
@@ -550,6 +580,23 @@ function ManualDuplicateModal({
                   disabled={duplicateMutation.isPending || taskStarted}
                 />
               </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-1">
+                Новое название для дублей
+              </label>
+              <input
+                type="text"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white"
+                placeholder="Оставьте пустым для сохранения оригинального"
+                disabled={duplicateMutation.isPending || taskStarted}
+              />
+              <p className="text-xs text-slate-500 mt-1">
+                Если пусто - копируется оригинальное название
+              </p>
             </div>
 
             <div className="flex items-center gap-2">
@@ -640,7 +687,7 @@ function ManualDuplicateModal({
           {!taskStarted && (
             <button
               onClick={handleDuplicate}
-              disabled={!selectedAccount || groupIds.length === 0 || duplicateMutation.isPending}
+              disabled={!selectedAccountId || groupIds.length === 0 || duplicateMutation.isPending}
               className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 disabled:text-slate-500 rounded text-white transition-colors"
             >
               {duplicateMutation.isPending ? (
@@ -780,13 +827,6 @@ export function Scaling() {
     }
   };
 
-  const handleToggleEnabled = (config: ScalingConfig) => {
-    updateMutation.mutate({
-      id: config.id,
-      data: { enabled: !config.enabled },
-    });
-  };
-
   const formatCondition = (condition: ScalingCondition) => {
     const metric = metrics.find((m) => m.value === condition.metric);
     const operator = operators.find((op) => op.value === condition.operator);
@@ -857,8 +897,11 @@ export function Scaling() {
                 <div className="flex items-center justify-between p-4 bg-slate-800/50">
                   <div className="flex items-center gap-4">
                     <Toggle
-                      checked={config.enabled}
-                      onChange={() => handleToggleEnabled(config)}
+                      checked={config.scheduled_enabled}
+                      onChange={() => updateMutation.mutate({
+                        id: config.id,
+                        data: { scheduled_enabled: !config.scheduled_enabled }
+                      })}
                     />
                     <div>
                       <h3 className="font-medium text-white">{config.name}</h3>

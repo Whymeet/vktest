@@ -7,6 +7,11 @@ from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, and_, func
 from utils.time_utils import get_moscow_time
+from utils.logging_setup import get_logger
+
+def _get_scaling_logger():
+    """Получить логгер для scaling операций"""
+    return get_logger(service="database", function="scaling")
 
 from .models import (
     User,
@@ -28,6 +33,7 @@ from .models import (
     ScalingCondition,
     ScalingLog,
     ScalingTask,
+    ManualScalingGroup,
     DisableRule,
     DisableRuleCondition,
     DisableRuleAccount,
@@ -1443,8 +1449,8 @@ def get_scaling_config_by_id(db: Session, config_id: int) -> Optional[ScalingCon
 
 
 def get_enabled_scaling_configs(db: Session, user_id: Optional[int] = None) -> List[ScalingConfig]:
-    """Get all enabled scaling configurations, optionally filtered by user_id"""
-    query = db.query(ScalingConfig).filter(ScalingConfig.enabled == True)
+    """Get all scaling configurations with scheduled_enabled=True, optionally filtered by user_id"""
+    query = db.query(ScalingConfig).filter(ScalingConfig.scheduled_enabled == True)
     if user_id is not None:
         query = query.filter(ScalingConfig.user_id == user_id)
     return query.all()
@@ -1482,26 +1488,65 @@ def set_scaling_config_accounts(db: Session, config_id: int, account_ids: List[i
     db.commit()
 
 
+# ===== Manual Scaling Groups =====
+
+def get_manual_scaling_groups(db: Session, config_id: int) -> List[int]:
+    """Get VK ad_group_id list for manual scaling config"""
+    groups = db.query(ManualScalingGroup).filter(
+        ManualScalingGroup.config_id == config_id
+    ).all()
+    return [g.vk_ad_group_id for g in groups]
+
+
+def set_manual_scaling_groups(db: Session, config_id: int, vk_group_ids: List[int], user_id: int) -> None:
+    """Set VK ad_group_id list for manual scaling config (replaces existing)"""
+    # Delete existing
+    db.query(ManualScalingGroup).filter(
+        ManualScalingGroup.config_id == config_id
+    ).delete()
+
+    # Add new
+    for gid in vk_group_ids:
+        db.add(ManualScalingGroup(
+            user_id=user_id,
+            config_id=config_id,
+            vk_ad_group_id=gid
+        ))
+
+    db.commit()
+
+
 def create_scaling_config(
     db: Session,
     user_id: int,
     name: str,
     schedule_time: str = "08:00",
+    scheduled_enabled: bool = True,
     account_id: Optional[int] = None,
     account_ids: Optional[List[int]] = None,
     new_budget: Optional[float] = None,
+    new_name: Optional[str] = None,
     auto_activate: bool = False,
     lookback_days: int = 7,
     duplicates_count: int = 1,
-    enabled: bool = False
+    enabled: bool = False,
+    vk_ad_group_ids: Optional[List[int]] = None
 ) -> ScalingConfig:
-    """Create new scaling configuration"""
+    """Create new scaling configuration
+
+    Args:
+        scheduled_enabled: TRUE = run by schedule, FALSE = manual only
+        new_name: New name for duplicated groups (NULL = use original name)
+        vk_ad_group_ids: List of VK ad_group_id for manual scaling
+    """
     config = ScalingConfig(
         user_id=user_id,
         name=name,
         schedule_time=schedule_time,
+        scheduled_enabled=scheduled_enabled,
         account_id=account_id,
         new_budget=new_budget,
+        new_name=new_name if new_name and new_name.strip() else None,
         auto_activate=auto_activate,
         lookback_days=lookback_days,
         duplicates_count=duplicates_count,
@@ -1510,11 +1555,15 @@ def create_scaling_config(
     db.add(config)
     db.commit()
     db.refresh(config)
-    
+
     # Set account links if provided
     if account_ids:
         set_scaling_config_accounts(db, config.id, account_ids)
-    
+
+    # Set manual scaling groups if provided
+    if vk_ad_group_ids:
+        set_manual_scaling_groups(db, config.id, vk_ad_group_ids, user_id)
+
     return config
 
 
@@ -1523,44 +1572,62 @@ def update_scaling_config(
     config_id: int,
     name: Optional[str] = None,
     schedule_time: Optional[str] = None,
+    scheduled_enabled: Optional[bool] = None,
     account_id: Optional[int] = None,
     account_ids: Optional[List[int]] = None,
     new_budget: Optional[float] = None,
+    new_name: Optional[str] = None,
     auto_activate: Optional[bool] = None,
     lookback_days: Optional[int] = None,
     duplicates_count: Optional[int] = None,
-    enabled: Optional[bool] = None
+    enabled: Optional[bool] = None,
+    vk_ad_group_ids: Optional[List[int]] = None
 ) -> Optional[ScalingConfig]:
-    """Update scaling configuration"""
+    """Update scaling configuration
+
+    Args:
+        scheduled_enabled: TRUE = run by schedule, FALSE = manual only
+        new_name: New name for duplicated groups (empty string or NULL = use original name)
+        vk_ad_group_ids: List of VK ad_group_id for manual scaling
+    """
     config = get_scaling_config_by_id(db, config_id)
     if not config:
         return None
-    
+
     if name is not None:
         config.name = name
     if schedule_time is not None:
         config.schedule_time = schedule_time
+    if scheduled_enabled is not None:
+        config.scheduled_enabled = scheduled_enabled
     if account_id is not None:
         config.account_id = account_id if account_id > 0 else None
     if new_budget is not None:
         config.new_budget = new_budget if new_budget > 0 else None
+    if new_name is not None:
+        # Empty string means "use original name" (set to NULL)
+        config.new_name = new_name.strip() if new_name.strip() else None
     if auto_activate is not None:
         config.auto_activate = auto_activate
     if lookback_days is not None:
         config.lookback_days = lookback_days
     if duplicates_count is not None:
-        config.duplicates_count = max(1, duplicates_count)
+        config.duplicates_count = max(1, min(100, duplicates_count))  # 1-100
     if enabled is not None:
         config.enabled = enabled
-    
+
     config.updated_at = get_moscow_time()
     db.commit()
     db.refresh(config)
-    
+
     # Update account links if provided
     if account_ids is not None:
         set_scaling_config_accounts(db, config_id, account_ids)
-    
+
+    # Update manual scaling groups if provided
+    if vk_ad_group_ids is not None:
+        set_manual_scaling_groups(db, config_id, vk_ad_group_ids, config.user_id)
+
     return config
 
 
@@ -1751,6 +1818,7 @@ def create_scaling_log(
     original_group_name: Optional[str],
     new_group_id: Optional[int] = None,
     new_group_name: Optional[str] = None,
+    requested_name: Optional[str] = None,
     stats_snapshot: Optional[dict] = None,
     success: bool = False,
     error_message: Optional[str] = None,
@@ -1758,7 +1826,11 @@ def create_scaling_log(
     duplicated_banners: int = 0,
     duplicated_banner_ids: Optional[list] = None
 ) -> ScalingLog:
-    """Create new scaling log entry"""
+    """Create new scaling log entry
+
+    Args:
+        requested_name: Requested name from config (NULL = used original name)
+    """
     log = ScalingLog(
         user_id=user_id,
         config_id=config_id,
@@ -1768,6 +1840,7 @@ def create_scaling_log(
         original_group_name=original_group_name,
         new_group_id=new_group_id,
         new_group_name=new_group_name,
+        requested_name=requested_name,
         stats_snapshot=stats_snapshot,
         success=success,
         error_message=error_message,
@@ -1781,7 +1854,7 @@ def create_scaling_log(
     return log
 
 
-def check_group_conditions(stats: dict, conditions: List[ScalingCondition]) -> bool:
+def check_group_conditions(stats: dict, conditions: List[ScalingCondition], logger=None) -> bool:
     """
     Check if ad group stats match all conditions.
     Uses the same logic as check_banner_against_rules for consistency.
@@ -1789,12 +1862,19 @@ def check_group_conditions(stats: dict, conditions: List[ScalingCondition]) -> b
     Args:
         stats: Dict with keys: spent, shows, clicks, goals, cost_per_goal, ctr, cpc
         conditions: List of ScalingCondition objects
+        logger: Optional logger object with info() method
 
     Returns:
         True if ALL conditions are satisfied
     """
+    def log(msg):
+        if logger:
+            logger.info(msg)
+        else:
+            print(msg)
+
     if not conditions:
-        print(f"         ⚠️  Нет условий для проверки")
+        log(f"         ⚠️  Нет условий для проверки")
         return False  # No conditions = don't match anything
 
     for idx, condition in enumerate(conditions):
@@ -1804,7 +1884,7 @@ def check_group_conditions(stats: dict, conditions: List[ScalingCondition]) -> b
 
         # Get metric value from stats
         actual_value = stats.get(metric)
-        print(f"         [{idx+1}] Проверяем: {metric} {operator} {threshold} (начальное значение: {actual_value})")
+        log(f"         [{idx+1}] Проверяем: {metric} {operator} {threshold} (начальное значение: {actual_value})")
 
         # Handle None and special cases (same logic as check_banner_against_rules)
         if actual_value is None:
@@ -1813,31 +1893,31 @@ def check_group_conditions(stats: dict, conditions: List[ScalingCondition]) -> b
                 goals = stats.get("goals", 0) or stats.get("vk_goals", 0)
                 if goals == 0:
                     actual_value = float('inf')
-                    print(f"            → cost_per_goal = ∞ (нет целей)")
+                    log(f"            → cost_per_goal = ∞ (нет целей)")
                 else:
                     spent = stats.get("spent", 0) or 0
                     actual_value = spent / goals if goals > 0 else float('inf')
-                    print(f"            → cost_per_goal = {actual_value:.2f} (spent={spent}, goals={goals})")
+                    log(f"            → cost_per_goal = {actual_value:.2f} (spent={spent}, goals={goals})")
             elif metric == "ctr":
                 shows = stats.get("shows", 0) or 0
                 clicks = stats.get("clicks", 0) or 0
                 actual_value = (clicks / shows * 100) if shows > 0 else 0
-                print(f"            → ctr = {actual_value:.2f}% (clicks={clicks}, shows={shows})")
+                log(f"            → ctr = {actual_value:.2f}% (clicks={clicks}, shows={shows})")
             elif metric == "cpc":
                 clicks = stats.get("clicks", 0) or 0
                 spent = stats.get("spent", 0) or 0
                 actual_value = (spent / clicks) if clicks > 0 else float('inf')
-                print(f"            → cpc = {actual_value:.2f} (spent={spent}, clicks={clicks})")
+                log(f"            → cpc = {actual_value:.2f} (spent={spent}, clicks={clicks})")
             else:
                 actual_value = 0
-                print(f"            → значение отсутствует, используем 0")
+                log(f"            → значение отсутствует, используем 0")
 
         # Normalize goals field name
         if metric == "goals" and actual_value == 0:
             vk_goals = stats.get("vk_goals", 0) or 0
             if vk_goals > 0:
                 actual_value = vk_goals
-                print(f"            → используем vk_goals = {actual_value}")
+                log(f"            → используем vk_goals = {actual_value}")
 
         # Check condition based on operator (same syntax as disable rules)
         condition_met = False
@@ -1848,37 +1928,37 @@ def check_group_conditions(stats: dict, conditions: List[ScalingCondition]) -> b
                 condition_met = True
             else:
                 condition_met = False
-            print(f"            → cost_per_goal=∞: условие {'✓ выполнено' if condition_met else '✗ НЕ выполнено'}")
+            log(f"            → cost_per_goal=∞: условие {'✓ выполнено' if condition_met else '✗ НЕ выполнено'}")
         elif operator in ("equals", "=", "=="):
             condition_met = (actual_value == threshold)
-            print(f"            → {actual_value} == {threshold} = {condition_met}")
+            log(f"            → {actual_value} == {threshold} = {condition_met}")
         elif operator in ("not_equals", "!=", "<>"):
             condition_met = (actual_value != threshold)
-            print(f"            → {actual_value} != {threshold} = {condition_met}")
+            log(f"            → {actual_value} != {threshold} = {condition_met}")
         elif operator in ("greater_than", ">"):
             condition_met = (actual_value > threshold)
-            print(f"            → {actual_value} > {threshold} = {condition_met}")
+            log(f"            → {actual_value} > {threshold} = {condition_met}")
         elif operator in ("less_than", "<"):
             condition_met = (actual_value < threshold)
-            print(f"            → {actual_value} < {threshold} = {condition_met}")
+            log(f"            → {actual_value} < {threshold} = {condition_met}")
         elif operator in ("greater_or_equal", ">="):
             condition_met = (actual_value >= threshold)
-            print(f"            → {actual_value} >= {threshold} = {condition_met}")
+            log(f"            → {actual_value} >= {threshold} = {condition_met}")
         elif operator in ("less_or_equal", "<="):
             condition_met = (actual_value <= threshold)
-            print(f"            → {actual_value} <= {threshold} = {condition_met}")
+            log(f"            → {actual_value} <= {threshold} = {condition_met}")
         else:
             # Unknown operator - FAIL the condition
             condition_met = False
-            print(f"            → ⚠️  НЕИЗВЕСТНЫЙ ОПЕРАТОР '{operator}'")
+            log(f"            → ⚠️  НЕИЗВЕСТНЫЙ ОПЕРАТОР '{operator}'")
 
         if not condition_met:
-            print(f"            ✗ Условие НЕ выполнено, пропускаем группу")
+            log(f"            ✗ Условие НЕ выполнено, пропускаем группу")
             return False
         else:
-            print(f"            ✓ Условие выполнено")
+            log(f"            ✓ Условие выполнено")
 
-    print(f"         ✅ ВСЕ условия выполнены!")
+    log(f"         ✅ ВСЕ условия выполнены!")
     return True
 
 
