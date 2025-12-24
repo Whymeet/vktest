@@ -198,11 +198,11 @@ class ReEnableSettings(BaseModel):
 
 class SchedulerSettings(BaseModel):
     enabled: bool = True
-    interval_minutes: int = 60
+    interval_minutes: float = 60  # Поддержка дробных значений (0.5 = 30 сек, 0.1 = 6 сек)
     max_runs: int = 0
     start_delay_seconds: int = 10
     retry_on_error: bool = True
-    retry_delay_minutes: int = 5
+    retry_delay_minutes: float = 5  # Поддержка дробных значений
     max_retries: int = 3
     quiet_hours: QuietHours = QuietHours()
     second_pass: SecondPassSettings = SecondPassSettings()
