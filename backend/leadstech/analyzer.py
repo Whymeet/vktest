@@ -234,20 +234,20 @@ class VkAdsClient:
         logger.info(f"VK Ads: requesting stats for {len(banner_ids)} banners (period {params['date_from']}..{params['date_to']}), token={token_prefix}...")
 
         max_retries = 5
-        backoff = 1.0
+        backoff = 2.0  # Start with 2 seconds
 
         for attempt in range(1, max_retries + 1):
             resp = requests.get(
                 url,
                 headers=self._headers(),
                 params=params,
-                timeout=30,
+                timeout=60,  # Increased timeout
             )
 
             if resp.status_code == 429:
-                logger.warning(f"VK Ads: 429 Too Many Requests, attempt {attempt}/{max_retries}, waiting {backoff:.1f} sec")
-                time.sleep(backoff)
-                backoff *= 2
+                wait_time = backoff + (attempt - 1)  # Linear increase: 2, 3, 4, 5, 6 seconds
+                logger.warning(f"VK Ads: 429 Too Many Requests, attempt {attempt}/{max_retries}, waiting {wait_time:.1f} sec")
+                time.sleep(wait_time)
                 continue
 
             try:
@@ -277,17 +277,25 @@ class VkAdsClient:
         banner_ids: List[int],
     ) -> Dict[int, float]:
         """Get spending by banner with chunking"""
+        import time
+
         if not banner_ids:
             return {}
 
         spent_by_id: Dict[int, float] = {}
         chunk_size = 150
+        chunk_delay = 0.5  # Delay between chunks to avoid rate limiting
 
         total_ids = len(banner_ids)
-        logger.info(f"VK Ads: calculating spend for {total_ids} banners (chunks of {chunk_size})")
+        total_chunks = (total_ids + chunk_size - 1) // chunk_size
+        logger.info(f"VK Ads: calculating spend for {total_ids} banners ({total_chunks} chunks of {chunk_size})")
 
-        for start in range(0, total_ids, chunk_size):
+        for chunk_num, start in enumerate(range(0, total_ids, chunk_size), 1):
             chunk = banner_ids[start:start + chunk_size]
+
+            # Add delay between chunks to avoid rate limiting (skip first chunk)
+            if chunk_num > 1:
+                time.sleep(chunk_delay)
 
             items = self.get_banners_stats_day(date_from, date_to, chunk, metrics="base")
 
@@ -420,6 +428,17 @@ def run_analysis():
 
         # Get banner_sub_fields (with backwards compatibility)
         banner_sub_fields = lt_config.banner_sub_fields or ["sub4"]
+        # Handle case where banner_sub_fields is a string instead of list (old DB format)
+        if isinstance(banner_sub_fields, str):
+            # Try to parse as JSON, otherwise treat as single value
+            import json
+            try:
+                banner_sub_fields = json.loads(banner_sub_fields)
+            except (json.JSONDecodeError, TypeError):
+                banner_sub_fields = [banner_sub_fields]
+        # Ensure it's a list
+        if not isinstance(banner_sub_fields, list):
+            banner_sub_fields = ["sub4"]
         logger.info(f"Analyzing sub fields: {banner_sub_fields}")
 
         # Create LeadsTech client (shared for all cabinets)
