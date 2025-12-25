@@ -275,7 +275,8 @@ class LeadsTechConfigCreate(BaseModel):
     login: str
     password: Optional[str] = None  # Optional to allow updates without password
     base_url: str = "https://api.leads.tech"
-    lookback_days: int = 10
+    date_from: Optional[str] = None  # YYYY-MM-DD format
+    date_to: Optional[str] = None  # YYYY-MM-DD format
     banner_sub_fields: List[str] = ["sub4", "sub5"]  # List of sub fields to analyze
 
 
@@ -1524,7 +1525,8 @@ async def get_leadstech_config(
         "configured": True,
         "login": config.login,
         "base_url": config.base_url,
-        "lookback_days": config.lookback_days,
+        "date_from": config.date_from,
+        "date_to": config.date_to,
         "banner_sub_fields": config.banner_sub_fields or ["sub4", "sub5"],
         "created_at": config.created_at.isoformat() if config.created_at else None,
         "updated_at": config.updated_at.isoformat() if config.updated_at else None
@@ -1554,7 +1556,8 @@ async def update_leadstech_config(
         password=password,
         user_id=current_user.id,
         base_url=config.base_url,
-        lookback_days=config.lookback_days,
+        date_from=config.date_from,
+        date_to=config.date_to,
         banner_sub_fields=config.banner_sub_fields
     )
     return {"message": "LeadsTech configuration updated", "id": result.id}
@@ -1572,7 +1575,8 @@ async def delete_leadstech_config(
 
 
 class LeadsTechAnalysisSettings(BaseModel):
-    lookback_days: Optional[int] = 10
+    date_from: Optional[str] = None  # YYYY-MM-DD format
+    date_to: Optional[str] = None  # YYYY-MM-DD format
     banner_sub_fields: Optional[List[str]] = ["sub4", "sub5"]
 
 
@@ -1582,7 +1586,7 @@ async def update_leadstech_analysis_settings(
     current_user: User = Depends(require_feature("leadstech")),
     db: Session = Depends(get_db)
 ):
-    """Update only LeadsTech analysis settings (lookback_days, banner_sub_fields)"""
+    """Update only LeadsTech analysis settings (date_from, date_to, banner_sub_fields)"""
     existing_config = crud.get_leadstech_config(db, user_id=current_user.id)
     if not existing_config:
         raise HTTPException(status_code=400, detail="LeadsTech credentials not configured. Configure them in Settings first.")
@@ -1594,7 +1598,8 @@ async def update_leadstech_analysis_settings(
         password=existing_config.password,
         user_id=current_user.id,
         base_url=existing_config.base_url,
-        lookback_days=settings.lookback_days,
+        date_from=settings.date_from,
+        date_to=settings.date_to,
         banner_sub_fields=settings.banner_sub_fields
     )
     return {"message": "LeadsTech analysis settings updated"}

@@ -48,6 +48,7 @@ import {
   type LeadsTechFilters,
 } from '../api/client';
 import { Card } from '../components/Card';
+import { DateRangePicker } from '../components/DateRangePicker';
 
 type TabType = 'results' | 'settings';
 type SortField = 'roi_percent' | 'profit' | 'vk_spent' | 'lt_revenue' | 'banner_id';
@@ -416,10 +417,24 @@ export function ProfitableAds() {
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 500;
 
-  // Config form state
-  const [configForm, setConfigForm] = useState<{ lookback_days: number; banner_sub_fields: string[] }>({
-    lookback_days: 10,
-    banner_sub_fields: ['sub4', 'sub5'],
+  // Config form state - date_from and date_to for date range picker
+  const getDefaultDateRange = () => {
+    const today = new Date();
+    const tenDaysAgo = new Date(today);
+    tenDaysAgo.setDate(today.getDate() - 10);
+    return {
+      date_from: tenDaysAgo.toISOString().split('T')[0],
+      date_to: today.toISOString().split('T')[0],
+    };
+  };
+
+  const [configForm, setConfigForm] = useState<{ date_from: string; date_to: string; banner_sub_fields: string[] }>(() => {
+    const defaults = getDefaultDateRange();
+    return {
+      date_from: defaults.date_from,
+      date_to: defaults.date_to,
+      banner_sub_fields: ['sub4', 'sub5'],
+    };
   });
 
   // Cabinet form state
@@ -467,8 +482,10 @@ export function ProfitableAds() {
   // Initialize config form when data loads
   useEffect(() => {
     if (configData?.configured) {
+      const defaults = getDefaultDateRange();
       setConfigForm({
-        lookback_days: configData.lookback_days || 10,
+        date_from: configData.date_from || defaults.date_from,
+        date_to: configData.date_to || defaults.date_to,
         banner_sub_fields: configData.banner_sub_fields || ['sub4', 'sub5'],
       });
     }
@@ -1203,12 +1220,11 @@ export function ProfitableAds() {
             {/* Analysis-specific settings */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               <div>
-                <label className="block text-xs sm:text-sm text-slate-400 mb-1">Период анализа (дней)</label>
-                <input
-                  type="number"
-                  value={configForm.lookback_days}
-                  onChange={(e) => setConfigForm({ ...configForm, lookback_days: parseInt(e.target.value) || 10 })}
-                  className="input w-full text-sm"
+                <label className="block text-xs sm:text-sm text-slate-400 mb-1">Период анализа</label>
+                <DateRangePicker
+                  dateFrom={configForm.date_from}
+                  dateTo={configForm.date_to}
+                  onChange={(dateFrom, dateTo) => setConfigForm({ ...configForm, date_from: dateFrom, date_to: dateTo })}
                 />
               </div>
               <div>
@@ -1238,7 +1254,7 @@ export function ProfitableAds() {
             <div className="mt-4 pt-4 border-t border-slate-700">
               <button
                 onClick={handleSaveConfig}
-                disabled={updateConfigMutation.isPending || !configData?.configured || configForm.banner_sub_fields.length === 0}
+                disabled={updateConfigMutation.isPending || !configData?.configured || configForm.banner_sub_fields.length === 0 || !configForm.date_from || !configForm.date_to}
                 className="btn bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 text-sm w-full sm:w-auto"
               >
                 {updateConfigMutation.isPending ? (
@@ -1250,6 +1266,9 @@ export function ProfitableAds() {
               </button>
               {configForm.banner_sub_fields.length === 0 && (
                 <p className="text-xs text-red-400 mt-2">Выберите хотя бы одно поле sub</p>
+              )}
+              {(!configForm.date_from || !configForm.date_to) && (
+                <p className="text-xs text-red-400 mt-2">Выберите период анализа</p>
               )}
             </div>
           </Card>

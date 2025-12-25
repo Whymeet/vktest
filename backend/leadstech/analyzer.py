@@ -407,11 +407,16 @@ def run_analysis():
         for cab in cabinets:
             logger.info(f"  - Cabinet ID {cab.id}: account_id={cab.account_id}, label='{cab.leadstech_label}', enabled={cab.enabled}")
 
-        # Calculate date range
-        lookback_days = lt_config.lookback_days or 10
-        date_to = get_moscow_time().date()
-        date_from = date_to - timedelta(days=lookback_days)
-        logger.info(f"Analysis period: {date_from} to {date_to} ({lookback_days} days)")
+        # Calculate date range from config or use defaults (last 10 days)
+        today = get_moscow_time().date()
+        if lt_config.date_from and lt_config.date_to:
+            date_from = datetime.strptime(lt_config.date_from, "%Y-%m-%d").date()
+            date_to = datetime.strptime(lt_config.date_to, "%Y-%m-%d").date()
+        else:
+            # Default to last 10 days if no dates configured
+            date_to = today
+            date_from = date_to - timedelta(days=10)
+        logger.info(f"Analysis period: {date_from} to {date_to}")
 
         # Get banner_sub_fields (with backwards compatibility)
         banner_sub_fields = lt_config.banner_sub_fields or ["sub4"]

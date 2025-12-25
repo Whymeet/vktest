@@ -376,7 +376,8 @@ export interface LeadsTechConfig {
   configured: boolean;
   login?: string;
   base_url?: string;
-  lookback_days?: number;
+  date_from?: string;  // YYYY-MM-DD format
+  date_to?: string;  // YYYY-MM-DD format
   banner_sub_fields?: string[];  // List of sub fields to analyze
   created_at?: string;
   updated_at?: string;
@@ -386,13 +387,14 @@ export interface LeadsTechConfigCreate {
   login: string;
   password: string;
   base_url?: string;
-  lookback_days?: number;
+  date_from?: string;  // YYYY-MM-DD format
+  date_to?: string;  // YYYY-MM-DD format
   banner_sub_fields?: string[];  // List of sub fields to analyze
 }
 
 export const getLeadsTechConfig = () => api.get<LeadsTechConfig>('/leadstech/config');
 export const updateLeadsTechConfig = (config: LeadsTechConfigCreate) => api.put('/leadstech/config', config);
-export const updateLeadsTechAnalysisSettings = (settings: { lookback_days: number; banner_sub_fields: string[] }) =>
+export const updateLeadsTechAnalysisSettings = (settings: { date_from: string; date_to: string; banner_sub_fields: string[] }) =>
   api.put('/leadstech/config/analysis', settings);
 export const deleteLeadsTechConfig = () => api.delete('/leadstech/config');
 

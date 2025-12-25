@@ -14,9 +14,11 @@
     "@tanstack/react-virtual": "^3.13.13",
     "autoprefixer": "^10.4.22",
     "axios": "^1.13.2",
+    "date-fns": "^4.1.0",
     "lucide-react": "^0.556.0",
     "postcss": "^8.5.6",
     "react": "^19.2.0",
+    "react-day-picker": "^9.13.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^7.10.1",
     "tailwindcss": "^4.1.17"
