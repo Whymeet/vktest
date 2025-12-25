@@ -69,20 +69,27 @@ class LeadstechClient:
             "password": self.cfg.password,
         }
 
-        logger.info("LeadsTech: authenticating as %s", self.cfg.login)
+        logger.info(f"LeadsTech: authenticating as {self.cfg.login}")
 
         resp = requests.post(self._login_url, headers=headers, json=payload, timeout=30)
         resp.raise_for_status()
 
         data = resp.json()
         if not data.get("success"):
-            raise RuntimeError(f"LeadsTech login error: {data}")
+            # Extract error code for better diagnostics
+            error_codes = data.get("error", [])
+            error_msg = ", ".join(str(e) for e in error_codes) if error_codes else "unknown"
+            logger.error(f"LeadsTech authentication failed. Error code: {error_msg}")
+            logger.error(f"Response status: {resp.status_code}, login used: {self.cfg.login}")
+            # Use repr() to escape curly braces, preventing Loguru format conflicts
+            raise RuntimeError(f"LeadsTech login error (code: {error_msg}): {repr(data)}")
 
         token = data.get("data", {}).get("jsonAccessWebToken")
         if not token:
-            raise RuntimeError(f"jsonAccessWebToken not found in response: {data}")
+            # Use repr() to escape curly braces, preventing Loguru format conflicts
+            raise RuntimeError(f"jsonAccessWebToken not found in response: {repr(data)}")
 
-        logger.info("LeadsTech: token received (length %d)", len(token))
+        logger.info(f"LeadsTech: token received (length {len(token)})")
         return token
 
     def _get_token(self) -> str:
@@ -123,10 +130,7 @@ class LeadstechClient:
                 "subs[]": subs_field,
             }
 
-            logger.info(
-                "LeadsTech: by-subid page=%s (sub1=%s, subs[]=%s, %s..%s)",
-                page, sub1_value, subs_field, params["dateStart"], params["dateEnd"],
-            )
+            logger.info(f"LeadsTech: by-subid page={page} (sub1={sub1_value}, subs[]={subs_field}, {params['dateStart']}..{params['dateEnd']})")
 
             resp = requests.get(
                 self._by_subid_url,
@@ -138,16 +142,13 @@ class LeadstechClient:
             try:
                 resp.raise_for_status()
             except requests.HTTPError as exc:
-                logger.error(
-                    "LeadsTech: error requesting by-subid page=%s: %s, body=%s",
-                    page, exc, resp.text,
-                )
+                logger.error(f"LeadsTech: error requesting by-subid page={page}: {exc}, body={resp.text}")
                 raise
 
             payload = resp.json()
             rows = self._extract_rows(payload)
 
-            logger.info("LeadsTech: page=%s - %d rows", page, len(rows))
+            logger.info(f"LeadsTech: page={page} - {len(rows)} rows")
 
             if not rows:
                 break
@@ -159,7 +160,7 @@ class LeadstechClient:
 
             page += 1
 
-        logger.info("LeadsTech: total %d rows received", len(all_rows))
+        logger.info(f"LeadsTech: total {len(all_rows)} rows received")
         return all_rows
 
     @staticmethod
@@ -179,7 +180,8 @@ class LeadstechClient:
         if isinstance(payload.get("rows"), list):
             return payload["rows"]
 
-        raise ValueError(f"Could not extract rows from LeadsTech response: {payload}")
+        # Use repr() to escape curly braces, preventing Loguru format conflicts
+        raise ValueError(f"Could not extract rows from LeadsTech response: {repr(payload)}")
 
 
 # === VK Ads Client ===
@@ -222,10 +224,7 @@ class VkAdsClient:
 
         # Log API token prefix for debugging
         token_prefix = self.cfg.api_token[:20] if self.cfg.api_token else "NONE"
-        logger.info(
-            "VK Ads: requesting stats for %d banners (period %s..%s), token=%s...",
-            len(banner_ids), params["date_from"], params["date_to"], token_prefix,
-        )
+        logger.info(f"VK Ads: requesting stats for {len(banner_ids)} banners (period {params['date_from']}..{params['date_to']}), token={token_prefix}...")
 
         max_retries = 5
         backoff = 1.0
@@ -239,10 +238,7 @@ class VkAdsClient:
             )
 
             if resp.status_code == 429:
-                logger.warning(
-                    "VK Ads: 429 Too Many Requests, attempt %d/%d, waiting %.1f sec",
-                    attempt, max_retries, backoff,
-                )
+                logger.warning(f"VK Ads: 429 Too Many Requests, attempt {attempt}/{max_retries}, waiting {backoff:.1f} sec")
                 time.sleep(backoff)
                 backoff *= 2
                 continue
@@ -250,7 +246,7 @@ class VkAdsClient:
             try:
                 resp.raise_for_status()
             except requests.HTTPError as exc:
-                logger.error("VK Ads: error requesting banner stats: %s, body=%s", exc, resp.text)
+                logger.error(f"VK Ads: error requesting banner stats: {exc}, body={resp.text}")
                 raise
 
             payload = resp.json()
@@ -258,13 +254,13 @@ class VkAdsClient:
             
             # Log which banners were returned
             returned_ids = [item.get("id") for item in items if item.get("id")]
-            logger.info("VK Ads: requested %d banners, received %d in response", len(banner_ids), len(items))
+            logger.info(f"VK Ads: requested {len(banner_ids)} banners, received {len(items)} in response")
             if len(items) == 0 and len(banner_ids) > 0:
-                logger.warning("VK Ads: API returned 0 items! Banner IDs may not exist in this VK account. Requested: %s", banner_ids[:5])
+                logger.warning(f"VK Ads: API returned 0 items! Banner IDs may not exist in this VK account. Requested: {banner_ids[:5]}")
             
             return items
 
-        logger.error("VK Ads: failed to get stats after %d attempts due to rate limiting", max_retries)
+        logger.error(f"VK Ads: failed to get stats after {max_retries} attempts due to rate limiting")
         return []
 
     def get_spent_by_banner(
@@ -281,7 +277,7 @@ class VkAdsClient:
         chunk_size = 150
 
         total_ids = len(banner_ids)
-        logger.info("VK Ads: calculating spend for %d banners (chunks of %d)", total_ids, chunk_size)
+        logger.info(f"VK Ads: calculating spend for {total_ids} banners (chunks of {chunk_size})")
 
         for start in range(0, total_ids, chunk_size):
             chunk = banner_ids[start:start + chunk_size]
@@ -303,7 +299,7 @@ class VkAdsClient:
 
                 spent_by_id[banner_id_int] = spent
 
-        logger.info("VK Ads: collected spend for %d banners", len(spent_by_id))
+        logger.info(f"VK Ads: collected spend for {len(spent_by_id)} banners")
         return spent_by_id
 
 
@@ -314,7 +310,7 @@ def aggregate_leadstech_by_banner(
     banner_sub_field: str = "sub4",
 ) -> Dict[int, Dict[str, Any]]:
     """Aggregate LeadsTech data by banner ID"""
-    logger.info("Aggregating LeadsTech by field %s", banner_sub_field)
+    logger.info(f"Aggregating LeadsTech by field {banner_sub_field}")
 
     result: Dict[int, Dict[str, Any]] = {}
 
@@ -354,7 +350,7 @@ def aggregate_leadstech_by_banner(
         agg["lt_approved"] += approved
         agg["lt_rejected"] += rejected
 
-    logger.info("Aggregated %d banners from LeadsTech", len(result))
+    logger.info(f"Aggregated {len(result)} banners from LeadsTech")
     return result
 
 
@@ -375,7 +371,7 @@ def run_analysis():
     except ValueError:
         logger.error("VK_ADS_USER_ID must be an integer")
         return
-    logger.info("Running analysis for user_id=%d", user_id)
+    logger.info(f"Running analysis for user_id={user_id}")
 
     db = SessionLocal()
 
@@ -383,31 +379,31 @@ def run_analysis():
         # Get LeadsTech config for this user
         lt_config = crud.get_leadstech_config(db, user_id=user_id)
         if not lt_config:
-            logger.error("LeadsTech not configured for user %d", user_id)
+            logger.error(f"LeadsTech not configured for user {user_id}")
             return
 
         # Get enabled cabinets for this user
         cabinets = crud.get_leadstech_cabinets(db, user_id=user_id, enabled_only=True)
         if not cabinets:
-            logger.error("No enabled LeadsTech cabinets for user %d", user_id)
+            logger.error(f"No enabled LeadsTech cabinets for user {user_id}")
             return
         
-        logger.info("Found %d enabled cabinet(s)", len(cabinets))
+        logger.info(f"Found {len(cabinets)} enabled cabinet(s)")
         for cab in cabinets:
-            logger.info("  - Cabinet ID %d: account_id=%d, label='%s', enabled=%s", 
-                       cab.id, cab.account_id, cab.leadstech_label, cab.enabled)
+            logger.info(f"  - Cabinet ID {cab.id}: account_id={cab.account_id}, label='{cab.leadstech_label}', enabled={cab.enabled}")
 
         # Calculate date range
         lookback_days = lt_config.lookback_days or 10
         date_to = get_moscow_time().date()
         date_from = date_to - timedelta(days=lookback_days)
-        logger.info("Analysis period: %s to %s (%d days)", date_from, date_to, lookback_days)
+        logger.info(f"Analysis period: {date_from} to {date_to} ({lookback_days} days)")
 
         # Create LeadsTech client (shared for all cabinets)
+        # Strip whitespace from credentials to avoid authentication issues
         lt_client_cfg = LeadstechClientConfig(
-            base_url=lt_config.base_url,
-            login=lt_config.login,
-            password=lt_config.password,
+            base_url=lt_config.base_url.strip() if lt_config.base_url else "https://api.leads.tech",
+            login=lt_config.login.strip() if lt_config.login else "",
+            password=lt_config.password.strip() if lt_config.password else "",
             banner_sub_field=lt_config.banner_sub_field,
         )
         lt_client = LeadstechClient(lt_client_cfg)
@@ -417,13 +413,13 @@ def run_analysis():
         for cabinet in cabinets:
             account = cabinet.account
             if not account:
-                logger.warning("Cabinet %d has no linked account, skipping", cabinet.id)
+                logger.warning(f"Cabinet {cabinet.id} has no linked account, skipping")
                 continue
 
             cabinet_name = account.name
             lt_label = cabinet.leadstech_label
 
-            logger.info("--- Processing cabinet: %s (label=%s) ---", cabinet_name, lt_label)
+            logger.info(f"--- Processing cabinet: {cabinet_name} (label={lt_label}) ---")
 
             # 1. Fetch LeadsTech data
             try:
@@ -434,23 +430,23 @@ def run_analysis():
                     subs_field=lt_config.banner_sub_field,
                 )
             except Exception as e:
-                logger.error("Failed to fetch LeadsTech data for %s: %s", cabinet_name, e)
+                logger.error(f"Failed to fetch LeadsTech data for {cabinet_name}: {e}")
                 continue
 
             lt_by_banner = aggregate_leadstech_by_banner(lt_rows, lt_config.banner_sub_field)
 
             if not lt_by_banner:
-                logger.warning("Cabinet %s: no LeadsTech data, skipping", cabinet_name)
+                logger.warning(f"Cabinet {cabinet_name}: no LeadsTech data, skipping")
                 continue
 
             banner_ids = sorted(lt_by_banner.keys())
-            logger.info("Cabinet %s: %d banners from LeadsTech", cabinet_name, len(banner_ids))
-            logger.info("Cabinet %s: first 10 banner IDs: %s", cabinet_name, banner_ids[:10])
+            logger.info(f"Cabinet {cabinet_name}: {len(banner_ids)} banners from LeadsTech")
+            logger.info(f"Cabinet {cabinet_name}: first 10 banner IDs: {banner_ids[:10]}")
 
             # 2. Fetch VK Ads spending
             token_prefix = account.api_token[:25] if account.api_token else "NONE"
-            logger.info("Cabinet %s: using VK API token %s...", cabinet_name, token_prefix)
-            
+            logger.info(f"Cabinet {cabinet_name}: using VK API token {token_prefix}...")
+
             vk_cfg = VkAdsConfig(
                 base_url="https://ads.vk.com/api/v2",
                 api_token=account.api_token,
@@ -460,16 +456,15 @@ def run_analysis():
             try:
                 vk_spent_by_banner = vk_client.get_spent_by_banner(date_from, date_to, banner_ids)
             except Exception as e:
-                logger.error("Failed to fetch VK Ads data for %s: %s", cabinet_name, e)
+                logger.error(f"Failed to fetch VK Ads data for {cabinet_name}: {e}")
                 vk_spent_by_banner = {}
 
             # Log how many banners have spending data
             banners_with_spent = sum(1 for v in vk_spent_by_banner.values() if v > 0)
-            logger.info("Cabinet %s: VK returned spend for %d/%d banners (%d with non-zero spent)", 
-                       cabinet_name, len(vk_spent_by_banner), len(banner_ids), banners_with_spent)
-            
+            logger.info(f"Cabinet {cabinet_name}: VK returned spend for {len(vk_spent_by_banner)}/{len(banner_ids)} banners ({banners_with_spent} with non-zero spent)")
+
             if len(vk_spent_by_banner) == 0:
-                logger.warning("Cabinet %s: VK API returned NO data for any banners! Check if banner IDs exist in this VK account.", cabinet_name)
+                logger.warning(f"Cabinet {cabinet_name}: VK API returned NO data for any banners! Check if banner IDs exist in this VK account.")
 
             # 3. Merge and calculate ROI
             for banner_id, lt_data in lt_by_banner.items():
@@ -499,23 +494,23 @@ def run_analysis():
                 }
                 all_results.append(result)
 
-            logger.info("Cabinet %s: merged %d banners", cabinet_name, len(lt_by_banner))
+            logger.info(f"Cabinet {cabinet_name}: merged {len(lt_by_banner)} banners")
 
         # 4. Clear old results and save new ones
         if all_results:
             # Set user_id for all results
             for result in all_results:
                 result['user_id'] = user_id
-            logger.info("Clearing old results and saving %d new results...", len(all_results))
+            logger.info(f"Clearing old results and saving {len(all_results)} new results...")
             count = crud.replace_leadstech_analysis_results(db, all_results, user_id=user_id)
-            logger.info("✅ Saved %d results to database (replaced all previous)", count)
+            logger.info(f"✅ Saved {count} results to database (replaced all previous)")
         else:
             logger.warning("⚠️ No results to save")
 
         logger.info("=== LeadsTech Analysis Complete ===")
 
     except Exception as e:
-        logger.exception("❌ Analysis failed: %s", e)
+        logger.exception(f"❌ Analysis failed: {e}")
         raise
     finally:
         db.close()

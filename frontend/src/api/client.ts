@@ -138,12 +138,20 @@ export interface ReEnableSettings {
   dry_run: boolean;
 }
 
+export interface LeadsTechCredentials {
+  login: string;
+  password?: string;
+  base_url: string;
+  configured: boolean;
+}
+
 export interface Settings {
   analysis_settings: AnalysisSettings;
   telegram: TelegramSettings;
   telegram_full?: TelegramSettings;
   scheduler: SchedulerSettings;
   statistics_trigger: StatisticsTriggerSettings;
+  leadstech?: LeadsTechCredentials;
 }
 
 export interface LogFile {
@@ -243,6 +251,9 @@ export const updateTelegramSettings = (settings: TelegramSettings) => api.put('/
 export const updateSchedulerSettings = (settings: SchedulerSettings) => api.put('/settings/scheduler', settings);
 
 export const updateStatisticsTrigger = (settings: StatisticsTriggerSettings) => api.put('/settings/statistics_trigger', settings);
+
+export const updateLeadsTechCredentials = (credentials: { login: string; password?: string; base_url?: string }) =>
+  api.put('/settings/leadstech', credentials);
 
 // Whitelist
 export const getWhitelist = () => api.get<{ banner_ids: number[] }>('/whitelist');
@@ -381,6 +392,8 @@ export interface LeadsTechConfigCreate {
 
 export const getLeadsTechConfig = () => api.get<LeadsTechConfig>('/leadstech/config');
 export const updateLeadsTechConfig = (config: LeadsTechConfigCreate) => api.put('/leadstech/config', config);
+export const updateLeadsTechAnalysisSettings = (settings: { lookback_days: number; banner_sub_field: string }) =>
+  api.put('/leadstech/config/analysis', settings);
 export const deleteLeadsTechConfig = () => api.delete('/leadstech/config');
 
 // LeadsTech Cabinets
@@ -460,12 +473,24 @@ export interface LeadsTechAnalysisStatus {
   pid: number | null;
 }
 
+export interface LeadsTechFilters {
+  roiMin?: number | '';
+  roiMax?: number | '';
+  spentMin?: number | '';
+  spentMax?: number | '';
+  revenueMin?: number | '';
+  revenueMax?: number | '';
+  profitMin?: number | '';
+  profitMax?: number | '';
+}
+
 export const getLeadsTechAnalysisResults = (
-  cabinetName?: string, 
-  page = 1, 
+  cabinetName?: string,
+  page = 1,
   pageSize = 500,
   sortBy = 'created_at',
-  sortOrder = 'desc'
+  sortOrder = 'desc',
+  filters?: LeadsTechFilters
 ) => {
   const params = new URLSearchParams();
   if (cabinetName) params.append('cabinet_name', cabinetName);
@@ -473,6 +498,35 @@ export const getLeadsTechAnalysisResults = (
   params.append('page_size', pageSize.toString());
   params.append('sort_by', sortBy);
   params.append('sort_order', sortOrder);
+
+  // Add filter parameters
+  if (filters) {
+    if (filters.roiMin !== '' && filters.roiMin !== undefined) {
+      params.append('roi_min', filters.roiMin.toString());
+    }
+    if (filters.roiMax !== '' && filters.roiMax !== undefined) {
+      params.append('roi_max', filters.roiMax.toString());
+    }
+    if (filters.spentMin !== '' && filters.spentMin !== undefined) {
+      params.append('spent_min', filters.spentMin.toString());
+    }
+    if (filters.spentMax !== '' && filters.spentMax !== undefined) {
+      params.append('spent_max', filters.spentMax.toString());
+    }
+    if (filters.revenueMin !== '' && filters.revenueMin !== undefined) {
+      params.append('revenue_min', filters.revenueMin.toString());
+    }
+    if (filters.revenueMax !== '' && filters.revenueMax !== undefined) {
+      params.append('revenue_max', filters.revenueMax.toString());
+    }
+    if (filters.profitMin !== '' && filters.profitMin !== undefined) {
+      params.append('profit_min', filters.profitMin.toString());
+    }
+    if (filters.profitMax !== '' && filters.profitMax !== undefined) {
+      params.append('profit_max', filters.profitMax.toString());
+    }
+  }
+
   return api.get<LeadsTechAnalysisResultsResponse>(`/leadstech/analysis/results?${params.toString()}`);
 };
 

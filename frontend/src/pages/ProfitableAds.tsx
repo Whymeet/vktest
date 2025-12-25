@@ -25,10 +25,12 @@ import {
   CheckCircle,
   Loader2,
   FileText,
+  Filter,
+  RotateCcw,
 } from 'lucide-react';
 import {
   getLeadsTechConfig,
-  updateLeadsTechConfig,
+  updateLeadsTechAnalysisSettings,
   getLeadsTechCabinets,
   createLeadsTechCabinet,
   updateLeadsTechCabinet,
@@ -43,7 +45,7 @@ import {
   whitelistProfitableBanners,
   getWhitelistProfitableStatus,
   stopWhitelistProfitableWorker,
-  type LeadsTechConfigCreate,
+  type LeadsTechFilters,
 } from '../api/client';
 import { Card } from '../components/Card';
 
@@ -72,9 +74,19 @@ interface AnalysisResult {
 
 // Constants for virtualization
 const ROW_HEIGHT = 48;
-const MOBILE_CARD_HEIGHT = 120;
+const MOBILE_CARD_HEIGHT = 160;
 
-// Memoized table row component
+// Column widths for consistent table layout
+const COLUMN_WIDTHS = {
+  banner_id: 'w-[15%] min-w-[100px]',
+  cabinet: 'w-[25%] min-w-[120px]',
+  vk_spent: 'w-[15%] min-w-[100px]',
+  lt_revenue: 'w-[15%] min-w-[100px]',
+  profit: 'w-[15%] min-w-[100px]',
+  roi: 'w-[15%] min-w-[80px]',
+};
+
+// Memoized table row component - using div-based layout for virtualization
 const TableRow = memo(function TableRow({
   result,
   style,
@@ -83,30 +95,30 @@ const TableRow = memo(function TableRow({
   style?: CSSProperties;
 }) {
   return (
-    <tr
+    <div
       style={style}
-      className="border-b border-slate-700/50 hover:bg-slate-700/30 transition-colors"
+      className="flex items-center border-b border-slate-700/50 hover:bg-slate-700/30 transition-colors px-4"
     >
-      <td className="py-3 pr-4">
-        <span className="text-white font-mono">{result.banner_id}</span>
-      </td>
-      <td className="py-3 pr-4">
+      <div className={`py-3 pr-4 ${COLUMN_WIDTHS.banner_id}`}>
+        <span className="text-white font-mono text-sm">{result.banner_id}</span>
+      </div>
+      <div className={`py-3 pr-4 ${COLUMN_WIDTHS.cabinet} truncate`}>
         <span className="text-sm text-slate-300">{result.cabinet_name}</span>
-      </td>
-      <td className="py-3 pr-4 text-right">
-        <span className="text-orange-400">{formatMoney(result.vk_spent)}</span>
-      </td>
-      <td className="py-3 pr-4 text-right">
-        <span className="text-blue-400">{formatMoney(result.lt_revenue)}</span>
-      </td>
-      <td className="py-3 pr-4 text-right">
-        <span className={result.profit >= 0 ? 'text-green-400' : 'text-red-400'}>
+      </div>
+      <div className={`py-3 pr-4 text-right ${COLUMN_WIDTHS.vk_spent}`}>
+        <span className="text-orange-400 text-sm">{formatMoney(result.vk_spent)}</span>
+      </div>
+      <div className={`py-3 pr-4 text-right ${COLUMN_WIDTHS.lt_revenue}`}>
+        <span className="text-blue-400 text-sm">{formatMoney(result.lt_revenue)}</span>
+      </div>
+      <div className={`py-3 pr-4 text-right ${COLUMN_WIDTHS.profit}`}>
+        <span className={`text-sm ${result.profit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
           {formatMoney(result.profit)}
         </span>
-      </td>
-      <td className="py-3 text-right">
+      </div>
+      <div className={`py-3 text-right ${COLUMN_WIDTHS.roi}`}>
         <span
-          className={`font-medium ${
+          className={`font-medium text-sm ${
             result.roi_percent === null
               ? 'text-slate-400'
               : result.roi_percent >= 0
@@ -116,8 +128,8 @@ const TableRow = memo(function TableRow({
         >
           {result.roi_percent !== null ? `${result.roi_percent.toFixed(1)}%` : '-'}
         </span>
-      </td>
-    </tr>
+      </div>
+    </div>
   );
 });
 
@@ -132,37 +144,40 @@ const MobileCard = memo(function MobileCard({
   return (
     <div
       style={style}
-      className="bg-slate-700/30 rounded-lg p-3 border border-slate-700/50 space-y-2"
+      className="bg-slate-700/30 rounded-lg p-4 border border-slate-700/50"
     >
-      <div className="flex items-center justify-between">
-        <span className="text-white font-mono text-sm">ID: {result.banner_id}</span>
-        <span
-          className={`font-bold text-lg ${
-            result.roi_percent === null
-              ? 'text-slate-400'
-              : result.roi_percent >= 0
-              ? 'text-green-400'
-              : 'text-red-400'
-          }`}
-        >
-          {result.roi_percent !== null ? `${result.roi_percent.toFixed(1)}%` : '-'}
-        </span>
+      {/* Header row: ID and ROI */}
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-white font-mono text-sm font-medium">#{result.banner_id}</span>
+        <div className={`px-2 py-1 rounded-md text-sm font-bold ${
+          result.roi_percent === null
+            ? 'bg-slate-600/50 text-slate-400'
+            : result.roi_percent >= 0
+            ? 'bg-green-900/40 text-green-400'
+            : 'bg-red-900/40 text-red-400'
+        }`}>
+          ROI: {result.roi_percent !== null ? `${result.roi_percent.toFixed(1)}%` : '-'}
+        </div>
       </div>
-      <div className="text-xs text-slate-400 truncate">{result.cabinet_name}</div>
-      <div className="flex items-center justify-between text-xs gap-2">
-        <div className="flex flex-col">
-          <span className="text-slate-500">Траты</span>
-          <span className="text-orange-400">{formatMoney(result.vk_spent)}</span>
+
+      {/* Cabinet name */}
+      <div className="text-xs text-slate-400 truncate mb-3">{result.cabinet_name}</div>
+
+      {/* Stats grid */}
+      <div className="grid grid-cols-3 gap-3 text-xs">
+        <div className="bg-slate-800/50 rounded p-2">
+          <div className="text-slate-500 mb-1">Траты</div>
+          <div className="text-orange-400 font-medium">{formatMoney(result.vk_spent)}</div>
         </div>
-        <div className="flex flex-col">
-          <span className="text-slate-500">Доход</span>
-          <span className="text-blue-400">{formatMoney(result.lt_revenue)}</span>
+        <div className="bg-slate-800/50 rounded p-2">
+          <div className="text-slate-500 mb-1">Доход</div>
+          <div className="text-blue-400 font-medium">{formatMoney(result.lt_revenue)}</div>
         </div>
-        <div className="flex flex-col">
-          <span className="text-slate-500">Прибыль</span>
-          <span className={result.profit >= 0 ? 'text-green-400' : 'text-red-400'}>
+        <div className="bg-slate-800/50 rounded p-2">
+          <div className="text-slate-500 mb-1">Прибыль</div>
+          <div className={`font-medium ${result.profit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
             {formatMoney(result.profit)}
-          </span>
+          </div>
         </div>
       </div>
     </div>
@@ -193,12 +208,12 @@ function MobileCardsVirtualized({
   return (
     <div className="lg:hidden space-y-3">
       {/* Mobile sort controls */}
-      <div className="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1">
+      <div className="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1 scrollbar-hide">
         <button
           onClick={() => onSort('roi_percent')}
-          className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition-colors ${
+          className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
             sortField === 'roi_percent'
-              ? 'bg-blue-600 text-white'
+              ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/25'
               : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
           }`}
         >
@@ -206,9 +221,9 @@ function MobileCardsVirtualized({
         </button>
         <button
           onClick={() => onSort('profit')}
-          className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition-colors ${
+          className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
             sortField === 'profit'
-              ? 'bg-blue-600 text-white'
+              ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/25'
               : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
           }`}
         >
@@ -216,21 +231,31 @@ function MobileCardsVirtualized({
         </button>
         <button
           onClick={() => onSort('vk_spent')}
-          className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition-colors ${
+          className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
             sortField === 'vk_spent'
-              ? 'bg-blue-600 text-white'
+              ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/25'
               : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
           }`}
         >
           Траты <SortIcon field="vk_spent" />
+        </button>
+        <button
+          onClick={() => onSort('lt_revenue')}
+          className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
+            sortField === 'lt_revenue'
+              ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/25'
+              : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+          }`}
+        >
+          Доход <SortIcon field="lt_revenue" />
         </button>
       </div>
 
       {/* Virtualized cards container */}
       <div
         ref={parentRef}
-        className="overflow-auto"
-        style={{ maxHeight: 'calc(100vh - 400px)', minHeight: '300px' }}
+        className="overflow-auto rounded-lg"
+        style={{ maxHeight: 'calc(100vh - 420px)', minHeight: '350px' }}
       >
         <div
           style={{
@@ -264,7 +289,7 @@ function MobileCardsVirtualized({
   );
 }
 
-// Virtualized desktop table component
+// Virtualized desktop table component - using div-based layout
 function DesktopTableVirtualized({
   results,
   onSort,
@@ -294,91 +319,89 @@ function DesktopTableVirtualized({
   }
 
   return (
-    <div className="hidden lg:block">
+    <div className="hidden lg:block overflow-x-auto">
+      {/* Header - fixed outside scroll container */}
+      <div className="flex items-center text-sm text-slate-400 border-b border-slate-700 pb-3 px-4 min-w-[700px]">
+        <div className={COLUMN_WIDTHS.banner_id}>
+          <button
+            onClick={() => onSort('banner_id')}
+            className="flex items-center gap-1 hover:text-white"
+          >
+            ID объявления
+            <SortIcon field="banner_id" />
+          </button>
+        </div>
+        <div className={COLUMN_WIDTHS.cabinet}>Кабинет</div>
+        <div className={`${COLUMN_WIDTHS.vk_spent} text-right`}>
+          <button
+            onClick={() => onSort('vk_spent')}
+            className="flex items-center gap-1 hover:text-white ml-auto"
+          >
+            Траты VK
+            <SortIcon field="vk_spent" />
+          </button>
+        </div>
+        <div className={`${COLUMN_WIDTHS.lt_revenue} text-right`}>
+          <button
+            onClick={() => onSort('lt_revenue')}
+            className="flex items-center gap-1 hover:text-white ml-auto"
+          >
+            Доход LT
+            <SortIcon field="lt_revenue" />
+          </button>
+        </div>
+        <div className={`${COLUMN_WIDTHS.profit} text-right`}>
+          <button
+            onClick={() => onSort('profit')}
+            className="flex items-center gap-1 hover:text-white ml-auto"
+          >
+            Прибыль
+            <SortIcon field="profit" />
+          </button>
+        </div>
+        <div className={`${COLUMN_WIDTHS.roi} text-right`}>
+          <button
+            onClick={() => onSort('roi_percent')}
+            className="flex items-center gap-1 hover:text-white ml-auto"
+          >
+            ROI
+            <SortIcon field="roi_percent" />
+          </button>
+        </div>
+      </div>
+
+      {/* Scrollable body */}
       <div
         ref={parentRef}
         className="overflow-auto"
-        style={{ maxHeight: '600px' }}
+        style={{ maxHeight: '550px' }}
       >
-        <table className="w-full">
-          <thead className="sticky top-0 bg-slate-800 z-10">
-            <tr className="text-left text-sm text-slate-400 border-b border-slate-700">
-              <th className="pb-3 pr-4">
-                <button
-                  onClick={() => onSort('banner_id')}
-                  className="flex items-center gap-1 hover:text-white"
-                >
-                  ID объявления
-                  <SortIcon field="banner_id" />
-                </button>
-              </th>
-              <th className="pb-3 pr-4">Кабинет</th>
-              <th className="pb-3 pr-4 text-right">
-                <button
-                  onClick={() => onSort('vk_spent')}
-                  className="flex items-center gap-1 hover:text-white ml-auto"
-                >
-                  Траты VK
-                  <SortIcon field="vk_spent" />
-                </button>
-              </th>
-              <th className="pb-3 pr-4 text-right">
-                <button
-                  onClick={() => onSort('lt_revenue')}
-                  className="flex items-center gap-1 hover:text-white ml-auto"
-                >
-                  Доход LT
-                  <SortIcon field="lt_revenue" />
-                </button>
-              </th>
-              <th className="pb-3 pr-4 text-right">
-                <button
-                  onClick={() => onSort('profit')}
-                  className="flex items-center gap-1 hover:text-white ml-auto"
-                >
-                  Прибыль
-                  <SortIcon field="profit" />
-                </button>
-              </th>
-              <th className="pb-3 text-right">
-                <button
-                  onClick={() => onSort('roi_percent')}
-                  className="flex items-center gap-1 hover:text-white ml-auto"
-                >
-                  ROI
-                  <SortIcon field="roi_percent" />
-                </button>
-              </th>
-            </tr>
-          </thead>
-          <tbody
-            style={{
-              height: `${rowVirtualizer.getTotalSize()}px`,
-              position: 'relative',
-              display: 'block',
-            }}
-          >
-            {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-              const result = results[virtualRow.index];
-              return (
-                <TableRow
-                  key={result.id}
-                  result={result}
-                  style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    width: '100%',
-                    height: `${virtualRow.size}px`,
-                    transform: `translateY(${virtualRow.start}px)`,
-                    display: 'table',
-                    tableLayout: 'fixed',
-                  }}
-                />
-              );
-            })}
-          </tbody>
-        </table>
+        <div
+          className="min-w-[700px]"
+          style={{
+            height: `${rowVirtualizer.getTotalSize()}px`,
+            width: '100%',
+            position: 'relative',
+          }}
+        >
+          {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+            const result = results[virtualRow.index];
+            return (
+              <TableRow
+                key={result.id}
+                result={result}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  height: `${virtualRow.size}px`,
+                  transform: `translateY(${virtualRow.start}px)`,
+                }}
+              />
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -394,14 +417,10 @@ export function ProfitableAds() {
   const pageSize = 500;
 
   // Config form state
-  const [configForm, setConfigForm] = useState<LeadsTechConfigCreate>({
-    login: '',
-    password: '',
-    base_url: 'https://api.leads.tech',
+  const [configForm, setConfigForm] = useState<{ lookback_days: number; banner_sub_field: string }>({
     lookback_days: 10,
     banner_sub_field: 'sub4',
   });
-  const [showPassword, setShowPassword] = useState(false);
 
   // Cabinet form state
   const [newCabinetAccountId, setNewCabinetAccountId] = useState<number | ''>('');
@@ -412,6 +431,18 @@ export function ProfitableAds() {
   // Whitelist by ROI state
   const [roiThreshold, setRoiThreshold] = useState<number>(10);
   const [enableBanners, setEnableBanners] = useState<boolean>(true);
+
+  // Statistics filters state
+  const [filters, setFilters] = useState({
+    roiMin: '' as string | number,
+    roiMax: '' as string | number,
+    spentMin: '' as string | number,
+    spentMax: '' as string | number,
+    revenueMin: '' as string | number,
+    revenueMax: '' as string | number,
+    profitMin: '' as string | number,
+    profitMax: '' as string | number,
+  });
 
   // Modal state
   const [modalConfig, setModalConfig] = useState<{
@@ -436,13 +467,10 @@ export function ProfitableAds() {
   // Initialize config form when data loads
   useEffect(() => {
     if (configData?.configured) {
-      setConfigForm((prev: any) => ({
-        ...prev,
-        login: configData.login || '',
-        base_url: configData.base_url || 'https://api.leads.tech',
+      setConfigForm({
         lookback_days: configData.lookback_days || 10,
         banner_sub_field: configData.banner_sub_field || 'sub4',
-      }));
+      });
     }
   }, [configData]);
 
@@ -458,14 +486,27 @@ export function ProfitableAds() {
     refetchInterval: 10000, // Auto-refresh every 10 seconds
   });
 
+  // Convert filters to API format
+  const apiFilters: LeadsTechFilters = useMemo(() => ({
+    roiMin: filters.roiMin !== '' ? Number(filters.roiMin) : '',
+    roiMax: filters.roiMax !== '' ? Number(filters.roiMax) : '',
+    spentMin: filters.spentMin !== '' ? Number(filters.spentMin) : '',
+    spentMax: filters.spentMax !== '' ? Number(filters.spentMax) : '',
+    revenueMin: filters.revenueMin !== '' ? Number(filters.revenueMin) : '',
+    revenueMax: filters.revenueMax !== '' ? Number(filters.revenueMax) : '',
+    profitMin: filters.profitMin !== '' ? Number(filters.profitMin) : '',
+    profitMax: filters.profitMax !== '' ? Number(filters.profitMax) : '',
+  }), [filters]);
+
   const { data: analysisResults, refetch: refetchResults } = useQuery({
-    queryKey: ['leadstechResults', selectedCabinet, currentPage, sortField, sortOrder],
+    queryKey: ['leadstechResults', selectedCabinet, currentPage, sortField, sortOrder, apiFilters],
     queryFn: () => getLeadsTechAnalysisResults(
       selectedCabinet || undefined,
       currentPage,
       pageSize,
       sortField,
-      sortOrder
+      sortOrder,
+      apiFilters
     ).then((r: any) => r.data),
     refetchInterval: 5000, // Auto-refresh every 5 seconds
   });
@@ -491,7 +532,7 @@ export function ProfitableAds() {
 
   // Mutations
   const updateConfigMutation = useMutation({
-    mutationFn: updateLeadsTechConfig,
+    mutationFn: updateLeadsTechAnalysisSettings,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leadstechConfig'] });
     },
@@ -579,7 +620,7 @@ export function ProfitableAds() {
   // Get unique cabinet names from the dedicated endpoint
   const cabinetNames = analysisCabinetsData?.cabinets || [];
 
-  // Results are now sorted server-side, use directly
+  // Results are now filtered server-side, use directly
   const sortedResults = analysisResults?.results || [];
 
   // Summary stats (for current page + total count from server)
@@ -621,10 +662,7 @@ export function ProfitableAds() {
   };
 
   const handleSaveConfig = () => {
-    // Если конфиг не настроен - требуем и логин, и пароль
-    // Если конфиг уже настроен - пароль можно не вводить (оставить текущий)
-    if (!configForm.login) return;
-    if (!configData?.configured && !configForm.password) return;
+    if (!configData?.configured) return;
     updateConfigMutation.mutate(configForm);
   };
 
@@ -870,25 +908,177 @@ export function ProfitableAds() {
           </div>
 
           {/* Filters */}
-          <Card>
-            <div className="flex flex-wrap gap-4">
-              {/* Cabinet Filter */}
-              <div className="min-w-[200px]">
-                <label className="block text-sm text-slate-400 mb-1">Кабинет</label>
-                <select
-                  value={selectedCabinet}
-                  onChange={(e) => {
-                    setSelectedCabinet(e.target.value);
+          <Card title="Фильтры" icon={Filter}>
+            <div className="space-y-4">
+              {/* First row: Cabinet + Reset button */}
+              <div className="flex flex-wrap gap-4 items-end">
+                <div className="min-w-[200px] flex-1 sm:flex-none">
+                  <label className="block text-sm text-slate-400 mb-1">Кабинет</label>
+                  <select
+                    value={selectedCabinet}
+                    onChange={(e) => {
+                      setSelectedCabinet(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    className="input w-full"
+                  >
+                    <option value="">Все кабинеты</option>
+                    {cabinetNames.map((name: string) => (
+                      <option key={name} value={name}>{name}</option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  onClick={() => {
+                    setFilters({
+                      roiMin: '',
+                      roiMax: '',
+                      spentMin: '',
+                      spentMax: '',
+                      revenueMin: '',
+                      revenueMax: '',
+                      profitMin: '',
+                      profitMax: '',
+                    });
+                    setSelectedCabinet('');
                     setCurrentPage(1);
                   }}
-                  className="input w-full"
+                  className="btn btn-secondary text-sm"
                 >
-                  <option value="">Все кабинеты</option>
-                  {cabinetNames.map((name: string) => (
-                    <option key={name} value={name}>{name}</option>
-                  ))}
-                </select>
+                  <RotateCcw className="w-4 h-4" />
+                  <span className="hidden sm:inline">Сбросить</span>
+                </button>
               </div>
+
+              {/* Statistics filters grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+                {/* ROI filter */}
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-xs sm:text-sm text-slate-400 mb-1">
+                    <Percent className="w-3 h-3 inline mr-1" />
+                    ROI от
+                  </label>
+                  <input
+                    type="number"
+                    value={filters.roiMin}
+                    onChange={(e) => setFilters(f => ({ ...f, roiMin: e.target.value }))}
+                    className="input w-full text-sm"
+                    placeholder="-100"
+                    step="1"
+                  />
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-xs sm:text-sm text-slate-400 mb-1">
+                    <Percent className="w-3 h-3 inline mr-1" />
+                    ROI до
+                  </label>
+                  <input
+                    type="number"
+                    value={filters.roiMax}
+                    onChange={(e) => setFilters(f => ({ ...f, roiMax: e.target.value }))}
+                    className="input w-full text-sm"
+                    placeholder="1000"
+                    step="1"
+                  />
+                </div>
+
+                {/* Spent filter */}
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-xs sm:text-sm text-slate-400 mb-1">
+                    <DollarSign className="w-3 h-3 inline mr-1 text-orange-400" />
+                    Траты от
+                  </label>
+                  <input
+                    type="number"
+                    value={filters.spentMin}
+                    onChange={(e) => setFilters(f => ({ ...f, spentMin: e.target.value }))}
+                    className="input w-full text-sm"
+                    placeholder="0"
+                    step="100"
+                  />
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-xs sm:text-sm text-slate-400 mb-1">
+                    <DollarSign className="w-3 h-3 inline mr-1 text-orange-400" />
+                    Траты до
+                  </label>
+                  <input
+                    type="number"
+                    value={filters.spentMax}
+                    onChange={(e) => setFilters(f => ({ ...f, spentMax: e.target.value }))}
+                    className="input w-full text-sm"
+                    placeholder="100000"
+                    step="100"
+                  />
+                </div>
+
+                {/* Revenue filter */}
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-xs sm:text-sm text-slate-400 mb-1">
+                    <TrendingUp className="w-3 h-3 inline mr-1 text-blue-400" />
+                    Доход от
+                  </label>
+                  <input
+                    type="number"
+                    value={filters.revenueMin}
+                    onChange={(e) => setFilters(f => ({ ...f, revenueMin: e.target.value }))}
+                    className="input w-full text-sm"
+                    placeholder="0"
+                    step="100"
+                  />
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-xs sm:text-sm text-slate-400 mb-1">
+                    <TrendingUp className="w-3 h-3 inline mr-1 text-blue-400" />
+                    Доход до
+                  </label>
+                  <input
+                    type="number"
+                    value={filters.revenueMax}
+                    onChange={(e) => setFilters(f => ({ ...f, revenueMax: e.target.value }))}
+                    className="input w-full text-sm"
+                    placeholder="100000"
+                    step="100"
+                  />
+                </div>
+
+                {/* Profit filter */}
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-xs sm:text-sm text-slate-400 mb-1">
+                    <DollarSign className="w-3 h-3 inline mr-1 text-green-400" />
+                    Прибыль от
+                  </label>
+                  <input
+                    type="number"
+                    value={filters.profitMin}
+                    onChange={(e) => setFilters(f => ({ ...f, profitMin: e.target.value }))}
+                    className="input w-full text-sm"
+                    placeholder="-10000"
+                    step="100"
+                  />
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-xs sm:text-sm text-slate-400 mb-1">
+                    <DollarSign className="w-3 h-3 inline mr-1 text-green-400" />
+                    Прибыль до
+                  </label>
+                  <input
+                    type="number"
+                    value={filters.profitMax}
+                    onChange={(e) => setFilters(f => ({ ...f, profitMax: e.target.value }))}
+                    className="input w-full text-sm"
+                    placeholder="100000"
+                    step="100"
+                  />
+                </div>
+              </div>
+
+              {/* Active filters count */}
+              {Object.values(filters).some(v => v !== '') && (
+                <div className="text-xs text-slate-400">
+                  Найдено: <span className="text-white font-medium">{analysisResults?.total || 0}</span> объявлений
+                </div>
+              )}
             </div>
           </Card>
 
@@ -984,51 +1174,36 @@ export function ProfitableAds() {
       {activeTab === 'settings' && (
         <>
           {/* LeadsTech Config */}
-          <Card title="Настройки LeadsTech" icon={Settings}>
+          <Card title="Настройки анализа" icon={Settings}>
+            {/* Credentials status */}
+            <div className="mb-4 p-3 sm:p-4 bg-slate-700/30 rounded-lg">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  {configData?.configured ? (
+                    <>
+                      <CheckCircle className="w-4 h-4 text-green-400" />
+                      <span className="text-sm text-green-400">LeadsTech подключён</span>
+                    </>
+                  ) : (
+                    <>
+                      <AlertCircle className="w-4 h-4 text-yellow-400" />
+                      <span className="text-sm text-yellow-400">LeadsTech не настроен</span>
+                    </>
+                  )}
+                </div>
+                <a
+                  href="/settings"
+                  className="text-sm text-blue-400 hover:text-blue-300 underline"
+                >
+                  Настроить учётные данные
+                </a>
+              </div>
+            </div>
+
+            {/* Analysis-specific settings */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               <div>
-                <label className="block text-xs sm:text-sm text-slate-400 mb-1">Логин</label>
-                <input
-                  type="text"
-                  value={configForm.login}
-                  onChange={(e) => setConfigForm({ ...configForm, login: e.target.value })}
-                  placeholder={configData?.login || 'Введите логин'}
-                  className="input w-full text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs sm:text-sm text-slate-400 mb-1">Пароль</label>
-                <div className="relative">
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    value={configForm.password}
-                    onChange={(e) => setConfigForm({ ...configForm, password: e.target.value })}
-                    placeholder={configData?.configured ? '••••••••' : 'Введите пароль'}
-                    className="input w-full pr-16 text-sm"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs"
-                  >
-                    {showPassword ? 'Скрыть' : 'Показать'}
-                  </button>
-                </div>
-                {configData?.configured && !configForm.password && (
-                  <p className="text-xs text-slate-500 mt-1">Оставьте пустым, чтобы не менять.</p>
-                )}
-              </div>
-              <div>
-                <label className="block text-xs sm:text-sm text-slate-400 mb-1">URL API</label>
-                <input
-                  type="text"
-                  value={configForm.base_url}
-                  onChange={(e) => setConfigForm({ ...configForm, base_url: e.target.value })}
-                  className="input w-full text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs sm:text-sm text-slate-400 mb-1">Период (дней)</label>
+                <label className="block text-xs sm:text-sm text-slate-400 mb-1">Период анализа (дней)</label>
                 <input
                   type="number"
                   value={configForm.lookback_days}
@@ -1036,7 +1211,7 @@ export function ProfitableAds() {
                   className="input w-full text-sm"
                 />
               </div>
-              <div className="sm:col-span-2">
+              <div>
                 <label className="block text-xs sm:text-sm text-slate-400 mb-1">Поле с ID объявления</label>
                 <select
                   value={configForm.banner_sub_field}
@@ -1051,23 +1226,10 @@ export function ProfitableAds() {
                 </select>
               </div>
             </div>
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mt-4 pt-4 border-t border-slate-700">
-              <div className="flex items-center gap-2">
-                {configData?.configured ? (
-                  <>
-                    <CheckCircle className="w-4 h-4 text-green-400" />
-                    <span className="text-xs sm:text-sm text-green-400">Настроено</span>
-                  </>
-                ) : (
-                  <>
-                    <AlertCircle className="w-4 h-4 text-yellow-400" />
-                    <span className="text-xs sm:text-sm text-yellow-400">Не настроено</span>
-                  </>
-                )}
-              </div>
+            <div className="mt-4 pt-4 border-t border-slate-700">
               <button
                 onClick={handleSaveConfig}
-                disabled={updateConfigMutation.isPending || !configForm.login || (!configData?.configured && !configForm.password)}
+                disabled={updateConfigMutation.isPending || !configData?.configured}
                 className="btn bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 text-sm w-full sm:w-auto"
               >
                 {updateConfigMutation.isPending ? (
@@ -1075,7 +1237,7 @@ export function ProfitableAds() {
                 ) : (
                   <Check className="w-4 h-4" />
                 )}
-                Сохранить
+                Сохранить настройки анализа
               </button>
             </div>
           </Card>

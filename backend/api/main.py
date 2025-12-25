@@ -630,7 +630,24 @@ async def get_settings(
         "statistics_trigger": settings.get('statistics_trigger', {
             "enabled": False,
             "wait_seconds": 10
-        })
+        }),
+        "leadstech": _get_leadstech_for_settings(db, current_user.id)
+    }
+
+
+def _get_leadstech_for_settings(db: Session, user_id: int) -> dict:
+    """Helper to get LeadsTech config for settings response"""
+    lt_config = crud.get_leadstech_config(db, user_id=user_id)
+    if not lt_config:
+        return {
+            "configured": False,
+            "login": "",
+            "base_url": "https://api.leads.tech"
+        }
+    return {
+        "configured": True,
+        "login": lt_config.login,
+        "base_url": lt_config.base_url or "https://api.leads.tech"
     }
 
 
@@ -691,6 +708,39 @@ async def update_statistics_trigger(
     """Update statistics trigger settings for current user"""
     crud.set_user_setting(db, current_user.id, 'statistics_trigger', settings.model_dump())
     return {"message": "Statistics trigger settings updated"}
+
+
+class LeadsTechCredentialsUpdate(BaseModel):
+    login: str
+    password: Optional[str] = None
+    base_url: Optional[str] = "https://api.leads.tech"
+
+
+@app.put("/api/settings/leadstech")
+async def update_leadstech_credentials(
+    credentials: LeadsTechCredentialsUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Update LeadsTech credentials for current user"""
+    existing_config = crud.get_leadstech_config(db, user_id=current_user.id)
+
+    # If config exists and no password provided, use existing password
+    password = credentials.password
+    if not password:
+        if existing_config:
+            password = existing_config.password
+        else:
+            raise HTTPException(status_code=400, detail="Password is required for new configuration")
+
+    crud.create_or_update_leadstech_config(
+        db,
+        login=credentials.login,
+        password=password,
+        user_id=current_user.id,
+        base_url=credentials.base_url or "https://api.leads.tech"
+    )
+    return {"message": "LeadsTech credentials updated"}
 
 
 # === Whitelist ===
@@ -1488,8 +1538,8 @@ async def update_leadstech_config(
     db: Session = Depends(get_db)
 ):
     """Create or update LeadsTech configuration"""
-    existing_config = crud.get_leadstech_config(db)
-    
+    existing_config = crud.get_leadstech_config(db, user_id=current_user.id)
+
     # If config exists and no password provided, use existing password
     password = config.password
     if not password:
@@ -1519,6 +1569,35 @@ async def delete_leadstech_config(
     if crud.delete_leadstech_config(db, user_id=current_user.id):
         return {"message": "LeadsTech configuration deleted"}
     raise HTTPException(status_code=404, detail="LeadsTech configuration not found")
+
+
+class LeadsTechAnalysisSettings(BaseModel):
+    lookback_days: Optional[int] = 10
+    banner_sub_field: Optional[str] = "sub4"
+
+
+@app.put("/api/leadstech/config/analysis")
+async def update_leadstech_analysis_settings(
+    settings: LeadsTechAnalysisSettings,
+    current_user: User = Depends(require_feature("leadstech")),
+    db: Session = Depends(get_db)
+):
+    """Update only LeadsTech analysis settings (lookback_days, banner_sub_field)"""
+    existing_config = crud.get_leadstech_config(db, user_id=current_user.id)
+    if not existing_config:
+        raise HTTPException(status_code=400, detail="LeadsTech credentials not configured. Configure them in Settings first.")
+
+    # Update only analysis settings, keeping existing credentials
+    crud.create_or_update_leadstech_config(
+        db,
+        login=existing_config.login,
+        password=existing_config.password,
+        user_id=current_user.id,
+        base_url=existing_config.base_url,
+        lookback_days=settings.lookback_days,
+        banner_sub_field=settings.banner_sub_field
+    )
+    return {"message": "LeadsTech analysis settings updated"}
 
 
 # === LeadsTech Cabinets ===
@@ -1606,20 +1685,28 @@ async def get_leadstech_analysis_results(
     page_size: int = 500,
     sort_by: str = 'created_at',
     sort_order: str = 'desc',
+    roi_min: Optional[float] = None,
+    roi_max: Optional[float] = None,
+    spent_min: Optional[float] = None,
+    spent_max: Optional[float] = None,
+    revenue_min: Optional[float] = None,
+    revenue_max: Optional[float] = None,
+    profit_min: Optional[float] = None,
+    profit_max: Optional[float] = None,
     current_user: User = Depends(require_feature("leadstech")),
     db: Session = Depends(get_db)
 ):
-    """Get LeadsTech analysis results with pagination and sorting"""
+    """Get LeadsTech analysis results with pagination, sorting and filters"""
     page_size = min(page_size, 500)  # Max 500 per page
     offset = (page - 1) * page_size
-    
+
     # Validate sort parameters
     valid_sort_fields = ['created_at', 'roi_percent', 'profit', 'vk_spent', 'lt_revenue', 'banner_id']
     if sort_by not in valid_sort_fields:
         sort_by = 'created_at'
     if sort_order not in ['asc', 'desc']:
         sort_order = 'desc'
-    
+
     results, total = crud.get_leadstech_analysis_results(
         db,
         cabinet_name=cabinet_name,
@@ -1627,7 +1714,15 @@ async def get_leadstech_analysis_results(
         offset=offset,
         sort_by=sort_by,
         sort_order=sort_order,
-        user_id=current_user.id
+        user_id=current_user.id,
+        roi_min=roi_min,
+        roi_max=roi_max,
+        spent_min=spent_min,
+        spent_max=spent_max,
+        revenue_min=revenue_min,
+        revenue_max=revenue_max,
+        profit_min=profit_min,
+        profit_max=profit_max
     )
     
     total_pages = (total + page_size - 1) // page_size if total > 0 else 1

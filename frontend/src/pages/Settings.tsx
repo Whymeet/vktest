@@ -1,18 +1,20 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Save, RefreshCw, Settings as SettingsIcon, MessageSquare, Clock, BarChart3, Eye, EyeOff } from 'lucide-react';
+import { Save, RefreshCw, Settings as SettingsIcon, MessageSquare, Clock, BarChart3, Eye, EyeOff, Link } from 'lucide-react';
 import {
   getSettings,
   updateAnalysisSettings,
   updateTelegramSettings,
   updateSchedulerSettings,
   updateStatisticsTrigger,
+  updateLeadsTechCredentials,
 } from '../api/client';
 import type {
   AnalysisSettings,
   TelegramSettings,
   SchedulerSettings,
   StatisticsTriggerSettings,
+  LeadsTechCredentials,
 } from '../api/client';
 import { Card } from '../components/Card';
 import { Toggle } from '../components/Toggle';
@@ -20,6 +22,7 @@ import { Toggle } from '../components/Toggle';
 export function Settings() {
   const queryClient = useQueryClient();
   const [showToken, setShowToken] = useState(false);
+  const [showLtPassword, setShowLtPassword] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [chatIdInput, setChatIdInput] = useState<string>('');
 
@@ -34,6 +37,11 @@ export function Settings() {
   const [telegramForm, setTelegramForm] = useState<TelegramSettings | null>(null);
   const [schedulerForm, setSchedulerForm] = useState<SchedulerSettings | null>(null);
   const [triggerForm, setTriggerForm] = useState<StatisticsTriggerSettings | null>(null);
+  const [leadstechForm, setLeadstechForm] = useState<{ login: string; password: string; base_url: string }>({
+    login: '',
+    password: '',
+    base_url: 'https://api.leads.tech',
+  });
 
   useEffect(() => {
     if (settings) {
@@ -58,6 +66,14 @@ export function Settings() {
       };
       setSchedulerForm(schedulerWithDefaults);
       setTriggerForm(settings.statistics_trigger);
+      // LeadsTech credentials
+      if (settings.leadstech) {
+        setLeadstechForm({
+          login: settings.leadstech.login || '',
+          password: '', // Password not returned from API
+          base_url: settings.leadstech.base_url || 'https://api.leads.tech',
+        });
+      }
     }
   }, [settings]);
 
@@ -95,6 +111,16 @@ export function Settings() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['settings'] });
       showSuccess('Настройки триггера сохранены');
+    },
+  });
+
+  const leadstechMutation = useMutation({
+    mutationFn: updateLeadsTechCredentials,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings'] });
+      queryClient.invalidateQueries({ queryKey: ['leadstechConfig'] });
+      setLeadstechForm((prev) => ({ ...prev, password: '' })); // Clear password after save
+      showSuccess('Учётные данные LeadsTech сохранены');
     },
   });
 
@@ -236,6 +262,78 @@ export function Settings() {
           >
             <Save className="w-4 h-4" />
             {telegramMutation.isPending ? 'Сохранение...' : 'Сохранить'}
+          </button>
+        </div>
+      </Card>
+
+      {/* LeadsTech Credentials */}
+      <Card title="LeadsTech" icon={Link}>
+        <div className="space-y-4">
+          <div className="bg-blue-900/20 border border-blue-700/30 rounded-lg p-4">
+            <p className="text-sm text-blue-300">
+              Учётные данные для интеграции с LeadsTech. Используются для анализа прибыльных объявлений и других функций.
+            </p>
+          </div>
+          <div>
+            <label className="label">Логин</label>
+            <input
+              type="text"
+              value={leadstechForm.login}
+              onChange={(e) => setLeadstechForm({ ...leadstechForm, login: e.target.value })}
+              className="input"
+              placeholder="Введите логин LeadsTech"
+            />
+          </div>
+          <div>
+            <label className="label">Пароль</label>
+            <div className="relative">
+              <input
+                type={showLtPassword ? 'text' : 'password'}
+                value={leadstechForm.password}
+                onChange={(e) => setLeadstechForm({ ...leadstechForm, password: e.target.value })}
+                className="input pr-10"
+                placeholder={settings?.leadstech?.configured ? '••••••••' : 'Введите пароль'}
+              />
+              <button
+                type="button"
+                onClick={() => setShowLtPassword(!showLtPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+              >
+                {showLtPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+            {settings?.leadstech?.configured && !leadstechForm.password && (
+              <p className="text-xs text-slate-500 mt-1">Оставьте пустым, чтобы не менять пароль</p>
+            )}
+          </div>
+          <div>
+            <label className="label">URL API</label>
+            <input
+              type="text"
+              value={leadstechForm.base_url}
+              onChange={(e) => setLeadstechForm({ ...leadstechForm, base_url: e.target.value })}
+              className="input"
+            />
+          </div>
+          {settings?.leadstech?.configured && (
+            <div className="flex items-center gap-2 text-sm text-green-400">
+              <div className="w-2 h-2 rounded-full bg-green-400"></div>
+              Настроено
+            </div>
+          )}
+        </div>
+        <div className="mt-4 pt-4 border-t border-slate-700">
+          <button
+            onClick={() => leadstechMutation.mutate({
+              login: leadstechForm.login,
+              password: leadstechForm.password || undefined,
+              base_url: leadstechForm.base_url,
+            })}
+            className="btn btn-primary"
+            disabled={leadstechMutation.isPending || !leadstechForm.login || (!settings?.leadstech?.configured && !leadstechForm.password)}
+          >
+            <Save className="w-4 h-4" />
+            {leadstechMutation.isPending ? 'Сохранение...' : 'Сохранить'}
           </button>
         </div>
       </Card>

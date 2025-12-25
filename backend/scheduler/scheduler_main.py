@@ -516,14 +516,15 @@ class VKAdsScheduler:
     
     # ===== Автовключение отключённых объявлений =====
     
-    def get_disabled_banners_for_period(self, db, lookback_hours: int) -> List[BannerAction]:
-        """Получить отключённые баннеры за указанный период"""
+    def get_disabled_banners_for_period(self, db, lookback_hours: int, user_id: int) -> List[BannerAction]:
+        """Получить отключённые баннеры за указанный период для конкретного пользователя"""
         from sqlalchemy import and_
-        
+
         cutoff_time = get_moscow_time() - timedelta(hours=lookback_hours)
-        
+
         query = db.query(BannerAction).filter(
             and_(
+                BannerAction.user_id == user_id,
                 BannerAction.action == 'disabled',
                 BannerAction.created_at >= cutoff_time,
                 BannerAction.is_dry_run == False
@@ -679,35 +680,43 @@ class VKAdsScheduler:
         reenable_settings = self.settings.get("reenable", {})
         lookback_hours = reenable_settings.get("lookback_hours", 24)
         dry_run = reenable_settings.get("dry_run", True)
-        
+
+        # Получаем user_id
+        user_id = int(self.user_id) if self.user_id else None
+        if not user_id:
+            self.logger.error("❌ user_id не задан, автовключение невозможно")
+            return
+
         db = SessionLocal()
         try:
-            # Загружаем настройки анализа для получения lookback_days
-            analysis_settings = crud.get_setting(db, 'analysis_settings') or {}
+            # Загружаем настройки анализа для получения lookback_days (пользовательские)
+            analysis_settings = crud.get_user_setting(db, user_id, 'analysis_settings') or {}
             lookback_days = analysis_settings.get("lookback_days", 10)
-            
-            # Загружаем настройки Telegram
-            telegram_config = crud.get_setting(db, 'telegram') or {}
-            
+
+            # Загружаем настройки Telegram (пользовательские)
+            telegram_config = crud.get_user_setting(db, user_id, 'telegram') or {}
+
             self.logger.info("")
             self.logger.info("=" * 60)
             self.logger.info("🔄 АВТОВКЛЮЧЕНИЕ ОТКЛЮЧЁННЫХ ОБЪЯВЛЕНИЙ")
             self.logger.info("=" * 60)
+            self.logger.info(f"   User ID: {user_id}")
             self.logger.info(f"   Период поиска отключённых: {lookback_hours} часов")
             self.logger.info(f"   Период статистики (lookback_days): {lookback_days} дней")
             self.logger.info(f"   Режим: {'🧪 DRY RUN (тестовый)' if dry_run else '🔴 РЕАЛЬНЫЙ'}")
-            
-            # Получаем отключённые баннеры
-            disabled_banners = self.get_disabled_banners_for_period(db, lookback_hours)
+            self.logger.info(f"   Telegram: {'✅ включён' if telegram_config.get('enabled') else '❌ выключен'}")
+
+            # Получаем отключённые баннеры для этого пользователя
+            disabled_banners = self.get_disabled_banners_for_period(db, lookback_hours, user_id)
             
             if not disabled_banners:
                 self.logger.info("✅ Нет отключённых баннеров за указанный период")
                 return
             
             self.logger.info(f"📋 Найдено {len(disabled_banners)} отключённых баннеров для проверки")
-            
-            # Получаем все аккаунты
-            accounts = crud.get_accounts(db)
+
+            # Получаем аккаунты пользователя
+            accounts = crud.get_accounts(db, user_id=user_id)
             accounts_by_name = {acc.name: acc for acc in accounts}
             
             # Статистика

@@ -1385,9 +1385,17 @@ def get_leadstech_analysis_results(
     offset: int = 0,
     sort_by: str = 'created_at',
     sort_order: str = 'desc',
-    user_id: int = None
+    user_id: int = None,
+    roi_min: Optional[float] = None,
+    roi_max: Optional[float] = None,
+    spent_min: Optional[float] = None,
+    spent_max: Optional[float] = None,
+    revenue_min: Optional[float] = None,
+    revenue_max: Optional[float] = None,
+    profit_min: Optional[float] = None,
+    profit_max: Optional[float] = None
 ) -> tuple[List[LeadsTechAnalysisResult], int]:
-    """Get LeadsTech analysis results with pagination and sorting."""
+    """Get LeadsTech analysis results with pagination, sorting and filters."""
     query = db.query(LeadsTechAnalysisResult)
 
     if user_id:
@@ -1395,6 +1403,30 @@ def get_leadstech_analysis_results(
 
     if cabinet_name:
         query = query.filter(LeadsTechAnalysisResult.cabinet_name == cabinet_name)
+
+    # ROI filters
+    if roi_min is not None:
+        query = query.filter(LeadsTechAnalysisResult.roi_percent >= roi_min)
+    if roi_max is not None:
+        query = query.filter(LeadsTechAnalysisResult.roi_percent <= roi_max)
+
+    # Spent filters
+    if spent_min is not None:
+        query = query.filter(LeadsTechAnalysisResult.vk_spent >= spent_min)
+    if spent_max is not None:
+        query = query.filter(LeadsTechAnalysisResult.vk_spent <= spent_max)
+
+    # Revenue filters
+    if revenue_min is not None:
+        query = query.filter(LeadsTechAnalysisResult.lt_revenue >= revenue_min)
+    if revenue_max is not None:
+        query = query.filter(LeadsTechAnalysisResult.lt_revenue <= revenue_max)
+
+    # Profit filters
+    if profit_min is not None:
+        query = query.filter(LeadsTechAnalysisResult.profit >= profit_min)
+    if profit_max is not None:
+        query = query.filter(LeadsTechAnalysisResult.profit <= profit_max)
 
     total = query.count()
 
