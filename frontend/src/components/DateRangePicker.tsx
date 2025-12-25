@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { DayPicker, DateRange } from 'react-day-picker';
+import { DayPicker, type DateRange } from 'react-day-picker';
 import { format, parse } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { Calendar, X } from 'lucide-react';
