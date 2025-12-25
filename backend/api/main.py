@@ -1779,8 +1779,8 @@ async def start_leadstech_analysis(
     db: Session = Depends(get_db)
 ):
     """Start LeadsTech analysis for enabled cabinets"""
-    # Check if config exists
-    config = crud.get_leadstech_config(db)
+    # Check if config exists for this user
+    config = crud.get_leadstech_config(db, user_id=current_user.id)
     if not config:
         raise HTTPException(status_code=400, detail="LeadsTech not configured. Please configure login/password first.")
 

@@ -454,7 +454,8 @@ def run_analysis():
                     subs_fields=banner_sub_fields,
                 )
             except Exception as e:
-                logger.error(f"Failed to fetch LeadsTech data for {cabinet_name}: {e}")
+                # Use repr() to escape curly braces in error message for Loguru
+                logger.error(f"Failed to fetch LeadsTech data for {cabinet_name}: {repr(str(e))}")
                 continue
 
             lt_by_banner = aggregate_leadstech_by_banner(lt_rows, banner_sub_fields)
