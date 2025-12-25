@@ -1478,13 +1478,16 @@ def get_leadstech_analysis_stats(
     profit_min: Optional[float] = None,
     profit_max: Optional[float] = None
 ) -> dict:
-    """Get aggregated statistics for LeadsTech analysis results (respects all filters)."""
+    """Get aggregated statistics for LeadsTech analysis results (respects all filters).
+
+    Uses weighted ROI calculation: (total_revenue - total_spent) / total_spent * 100
+    This gives accurate overall ROI instead of simple average of individual ROIs.
+    """
     query = db.query(
         func.count(LeadsTechAnalysisResult.id).label('total_count'),
         func.coalesce(func.sum(LeadsTechAnalysisResult.vk_spent), 0).label('total_spent'),
         func.coalesce(func.sum(LeadsTechAnalysisResult.lt_revenue), 0).label('total_revenue'),
-        func.coalesce(func.sum(LeadsTechAnalysisResult.profit), 0).label('total_profit'),
-        func.avg(LeadsTechAnalysisResult.roi_percent).label('avg_roi')
+        func.coalesce(func.sum(LeadsTechAnalysisResult.profit), 0).label('total_profit')
     ).filter(LeadsTechAnalysisResult.user_id == user_id)
 
     if cabinet_name:
@@ -1510,12 +1513,20 @@ def get_leadstech_analysis_stats(
 
     result = query.first()
 
+    total_spent = float(result.total_spent or 0)
+    total_revenue = float(result.total_revenue or 0)
+    total_profit = float(result.total_profit or 0)
+
+    # Calculate weighted ROI based on totals (not average of individual ROIs)
+    # Formula: (revenue - spent) / spent * 100 = profit / spent * 100
+    weighted_roi = (total_profit / total_spent * 100) if total_spent > 0 else 0
+
     return {
         'total_count': result.total_count or 0,
-        'total_spent': float(result.total_spent or 0),
-        'total_revenue': float(result.total_revenue or 0),
-        'total_profit': float(result.total_profit or 0),
-        'avg_roi': float(result.avg_roi or 0) if result.avg_roi else 0
+        'total_spent': total_spent,
+        'total_revenue': total_revenue,
+        'total_profit': total_profit,
+        'avg_roi': weighted_roi
     }
 
 

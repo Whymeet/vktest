@@ -640,19 +640,30 @@ export function ProfitableAds() {
   // Results are now filtered server-side, use directly
   const sortedResults = analysisResults?.results || [];
 
-  // Summary stats (for current page + total count from server)
+  // Summary stats from server (calculated on ALL matching results, not just current page)
   const summary = useMemo(() => {
+    const serverStats = analysisResults?.stats;
+    if (serverStats) {
+      return {
+        totalSpent: serverStats.total_spent,
+        totalRevenue: serverStats.total_revenue,
+        totalProfit: serverStats.total_profit,
+        count: serverStats.total_count,
+        avgRoi: serverStats.avg_roi,
+      };
+    }
+    // Fallback to client-side calculation if stats not available
     const data = sortedResults;
     return {
       totalSpent: data.reduce((sum: number, r: any) => sum + r.vk_spent, 0),
       totalRevenue: data.reduce((sum: number, r: any) => sum + r.lt_revenue, 0),
       totalProfit: data.reduce((sum: number, r: any) => sum + r.profit, 0),
-      count: analysisResults?.total || 0, // Use total from server (includes filtered results)
+      count: analysisResults?.total || 0,
       avgRoi: data.filter((r: any) => r.roi_percent !== null).length > 0
         ? data.filter((r: any) => r.roi_percent !== null).reduce((sum: number, r: any) => sum + (r.roi_percent || 0), 0) / data.filter((r: any) => r.roi_percent !== null).length
         : null,
     };
-  }, [sortedResults, analysisResults?.total]);
+  }, [sortedResults, analysisResults?.stats, analysisResults?.total]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
