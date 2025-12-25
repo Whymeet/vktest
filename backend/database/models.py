@@ -425,7 +425,7 @@ class LeadsTechConfig(Base):
 
     # Analysis settings
     lookback_days = Column(Integer, default=10)
-    banner_sub_field = Column(String(50), default="sub4")
+    banner_sub_fields = Column(JSON, default=["sub4", "sub5"])  # List of sub fields to analyze (e.g. ["sub4", "sub5"])
 
     # Timestamps
     created_at = Column(DateTime, default=get_moscow_time, nullable=False)

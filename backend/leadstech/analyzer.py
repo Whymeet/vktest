@@ -40,7 +40,11 @@ class LeadstechClientConfig:
     login: str
     password: str
     page_size: int = 500
-    banner_sub_field: str = "sub4"
+    banner_sub_fields: List[str] = None  # List of sub fields to analyze (e.g. ["sub4", "sub5"])
+
+    def __post_init__(self):
+        if self.banner_sub_fields is None:
+            self.banner_sub_fields = ["sub4"]
 
 
 class LeadstechClient:
@@ -102,11 +106,11 @@ class LeadstechClient:
         date_from: date,
         date_to: date,
         sub1_value: str,
-        subs_field: Optional[str] = None,
+        subs_fields: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
         """Fetch stats by subid with pagination"""
         token = self._get_token()
-        subs_field = subs_field or self.cfg.banner_sub_field
+        subs_fields = subs_fields or self.cfg.banner_sub_fields
 
         headers = {
             "X-Auth-Token": token,
@@ -117,20 +121,23 @@ class LeadstechClient:
         page = 1
 
         while True:
-            params: Dict[str, Any] = {
-                "page": page,
-                "pageSize": self.cfg.page_size,
-                "dateStart": date_from.strftime("%d-%m-%Y"),
-                "dateEnd": date_to.strftime("%d-%m-%Y"),
-                "sub1": sub1_value,
-                "strictSubs": 0,
-                "untilCurrentTime": 0,
-                "limitLowerDay": 0,
-                "limitUpperDay": 0,
-                "subs[]": subs_field,
-            }
+            # Build params with multiple subs[] fields
+            params: List[tuple] = [
+                ("page", page),
+                ("pageSize", self.cfg.page_size),
+                ("dateStart", date_from.strftime("%d-%m-%Y")),
+                ("dateEnd", date_to.strftime("%d-%m-%Y")),
+                ("sub1", sub1_value),
+                ("strictSubs", 0),
+                ("untilCurrentTime", 0),
+                ("limitLowerDay", 0),
+                ("limitUpperDay", 0),
+            ]
+            # Add all sub fields
+            for sub_field in subs_fields:
+                params.append(("subs[]", sub_field))
 
-            logger.info(f"LeadsTech: by-subid page={page} (sub1={sub1_value}, subs[]={subs_field}, {params['dateStart']}..{params['dateEnd']})")
+            logger.info(f"LeadsTech: by-subid page={page} (sub1={sub1_value}, subs[]={subs_fields}, {date_from.strftime('%d-%m-%Y')}..{date_to.strftime('%d-%m-%Y')})")
 
             resp = requests.get(
                 self._by_subid_url,
@@ -307,21 +314,29 @@ class VkAdsClient:
 
 def aggregate_leadstech_by_banner(
     rows: List[Dict[str, Any]],
-    banner_sub_field: str = "sub4",
+    banner_sub_fields: List[str] = None,
 ) -> Dict[int, Dict[str, Any]]:
-    """Aggregate LeadsTech data by banner ID"""
-    logger.info(f"Aggregating LeadsTech by field {banner_sub_field}")
+    """Aggregate LeadsTech data by banner ID from multiple sub fields"""
+    if banner_sub_fields is None:
+        banner_sub_fields = ["sub4"]
+
+    logger.info(f"Aggregating LeadsTech by fields: {banner_sub_fields}")
 
     result: Dict[int, Dict[str, Any]] = {}
 
     for row in rows:
-        sub_value = row.get(banner_sub_field)
-        if not sub_value:
-            continue
+        # Try each sub field to extract banner_id
+        banner_id = None
+        for sub_field in banner_sub_fields:
+            sub_value = row.get(sub_field)
+            if sub_value:
+                try:
+                    banner_id = int(str(sub_value))
+                    break  # Found valid banner_id, stop looking
+                except (TypeError, ValueError):
+                    continue
 
-        try:
-            banner_id = int(str(sub_value))
-        except (TypeError, ValueError):
+        if banner_id is None:
             continue
 
         revenue = float(row.get("sumwebmaster", 0) or 0)
@@ -398,13 +413,17 @@ def run_analysis():
         date_from = date_to - timedelta(days=lookback_days)
         logger.info(f"Analysis period: {date_from} to {date_to} ({lookback_days} days)")
 
+        # Get banner_sub_fields (with backwards compatibility)
+        banner_sub_fields = lt_config.banner_sub_fields or ["sub4"]
+        logger.info(f"Analyzing sub fields: {banner_sub_fields}")
+
         # Create LeadsTech client (shared for all cabinets)
         # Strip whitespace from credentials to avoid authentication issues
         lt_client_cfg = LeadstechClientConfig(
             base_url=lt_config.base_url.strip() if lt_config.base_url else "https://api.leads.tech",
             login=lt_config.login.strip() if lt_config.login else "",
             password=lt_config.password.strip() if lt_config.password else "",
-            banner_sub_field=lt_config.banner_sub_field,
+            banner_sub_fields=banner_sub_fields,
         )
         lt_client = LeadstechClient(lt_client_cfg)
 
@@ -427,13 +446,13 @@ def run_analysis():
                     date_from=date_from,
                     date_to=date_to,
                     sub1_value=lt_label,
-                    subs_field=lt_config.banner_sub_field,
+                    subs_fields=banner_sub_fields,
                 )
             except Exception as e:
                 logger.error(f"Failed to fetch LeadsTech data for {cabinet_name}: {e}")
                 continue
 
-            lt_by_banner = aggregate_leadstech_by_banner(lt_rows, lt_config.banner_sub_field)
+            lt_by_banner = aggregate_leadstech_by_banner(lt_rows, banner_sub_fields)
 
             if not lt_by_banner:
                 logger.warning(f"Cabinet {cabinet_name}: no LeadsTech data, skipping")
@@ -466,8 +485,16 @@ def run_analysis():
             if len(vk_spent_by_banner) == 0:
                 logger.warning(f"Cabinet {cabinet_name}: VK API returned NO data for any banners! Check if banner IDs exist in this VK account.")
 
-            # 3. Merge and calculate ROI
+            # 3. Merge and calculate ROI - ONLY include banners found in VK
+            valid_banners = 0
+            skipped_banners = 0
             for banner_id, lt_data in lt_by_banner.items():
+                # Skip banners not found in VK (invalid IDs from sub fields)
+                if banner_id not in vk_spent_by_banner:
+                    skipped_banners += 1
+                    continue
+
+                valid_banners += 1
                 lt_revenue = float(lt_data.get("lt_revenue", 0.0))
                 vk_spent = float(vk_spent_by_banner.get(banner_id, 0.0))
 
@@ -494,7 +521,7 @@ def run_analysis():
                 }
                 all_results.append(result)
 
-            logger.info(f"Cabinet {cabinet_name}: merged {len(lt_by_banner)} banners")
+            logger.info(f"Cabinet {cabinet_name}: {valid_banners} valid banners, {skipped_banners} skipped (not found in VK)")
 
         # 4. Clear old results and save new ones
         if all_results:

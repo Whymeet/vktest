@@ -1178,10 +1178,13 @@ def create_or_update_leadstech_config(
     password: str,
     base_url: str = "https://api.leads.tech",
     lookback_days: int = 10,
-    banner_sub_field: str = "sub4",
+    banner_sub_fields: list = None,
     user_id: int = None
 ) -> LeadsTechConfig:
     """Create or update LeadsTech configuration for user"""
+    if banner_sub_fields is None:
+        banner_sub_fields = ["sub4"]
+
     # Find config for this user
     config = db.query(LeadsTechConfig).filter(LeadsTechConfig.user_id == user_id).first() if user_id else get_leadstech_config(db)
 
@@ -1190,7 +1193,7 @@ def create_or_update_leadstech_config(
         config.password = password
         config.base_url = base_url
         config.lookback_days = lookback_days
-        config.banner_sub_field = banner_sub_field
+        config.banner_sub_fields = banner_sub_fields
         config.updated_at = get_moscow_time()
     else:
         config = LeadsTechConfig(
@@ -1199,7 +1202,7 @@ def create_or_update_leadstech_config(
             password=password,
             base_url=base_url,
             lookback_days=lookback_days,
-            banner_sub_field=banner_sub_field
+            banner_sub_fields=banner_sub_fields
         )
         db.add(config)
 

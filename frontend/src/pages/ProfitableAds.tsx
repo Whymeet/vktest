@@ -417,9 +417,9 @@ export function ProfitableAds() {
   const pageSize = 500;
 
   // Config form state
-  const [configForm, setConfigForm] = useState<{ lookback_days: number; banner_sub_field: string }>({
+  const [configForm, setConfigForm] = useState<{ lookback_days: number; banner_sub_fields: string[] }>({
     lookback_days: 10,
-    banner_sub_field: 'sub4',
+    banner_sub_fields: ['sub4', 'sub5'],
   });
 
   // Cabinet form state
@@ -469,7 +469,7 @@ export function ProfitableAds() {
     if (configData?.configured) {
       setConfigForm({
         lookback_days: configData.lookback_days || 10,
-        banner_sub_field: configData.banner_sub_field || 'sub4',
+        banner_sub_fields: configData.banner_sub_fields || ['sub4', 'sub5'],
       });
     }
   }, [configData]);
@@ -1212,24 +1212,33 @@ export function ProfitableAds() {
                 />
               </div>
               <div>
-                <label className="block text-xs sm:text-sm text-slate-400 mb-1">Поле с ID объявления</label>
-                <select
-                  value={configForm.banner_sub_field}
-                  onChange={(e) => setConfigForm({ ...configForm, banner_sub_field: e.target.value })}
-                  className="input w-full text-sm"
-                >
-                  <option value="sub1">sub1</option>
-                  <option value="sub2">sub2</option>
-                  <option value="sub3">sub3</option>
-                  <option value="sub4">sub4</option>
-                  <option value="sub5">sub5</option>
-                </select>
+                <label className="block text-xs sm:text-sm text-slate-400 mb-1">Поля с ID объявления</label>
+                <div className="flex flex-wrap gap-3">
+                  {['sub1', 'sub2', 'sub3', 'sub4', 'sub5'].map((sub) => (
+                    <label key={sub} className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={configForm.banner_sub_fields.includes(sub)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setConfigForm({ ...configForm, banner_sub_fields: [...configForm.banner_sub_fields, sub] });
+                          } else {
+                            setConfigForm({ ...configForm, banner_sub_fields: configForm.banner_sub_fields.filter(s => s !== sub) });
+                          }
+                        }}
+                        className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-blue-500 focus:ring-blue-500"
+                      />
+                      <span className="text-sm text-slate-300">{sub}</span>
+                    </label>
+                  ))}
+                </div>
+                <p className="text-xs text-slate-500 mt-2">Выберите одно или несколько полей. ID баннеров из всех полей будут объединены.</p>
               </div>
             </div>
             <div className="mt-4 pt-4 border-t border-slate-700">
               <button
                 onClick={handleSaveConfig}
-                disabled={updateConfigMutation.isPending || !configData?.configured}
+                disabled={updateConfigMutation.isPending || !configData?.configured || configForm.banner_sub_fields.length === 0}
                 className="btn bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 text-sm w-full sm:w-auto"
               >
                 {updateConfigMutation.isPending ? (
@@ -1239,6 +1248,9 @@ export function ProfitableAds() {
                 )}
                 Сохранить настройки анализа
               </button>
+              {configForm.banner_sub_fields.length === 0 && (
+                <p className="text-xs text-red-400 mt-2">Выберите хотя бы одно поле sub</p>
+              )}
             </div>
           </Card>
 
