@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { DayPicker } from 'react-day-picker';
+import { DayPicker, DateRange } from 'react-day-picker';
 import { format, parse } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { Calendar, X } from 'lucide-react';
@@ -37,13 +37,13 @@ export function DateRangePicker({ dateFrom, dateTo, onChange, className = '' }: 
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleSelect = (range: { from: Date | undefined; to: Date | undefined } | undefined) => {
+  const handleSelect = (range: DateRange | undefined) => {
     if (!range) {
       setSelected({ from: undefined, to: undefined });
       return;
     }
 
-    setSelected(range);
+    setSelected({ from: range.from, to: range.to });
 
     if (range.from && range.to) {
       onChange(

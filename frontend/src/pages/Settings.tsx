@@ -14,7 +14,6 @@ import type {
   TelegramSettings,
   SchedulerSettings,
   StatisticsTriggerSettings,
-  LeadsTechCredentials,
 } from '../api/client';
 import { Card } from '../components/Card';
 import { Toggle } from '../components/Toggle';
