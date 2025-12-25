@@ -593,7 +593,91 @@ class VKAdsScheduler:
         
         self.logger.error(f"❌ Не удалось получить статистику для баннера {banner_id} после {max_retries} попыток")
         return None
-    
+
+    def get_fresh_stats_batch(self, token: str, banner_ids: List[int], lookback_days: int = 7,
+                               batch_size: int = 100, max_retries: int = 3) -> Dict[int, Dict]:
+        """Получить статистику для множества баннеров батчами (оптимизация для 35 req/s лимита VK API)
+
+        Args:
+            token: API токен
+            banner_ids: Список ID баннеров
+            lookback_days: Период статистики
+            batch_size: Размер батча (рекомендуется 100-200)
+            max_retries: Количество повторных попыток при ошибке
+
+        Returns:
+            Dict[banner_id -> stats_dict]
+        """
+        base_url = "https://ads.vk.com/api/v2"
+        date_to = datetime.now().strftime("%Y-%m-%d")
+        date_from = (datetime.now() - timedelta(days=lookback_days)).strftime("%Y-%m-%d")
+
+        results = {}
+        total_batches = (len(banner_ids) + batch_size - 1) // batch_size
+
+        for batch_num, i in enumerate(range(0, len(banner_ids), batch_size), 1):
+            if self.should_stop:
+                break
+
+            batch = banner_ids[i:i + batch_size]
+
+            for attempt in range(max_retries):
+                try:
+                    self.logger.debug(f"   📦 Batch {batch_num}/{total_batches}: запрос статистики для {len(batch)} баннеров")
+
+                    stats = get_banners_stats_day(
+                        token=token,
+                        base_url=base_url,
+                        date_from=date_from,
+                        date_to=date_to,
+                        banner_ids=batch,
+                        metrics="base"
+                    )
+
+                    # Парсим результаты
+                    for item in stats:
+                        banner_id = item.get("id")
+                        if banner_id:
+                            total = item.get("total", {}).get("base", {})
+                            vk_data = total.get("vk", {}) if isinstance(total.get("vk"), dict) else {}
+                            vk_goals = vk_data.get("goals", 0.0)
+
+                            results[banner_id] = {
+                                "spent": float(total.get("spent", 0.0)),
+                                "clicks": float(total.get("clicks", 0.0)),
+                                "shows": float(total.get("impressions", 0.0)),
+                                "goals": float(vk_goals),
+                                "vk_goals": float(vk_goals)
+                            }
+
+                    # Добавляем пустую статистику для баннеров без данных
+                    for bid in batch:
+                        if bid not in results:
+                            results[bid] = {"spent": 0, "clicks": 0, "shows": 0, "goals": 0, "vk_goals": 0}
+
+                    break  # Успешно, выходим из retry цикла
+
+                except Exception as e:
+                    error_str = str(e)
+                    if "429" in error_str or "rate" in error_str.lower():
+                        wait_time = (attempt + 1) * 3  # 3, 6, 9 секунд
+                        self.logger.warning(f"   ⚠️ Rate limit batch {batch_num}, ждём {wait_time} сек (попытка {attempt + 1}/{max_retries})")
+                        time.sleep(wait_time)
+                        continue
+                    else:
+                        self.logger.error(f"   ❌ Ошибка batch {batch_num}: {e}")
+                        # Помечаем баннеры как с ошибкой (None)
+                        for bid in batch:
+                            if bid not in results:
+                                results[bid] = None
+                        break
+
+            # Пауза между батчами (VK API: 35 req/s, делаем ~5 req/s для надёжности)
+            if batch_num < total_batches:
+                time.sleep(0.1)
+
+        return results
+
     def should_reenable_banner(self, stats: Dict, rules: List[DisableRule]) -> bool:
         """Проверить, должен ли баннер быть включён обратно"""
         matched_rule = crud.check_banner_against_rules(stats, rules)
@@ -676,7 +760,7 @@ class VKAdsScheduler:
             return result
     
     def run_reenable_analysis(self):
-        """Запуск автовключения ранее отключённых объявлений"""
+        """Запуск автовключения ранее отключённых объявлений (оптимизированная версия с batch-запросами)"""
         reenable_settings = self.settings.get("reenable", {})
         lookback_hours = reenable_settings.get("lookback_hours", 24)
         dry_run = reenable_settings.get("dry_run", True)
@@ -698,7 +782,7 @@ class VKAdsScheduler:
 
             self.logger.info("")
             self.logger.info("=" * 60)
-            self.logger.info("🔄 АВТОВКЛЮЧЕНИЕ ОТКЛЮЧЁННЫХ ОБЪЯВЛЕНИЙ")
+            self.logger.info("🔄 АВТОВКЛЮЧЕНИЕ ОТКЛЮЧЁННЫХ ОБЪЯВЛЕНИЙ (BATCH)")
             self.logger.info("=" * 60)
             self.logger.info(f"   User ID: {user_id}")
             self.logger.info(f"   Период поиска отключённых: {lookback_hours} часов")
@@ -708,26 +792,26 @@ class VKAdsScheduler:
 
             # Получаем отключённые баннеры для этого пользователя
             disabled_banners = self.get_disabled_banners_for_period(db, lookback_hours, user_id)
-            
+
             if not disabled_banners:
                 self.logger.info("✅ Нет отключённых баннеров за указанный период")
                 return
-            
+
             self.logger.info(f"📋 Найдено {len(disabled_banners)} отключённых баннеров для проверки")
 
             # Получаем аккаунты пользователя
             accounts = crud.get_accounts(db, user_id=user_id)
             accounts_by_name = {acc.name: acc for acc in accounts}
-            
+
             # Статистика
             total_checked = 0
             total_reenabled = 0
             total_skipped = 0
             total_errors = 0
-            
+
             # Список включённых баннеров для Telegram
             reenabled_banners = []
-            
+
             # Группируем по аккаунтам
             banners_by_account = {}
             for banner_action in disabled_banners:
@@ -735,63 +819,76 @@ class VKAdsScheduler:
                 if account_name not in banners_by_account:
                     banners_by_account[account_name] = []
                 banners_by_account[account_name].append(banner_action)
-            
+
             for account_name, banner_actions in banners_by_account.items():
                 if self.should_stop:
                     break
-                    
+
                 account = accounts_by_name.get(account_name)
                 if not account:
                     self.logger.warning(f"⚠️ Аккаунт '{account_name}' не найден в БД")
                     continue
-                
+
                 # Получаем правила для аккаунта
                 rules = crud.get_rules_for_account(db, account.id, enabled_only=True)
                 if not rules:
                     self.logger.warning(f"⚠️ Нет активных правил для аккаунта '{account_name}', пропускаем")
                     continue
-                
+
                 self.logger.info("")
                 self.logger.info(f"📁 Аккаунт: {account_name}")
                 self.logger.info(f"   Баннеров для проверки: {len(banner_actions)}")
                 self.logger.info(f"   Активных правил: {len(rules)}")
-                
+
                 api_token = account.api_token
                 account_reenabled = 0
-                
-                for banner_action in banner_actions:
+
+                # === BATCH ОПТИМИЗАЦИЯ: получаем статистику для ВСЕХ баннеров аккаунта сразу ===
+                banner_ids = [ba.banner_id for ba in banner_actions]
+                banner_actions_map = {ba.banner_id: ba for ba in banner_actions}
+
+                self.logger.info(f"   🚀 Запрос статистики батчами (по 100 баннеров)...")
+                start_time = time.time()
+
+                all_stats = self.get_fresh_stats_batch(api_token, banner_ids, lookback_days, batch_size=100)
+
+                elapsed = time.time() - start_time
+                self.logger.info(f"   ⏱️ Статистика получена за {elapsed:.1f} сек")
+
+                # Теперь обрабатываем результаты
+                for banner_id, fresh_stats in all_stats.items():
                     if self.should_stop:
                         break
-                        
-                    banner_id = banner_action.banner_id
+
+                    banner_action = banner_actions_map.get(banner_id)
+                    if not banner_action:
+                        continue
+
                     banner_name = banner_action.banner_name or f"ID:{banner_id}"
                     total_checked += 1
-                    
-                    # Получаем свежую статистику за lookback_days из настроек анализа
-                    fresh_stats = self.get_fresh_stats(api_token, banner_id, lookback_days)
-                    
+
                     if fresh_stats is None:
                         self.logger.error(f"   ❌ [{banner_id}] Не удалось получить статистику")
                         total_errors += 1
                         continue
-                    
+
                     # Логируем статистику
                     spent = fresh_stats.get('spent', 0)
                     goals = fresh_stats.get('goals', 0)
                     clicks = fresh_stats.get('clicks', 0)
-                    
+
                     # Проверяем, можно ли включить
                     if self.should_reenable_banner(fresh_stats, rules):
                         self.logger.info(f"   ✅ [{banner_id}] {banner_name}")
                         self.logger.info(f"      Статистика: потрачено={spent:.2f}₽, целей={goals}, кликов={clicks}")
                         self.logger.info(f"      Не подпадает под правила → ВКЛЮЧАЕМ")
-                        
+
                         enable_result = self.enable_banner_with_parents(api_token, banner_id, dry_run)
-                        
+
                         if enable_result.get("success"):
                             total_reenabled += 1
                             account_reenabled += 1
-                            
+
                             # Собираем данные для Telegram
                             reenabled_banners.append({
                                 "account": account_name,
@@ -803,11 +900,11 @@ class VKAdsScheduler:
                                 "campaign_enabled": enable_result.get("campaign_enabled", False),
                                 "group_enabled": enable_result.get("group_enabled", False)
                             })
-                            
+
                             if not dry_run:
                                 crud.create_banner_action(
                                     db=db,
-                                    user_id=account.user_id,  # ← добавлено
+                                    user_id=account.user_id,
                                     banner_id=banner_id,
                                     action="enabled",
                                     account_name=account_name,
@@ -822,19 +919,19 @@ class VKAdsScheduler:
                                     is_dry_run=dry_run
                                 )
                                 self.logger.info(f"      📝 Записано в историю")
+
+                            # Небольшая пауза между включениями (VK API rate limit)
+                            time.sleep(0.1)
                         else:
                             total_errors += 1
                             self.logger.error(f"      ❌ Ошибка включения: {enable_result.get('error')}")
                     else:
                         total_skipped += 1
                         self.logger.debug(f"   ⏭️ [{banner_id}] Всё ещё под правилами (spent={spent:.2f}, goals={goals})")
-                    
-                    # Rate limiting - 1 секунда между баннерами (VK API: max 35 req/sec)
-                    time.sleep(1.0)
-                
+
                 if account_reenabled > 0:
                     self.logger.info(f"   📊 Итого по аккаунту: включено {account_reenabled} баннеров")
-            
+
             # Итоги
             self.logger.info("")
             self.logger.info("=" * 60)
@@ -846,7 +943,7 @@ class VKAdsScheduler:
             if dry_run:
                 self.logger.info(f"   ⚠️ Режим DRY RUN - реальные изменения НЕ применялись")
             self.logger.info("=" * 60)
-            
+
             # Отправляем уведомление в Telegram (ВСЕГДА, не только если есть включения)
             if telegram_config.get("enabled", False):
                 self._send_reenable_telegram_notification(
@@ -860,7 +957,7 @@ class VKAdsScheduler:
                     lookback_hours,
                     lookback_days
                 )
-            
+
         except Exception as e:
             self.logger.error(f"❌ Критическая ошибка автовключения: {e}")
             import traceback
