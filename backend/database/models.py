@@ -424,8 +424,9 @@ class LeadsTechConfig(Base):
     base_url = Column(String(500), default="https://api.leads.tech")
 
     # Analysis settings
-    lookback_days = Column(Integer, default=10)
-    banner_sub_field = Column(String(50), default="sub4")
+    date_from = Column(String(10), nullable=True)  # YYYY-MM-DD format, start of analysis period
+    date_to = Column(String(10), nullable=True)  # YYYY-MM-DD format, end of analysis period
+    banner_sub_fields = Column(JSON, default=["sub4", "sub5"])  # List of sub fields to analyze (e.g. ["sub4", "sub5"])
 
     # Timestamps
     created_at = Column(DateTime, default=get_moscow_time, nullable=False)
@@ -435,7 +436,7 @@ class LeadsTechConfig(Base):
     user = relationship("User", back_populates="leadstech_config")
 
     def __repr__(self):
-        return f"<LeadsTechConfig(login='{self.login}', lookback_days={self.lookback_days})>"
+        return f"<LeadsTechConfig(login='{self.login}', date_from={self.date_from}, date_to={self.date_to})>"
 
 
 class LeadsTechCabinet(Base):

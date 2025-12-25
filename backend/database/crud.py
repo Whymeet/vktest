@@ -1177,11 +1177,15 @@ def create_or_update_leadstech_config(
     login: str,
     password: str,
     base_url: str = "https://api.leads.tech",
-    lookback_days: int = 10,
-    banner_sub_field: str = "sub4",
+    date_from: str = None,
+    date_to: str = None,
+    banner_sub_fields: list = None,
     user_id: int = None
 ) -> LeadsTechConfig:
     """Create or update LeadsTech configuration for user"""
+    if banner_sub_fields is None:
+        banner_sub_fields = ["sub4", "sub5"]
+
     # Find config for this user
     config = db.query(LeadsTechConfig).filter(LeadsTechConfig.user_id == user_id).first() if user_id else get_leadstech_config(db)
 
@@ -1189,8 +1193,9 @@ def create_or_update_leadstech_config(
         config.login = login
         config.password = password
         config.base_url = base_url
-        config.lookback_days = lookback_days
-        config.banner_sub_field = banner_sub_field
+        config.date_from = date_from
+        config.date_to = date_to
+        config.banner_sub_fields = banner_sub_fields
         config.updated_at = get_moscow_time()
     else:
         config = LeadsTechConfig(
@@ -1198,8 +1203,9 @@ def create_or_update_leadstech_config(
             login=login,
             password=password,
             base_url=base_url,
-            lookback_days=lookback_days,
-            banner_sub_field=banner_sub_field
+            date_from=date_from,
+            date_to=date_to,
+            banner_sub_fields=banner_sub_fields
         )
         db.add(config)
 
@@ -1385,9 +1391,17 @@ def get_leadstech_analysis_results(
     offset: int = 0,
     sort_by: str = 'created_at',
     sort_order: str = 'desc',
-    user_id: int = None
+    user_id: int = None,
+    roi_min: Optional[float] = None,
+    roi_max: Optional[float] = None,
+    spent_min: Optional[float] = None,
+    spent_max: Optional[float] = None,
+    revenue_min: Optional[float] = None,
+    revenue_max: Optional[float] = None,
+    profit_min: Optional[float] = None,
+    profit_max: Optional[float] = None
 ) -> tuple[List[LeadsTechAnalysisResult], int]:
-    """Get LeadsTech analysis results with pagination and sorting."""
+    """Get LeadsTech analysis results with pagination, sorting and filters."""
     query = db.query(LeadsTechAnalysisResult)
 
     if user_id:
@@ -1395,6 +1409,30 @@ def get_leadstech_analysis_results(
 
     if cabinet_name:
         query = query.filter(LeadsTechAnalysisResult.cabinet_name == cabinet_name)
+
+    # ROI filters
+    if roi_min is not None:
+        query = query.filter(LeadsTechAnalysisResult.roi_percent >= roi_min)
+    if roi_max is not None:
+        query = query.filter(LeadsTechAnalysisResult.roi_percent <= roi_max)
+
+    # Spent filters
+    if spent_min is not None:
+        query = query.filter(LeadsTechAnalysisResult.vk_spent >= spent_min)
+    if spent_max is not None:
+        query = query.filter(LeadsTechAnalysisResult.vk_spent <= spent_max)
+
+    # Revenue filters
+    if revenue_min is not None:
+        query = query.filter(LeadsTechAnalysisResult.lt_revenue >= revenue_min)
+    if revenue_max is not None:
+        query = query.filter(LeadsTechAnalysisResult.lt_revenue <= revenue_max)
+
+    # Profit filters
+    if profit_min is not None:
+        query = query.filter(LeadsTechAnalysisResult.profit >= profit_min)
+    if profit_max is not None:
+        query = query.filter(LeadsTechAnalysisResult.profit <= profit_max)
 
     total = query.count()
 
@@ -1425,6 +1463,71 @@ def get_leadstech_analysis_cabinet_names(db: Session, user_id: int) -> List[str]
         LeadsTechAnalysisResult.user_id == user_id
     ).distinct().all()
     return sorted([r[0] for r in results if r[0]])
+
+
+def get_leadstech_analysis_stats(
+    db: Session,
+    user_id: int,
+    cabinet_name: Optional[str] = None,
+    roi_min: Optional[float] = None,
+    roi_max: Optional[float] = None,
+    spent_min: Optional[float] = None,
+    spent_max: Optional[float] = None,
+    revenue_min: Optional[float] = None,
+    revenue_max: Optional[float] = None,
+    profit_min: Optional[float] = None,
+    profit_max: Optional[float] = None
+) -> dict:
+    """Get aggregated statistics for LeadsTech analysis results (respects all filters).
+
+    Uses weighted ROI calculation: (total_revenue - total_spent) / total_spent * 100
+    This gives accurate overall ROI instead of simple average of individual ROIs.
+    """
+    query = db.query(
+        func.count(LeadsTechAnalysisResult.id).label('total_count'),
+        func.coalesce(func.sum(LeadsTechAnalysisResult.vk_spent), 0).label('total_spent'),
+        func.coalesce(func.sum(LeadsTechAnalysisResult.lt_revenue), 0).label('total_revenue'),
+        func.coalesce(func.sum(LeadsTechAnalysisResult.profit), 0).label('total_profit')
+    ).filter(LeadsTechAnalysisResult.user_id == user_id)
+
+    if cabinet_name:
+        query = query.filter(LeadsTechAnalysisResult.cabinet_name == cabinet_name)
+
+    # Apply same filters as results
+    if roi_min is not None:
+        query = query.filter(LeadsTechAnalysisResult.roi_percent >= roi_min)
+    if roi_max is not None:
+        query = query.filter(LeadsTechAnalysisResult.roi_percent <= roi_max)
+    if spent_min is not None:
+        query = query.filter(LeadsTechAnalysisResult.vk_spent >= spent_min)
+    if spent_max is not None:
+        query = query.filter(LeadsTechAnalysisResult.vk_spent <= spent_max)
+    if revenue_min is not None:
+        query = query.filter(LeadsTechAnalysisResult.lt_revenue >= revenue_min)
+    if revenue_max is not None:
+        query = query.filter(LeadsTechAnalysisResult.lt_revenue <= revenue_max)
+    if profit_min is not None:
+        query = query.filter(LeadsTechAnalysisResult.profit >= profit_min)
+    if profit_max is not None:
+        query = query.filter(LeadsTechAnalysisResult.profit <= profit_max)
+
+    result = query.first()
+
+    total_spent = float(result.total_spent or 0)
+    total_revenue = float(result.total_revenue or 0)
+    total_profit = float(result.total_profit or 0)
+
+    # Calculate weighted ROI based on totals (not average of individual ROIs)
+    # Formula: (revenue - spent) / spent * 100 = profit / spent * 100
+    weighted_roi = (total_profit / total_spent * 100) if total_spent > 0 else 0
+
+    return {
+        'total_count': result.total_count or 0,
+        'total_spent': total_spent,
+        'total_revenue': total_revenue,
+        'total_profit': total_profit,
+        'avg_roi': weighted_roi
+    }
 
 
 def get_disabled_banners_account_names(db: Session, user_id: int) -> List[str]:

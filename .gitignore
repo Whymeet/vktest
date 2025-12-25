@@ -27,6 +27,8 @@ pgdata/
 # Database backups
 *.sql
 *.dump
+*.custom
+dump.custom
 
 # ======================
 # Логи

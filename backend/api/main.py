@@ -275,8 +275,9 @@ class LeadsTechConfigCreate(BaseModel):
     login: str
     password: Optional[str] = None  # Optional to allow updates without password
     base_url: str = "https://api.leads.tech"
-    lookback_days: int = 10
-    banner_sub_field: str = "sub4"
+    date_from: Optional[str] = None  # YYYY-MM-DD format
+    date_to: Optional[str] = None  # YYYY-MM-DD format
+    banner_sub_fields: List[str] = ["sub4", "sub5"]  # List of sub fields to analyze
 
 
 class LeadsTechCabinetCreate(BaseModel):
@@ -630,7 +631,24 @@ async def get_settings(
         "statistics_trigger": settings.get('statistics_trigger', {
             "enabled": False,
             "wait_seconds": 10
-        })
+        }),
+        "leadstech": _get_leadstech_for_settings(db, current_user.id)
+    }
+
+
+def _get_leadstech_for_settings(db: Session, user_id: int) -> dict:
+    """Helper to get LeadsTech config for settings response"""
+    lt_config = crud.get_leadstech_config(db, user_id=user_id)
+    if not lt_config:
+        return {
+            "configured": False,
+            "login": "",
+            "base_url": "https://api.leads.tech"
+        }
+    return {
+        "configured": True,
+        "login": lt_config.login,
+        "base_url": lt_config.base_url or "https://api.leads.tech"
     }
 
 
@@ -691,6 +709,39 @@ async def update_statistics_trigger(
     """Update statistics trigger settings for current user"""
     crud.set_user_setting(db, current_user.id, 'statistics_trigger', settings.model_dump())
     return {"message": "Statistics trigger settings updated"}
+
+
+class LeadsTechCredentialsUpdate(BaseModel):
+    login: str
+    password: Optional[str] = None
+    base_url: Optional[str] = "https://api.leads.tech"
+
+
+@app.put("/api/settings/leadstech")
+async def update_leadstech_credentials(
+    credentials: LeadsTechCredentialsUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Update LeadsTech credentials for current user"""
+    existing_config = crud.get_leadstech_config(db, user_id=current_user.id)
+
+    # If config exists and no password provided, use existing password
+    password = credentials.password
+    if not password:
+        if existing_config:
+            password = existing_config.password
+        else:
+            raise HTTPException(status_code=400, detail="Password is required for new configuration")
+
+    crud.create_or_update_leadstech_config(
+        db,
+        login=credentials.login,
+        password=password,
+        user_id=current_user.id,
+        base_url=credentials.base_url or "https://api.leads.tech"
+    )
+    return {"message": "LeadsTech credentials updated"}
 
 
 # === Whitelist ===
@@ -1474,8 +1525,9 @@ async def get_leadstech_config(
         "configured": True,
         "login": config.login,
         "base_url": config.base_url,
-        "lookback_days": config.lookback_days,
-        "banner_sub_field": config.banner_sub_field,
+        "date_from": config.date_from,
+        "date_to": config.date_to,
+        "banner_sub_fields": config.banner_sub_fields or ["sub4", "sub5"],
         "created_at": config.created_at.isoformat() if config.created_at else None,
         "updated_at": config.updated_at.isoformat() if config.updated_at else None
     }
@@ -1488,8 +1540,8 @@ async def update_leadstech_config(
     db: Session = Depends(get_db)
 ):
     """Create or update LeadsTech configuration"""
-    existing_config = crud.get_leadstech_config(db)
-    
+    existing_config = crud.get_leadstech_config(db, user_id=current_user.id)
+
     # If config exists and no password provided, use existing password
     password = config.password
     if not password:
@@ -1504,8 +1556,9 @@ async def update_leadstech_config(
         password=password,
         user_id=current_user.id,
         base_url=config.base_url,
-        lookback_days=config.lookback_days,
-        banner_sub_field=config.banner_sub_field
+        date_from=config.date_from,
+        date_to=config.date_to,
+        banner_sub_fields=config.banner_sub_fields
     )
     return {"message": "LeadsTech configuration updated", "id": result.id}
 
@@ -1519,6 +1572,37 @@ async def delete_leadstech_config(
     if crud.delete_leadstech_config(db, user_id=current_user.id):
         return {"message": "LeadsTech configuration deleted"}
     raise HTTPException(status_code=404, detail="LeadsTech configuration not found")
+
+
+class LeadsTechAnalysisSettings(BaseModel):
+    date_from: Optional[str] = None  # YYYY-MM-DD format
+    date_to: Optional[str] = None  # YYYY-MM-DD format
+    banner_sub_fields: Optional[List[str]] = ["sub4", "sub5"]
+
+
+@app.put("/api/leadstech/config/analysis")
+async def update_leadstech_analysis_settings(
+    settings: LeadsTechAnalysisSettings,
+    current_user: User = Depends(require_feature("leadstech")),
+    db: Session = Depends(get_db)
+):
+    """Update only LeadsTech analysis settings (date_from, date_to, banner_sub_fields)"""
+    existing_config = crud.get_leadstech_config(db, user_id=current_user.id)
+    if not existing_config:
+        raise HTTPException(status_code=400, detail="LeadsTech credentials not configured. Configure them in Settings first.")
+
+    # Update only analysis settings, keeping existing credentials
+    crud.create_or_update_leadstech_config(
+        db,
+        login=existing_config.login,
+        password=existing_config.password,
+        user_id=current_user.id,
+        base_url=existing_config.base_url,
+        date_from=settings.date_from,
+        date_to=settings.date_to,
+        banner_sub_fields=settings.banner_sub_fields
+    )
+    return {"message": "LeadsTech analysis settings updated"}
 
 
 # === LeadsTech Cabinets ===
@@ -1606,20 +1690,28 @@ async def get_leadstech_analysis_results(
     page_size: int = 500,
     sort_by: str = 'created_at',
     sort_order: str = 'desc',
+    roi_min: Optional[float] = None,
+    roi_max: Optional[float] = None,
+    spent_min: Optional[float] = None,
+    spent_max: Optional[float] = None,
+    revenue_min: Optional[float] = None,
+    revenue_max: Optional[float] = None,
+    profit_min: Optional[float] = None,
+    profit_max: Optional[float] = None,
     current_user: User = Depends(require_feature("leadstech")),
     db: Session = Depends(get_db)
 ):
-    """Get LeadsTech analysis results with pagination and sorting"""
+    """Get LeadsTech analysis results with pagination, sorting and filters"""
     page_size = min(page_size, 500)  # Max 500 per page
     offset = (page - 1) * page_size
-    
+
     # Validate sort parameters
     valid_sort_fields = ['created_at', 'roi_percent', 'profit', 'vk_spent', 'lt_revenue', 'banner_id']
     if sort_by not in valid_sort_fields:
         sort_by = 'created_at'
     if sort_order not in ['asc', 'desc']:
         sort_order = 'desc'
-    
+
     results, total = crud.get_leadstech_analysis_results(
         db,
         cabinet_name=cabinet_name,
@@ -1627,9 +1719,32 @@ async def get_leadstech_analysis_results(
         offset=offset,
         sort_by=sort_by,
         sort_order=sort_order,
-        user_id=current_user.id
+        user_id=current_user.id,
+        roi_min=roi_min,
+        roi_max=roi_max,
+        spent_min=spent_min,
+        spent_max=spent_max,
+        revenue_min=revenue_min,
+        revenue_max=revenue_max,
+        profit_min=profit_min,
+        profit_max=profit_max
     )
-    
+
+    # Get aggregated stats for ALL matching results (not just current page)
+    stats = crud.get_leadstech_analysis_stats(
+        db,
+        user_id=current_user.id,
+        cabinet_name=cabinet_name,
+        roi_min=roi_min,
+        roi_max=roi_max,
+        spent_min=spent_min,
+        spent_max=spent_max,
+        revenue_min=revenue_min,
+        revenue_max=revenue_max,
+        profit_min=profit_min,
+        profit_max=profit_max
+    )
+
     total_pages = (total + page_size - 1) // page_size if total > 0 else 1
 
     formatted = []
@@ -1654,12 +1769,13 @@ async def get_leadstech_analysis_results(
         })
 
     return {
-        "results": formatted, 
+        "results": formatted,
         "count": len(formatted),
         "total": total,
         "page": page,
         "page_size": page_size,
-        "total_pages": total_pages
+        "total_pages": total_pages,
+        "stats": stats  # Aggregated stats for all matching results
     }
 
 
@@ -1679,8 +1795,8 @@ async def start_leadstech_analysis(
     db: Session = Depends(get_db)
 ):
     """Start LeadsTech analysis for enabled cabinets"""
-    # Check if config exists
-    config = crud.get_leadstech_config(db)
+    # Check if config exists for this user
+    config = crud.get_leadstech_config(db, user_id=current_user.id)
     if not config:
         raise HTTPException(status_code=400, detail="LeadsTech not configured. Please configure login/password first.")
 
@@ -1957,41 +2073,56 @@ async def get_scaling_configs_endpoint(
     db: Session = Depends(get_db)
 ):
     """Get all scaling configurations"""
-    configs = crud.get_scaling_configs(db, user_id=current_user.id)
-    result = []
+    import traceback
+    try:
+        print(f"[SCALING GET] START - user_id={current_user.id}")
+        configs = crud.get_scaling_configs(db, user_id=current_user.id)
+        print(f"[SCALING GET] Found {len(configs)} configs")
+        result = []
 
-    for config in configs:
-        conditions = crud.get_scaling_conditions(db, config.id)
-        account_ids = crud.get_scaling_config_account_ids(db, config.id)
-        manual_groups = crud.get_manual_scaling_groups(db, config.id)
-        result.append({
-            "id": config.id,
-            "name": config.name,
-            "enabled": config.enabled,
-            "schedule_time": config.schedule_time,
-            "scheduled_enabled": getattr(config, 'scheduled_enabled', True),
-            "account_id": config.account_id,
-            "account_ids": account_ids,
-            "new_budget": config.new_budget,
-            "new_name": getattr(config, 'new_name', None),
-            "auto_activate": config.auto_activate,
-            "lookback_days": config.lookback_days,
-            "duplicates_count": config.duplicates_count or 1,
-            "vk_ad_group_ids": manual_groups,
-            "last_run_at": config.last_run_at.isoformat() if config.last_run_at else None,
-            "created_at": config.created_at.isoformat(),
-            "conditions": [
-                {
-                    "id": c.id,
-                    "metric": c.metric,
-                    "operator": c.operator,
-                    "value": c.value
-                }
-                for c in conditions
-            ]
-        })
+        for config in configs:
+            try:
+                print(f"[SCALING GET] Processing config id={config.id}")
+                conditions = crud.get_scaling_conditions(db, config.id)
+                account_ids = crud.get_scaling_config_account_ids(db, config.id)
+                manual_groups = crud.get_manual_scaling_groups(db, config.id)
+                result.append({
+                    "id": config.id,
+                    "name": config.name,
+                    "enabled": config.enabled,
+                    "schedule_time": config.schedule_time,
+                    "scheduled_enabled": getattr(config, 'scheduled_enabled', True),
+                    "account_id": config.account_id,
+                    "account_ids": account_ids,
+                    "new_budget": config.new_budget,
+                    "new_name": getattr(config, 'new_name', None),
+                    "auto_activate": config.auto_activate,
+                    "lookback_days": config.lookback_days,
+                    "duplicates_count": config.duplicates_count or 1,
+                    "vk_ad_group_ids": manual_groups,
+                    "last_run_at": config.last_run_at.isoformat() if config.last_run_at else None,
+                    "created_at": config.created_at.isoformat(),
+                    "conditions": [
+                        {
+                            "id": c.id,
+                            "metric": c.metric,
+                            "operator": c.operator,
+                            "value": c.value
+                        }
+                        for c in conditions
+                    ]
+                })
+            except Exception as e:
+                print(f"[SCALING GET] ERROR processing config id={config.id}: {e}")
+                traceback.print_exc()
+                raise
 
-    return result
+        print(f"[SCALING GET] SUCCESS - returning {len(result)} configs")
+        return result
+    except Exception as e:
+        print(f"[SCALING GET] FATAL ERROR: {e}")
+        traceback.print_exc()
+        raise
 
 
 @app.get("/api/scaling/configs/{config_id}")
