@@ -204,8 +204,8 @@ class VKAdsScheduler:
                         "dry_run": True
                     }
                 }
-                # Сохраняем дефолтные настройки
-                crud.set_setting(db, 'scheduler', self.settings)
+                # Сохраняем дефолтные настройки для этого пользователя
+                crud.set_user_setting(db, user_id, 'scheduler', self.settings)
         finally:
             db.close()
 
@@ -847,15 +847,15 @@ class VKAdsScheduler:
                 self.logger.info(f"   ⚠️ Режим DRY RUN - реальные изменения НЕ применялись")
             self.logger.info("=" * 60)
             
-            # Отправляем уведомление в Telegram
-            if total_reenabled > 0 and telegram_config.get("enabled", False):
+            # Отправляем уведомление в Telegram (ВСЕГДА, не только если есть включения)
+            if telegram_config.get("enabled", False):
                 self._send_reenable_telegram_notification(
-                    telegram_config, 
-                    reenabled_banners, 
-                    total_checked, 
-                    total_reenabled, 
-                    total_skipped, 
-                    total_errors, 
+                    telegram_config,
+                    reenabled_banners,
+                    total_checked,
+                    total_reenabled,
+                    total_skipped,
+                    total_errors,
                     dry_run,
                     lookback_hours,
                     lookback_days
@@ -869,9 +869,9 @@ class VKAdsScheduler:
             db.close()
     
     def _send_reenable_telegram_notification(
-        self, 
-        telegram_config: dict, 
-        reenabled_banners: list, 
+        self,
+        telegram_config: dict,
+        reenabled_banners: list,
         total_checked: int,
         total_reenabled: int,
         total_skipped: int,
@@ -883,51 +883,76 @@ class VKAdsScheduler:
         """Отправка уведомления в Telegram о результатах автовключения"""
         try:
             mode_text = "🧪 ТЕСТОВЫЙ РЕЖИМ" if dry_run else "🔄 АВТОВКЛЮЧЕНИЕ"
-            
-            message = f"<b>{mode_text}</b>\n\n"
-            message += f"📊 <b>Результаты проверки:</b>\n"
-            message += f"• Отключённые за: последние {lookback_hours}ч\n"
-            message += f"• Статистика за: {lookback_days} дней\n"
-            message += f"• Проверено: {total_checked}\n"
-            message += f"• {'Было бы включено' if dry_run else 'Включено'}: <b>{total_reenabled}</b>\n"
-            message += f"• Пропущено: {total_skipped}\n"
-            message += f"• Ошибок: {total_errors}\n\n"
-            
+
+            # Группируем баннеры по аккаунтам
+            by_account = {}
             if reenabled_banners:
-                # Группируем по аккаунтам
-                by_account = {}
                 for b in reenabled_banners:
                     acc = b["account"]
                     if acc not in by_account:
                         by_account[acc] = []
                     by_account[acc].append(b)
-                
-                message += f"<b>{'Баннеры для включения' if dry_run else 'Включённые баннеры'}:</b>\n"
-                
+
+            # Если есть включённые баннеры - отправляем по кабинетам с тегами
+            if by_account:
                 for account_name, banners in by_account.items():
-                    message += f"\n📁 <b>{account_name}</b>:\n"
-                    
-                    for b in banners[:10]:  # Ограничиваем 10 баннерами на аккаунт
+                    # Заменяем пробелы и спецсимволы в названии кабинета для тега
+                    import re
+                    clean_account_name = re.sub(r'[^\w]', '_', account_name)
+
+                    # Формируем сообщение для каждого кабинета
+                    message = f"<b>#включение_{clean_account_name}</b>\n\n"
+                    message += f"<b>{mode_text}</b>\n\n"
+                    message += f"📊 <b>Кабинет:</b> {account_name}\n"
+                    message += f"• Отключённые за: последние {lookback_hours}ч\n"
+                    message += f"• Статистика за: {lookback_days} дней\n"
+                    message += f"• {'Было бы включено' if dry_run else 'Включено'}: <b>{len(banners)}</b>\n\n"
+
+                    message += f"<b>{'Баннеры для включения:' if dry_run else 'Включённые баннеры:'}</b>\n"
+
+                    for i, b in enumerate(banners[:10], 1):  # Ограничиваем 10 баннерами
                         extras = []
                         if b.get("campaign_enabled"):
                             extras.append("+ кампания")
                         if b.get("group_enabled"):
                             extras.append("+ группа")
                         extras_text = f" ({', '.join(extras)})" if extras else ""
-                        
-                        message += f"• {b['banner_name'][:30]}{extras_text}\n"
-                        message += f"  💰 {b['spent']:.2f}₽ | 🎯 {b['goals']} целей\n"
-                    
+
+                        message += f"{i}. {b['banner_name'][:25]}{extras_text}\n"
+                        message += f"   💰 {b['spent']:.2f}₽ | 🎯 {b['goals']} целей\n"
+
                     if len(banners) > 10:
-                        message += f"  <i>... и ещё {len(banners) - 10} баннеров</i>\n"
-            
-            if dry_run:
-                message += f"\n⚠️ <i>Для реального включения отключите DRY RUN в настройках</i>"
-            
-            # Отправляем
-            send_telegram_message(telegram_config, message, self.logger)
-            self.logger.info("📱 Telegram уведомление отправлено")
-            
+                        message += f"\n<i>... и ещё {len(banners) - 10} баннеров</i>\n"
+
+                    if dry_run:
+                        message += f"\n⚠️ <i>Для реального включения отключите DRY RUN в настройках</i>"
+
+                    # Отправляем сообщение для этого кабинета
+                    send_telegram_message(telegram_config, message, self.logger)
+                    self.logger.info(f"📱 Telegram уведомление отправлено для кабинета: {account_name}")
+
+            # Отправляем общее уведомление (всегда, даже если нет включений)
+            summary_message = f"<b>{mode_text} - ИТОГИ</b>\n\n"
+            summary_message += f"📊 <b>Результаты проверки:</b>\n"
+            summary_message += f"• Отключённые за: последние {lookback_hours}ч\n"
+            summary_message += f"• Статистика за: {lookback_days} дней\n"
+            summary_message += f"• Проверено баннеров: {total_checked}\n"
+            summary_message += f"• {'Было бы включено' if dry_run else 'Включено'}: <b>{total_reenabled}</b>\n"
+            summary_message += f"• Пропущено (под правилами): {total_skipped}\n"
+            summary_message += f"• Ошибок: {total_errors}\n"
+
+            if total_reenabled == 0 and total_checked > 0:
+                summary_message += f"\n✅ <i>Все проверенные баннеры остаются отключенными (подпадают под правила)</i>"
+            elif total_checked == 0:
+                summary_message += f"\nℹ️ <i>Нет отключённых баннеров за указанный период</i>"
+
+            if dry_run and total_reenabled > 0:
+                summary_message += f"\n⚠️ <i>Режим DRY RUN - реальные изменения НЕ применялись</i>"
+
+            # Отправляем итоговое сообщение
+            send_telegram_message(telegram_config, summary_message, self.logger)
+            self.logger.info("📱 Telegram итоговое уведомление отправлено")
+
         except Exception as e:
             self.logger.error(f"❌ Ошибка отправки Telegram: {e}")
 
