@@ -1465,6 +1465,60 @@ def get_leadstech_analysis_cabinet_names(db: Session, user_id: int) -> List[str]
     return sorted([r[0] for r in results if r[0]])
 
 
+def get_leadstech_analysis_stats(
+    db: Session,
+    user_id: int,
+    cabinet_name: Optional[str] = None,
+    roi_min: Optional[float] = None,
+    roi_max: Optional[float] = None,
+    spent_min: Optional[float] = None,
+    spent_max: Optional[float] = None,
+    revenue_min: Optional[float] = None,
+    revenue_max: Optional[float] = None,
+    profit_min: Optional[float] = None,
+    profit_max: Optional[float] = None
+) -> dict:
+    """Get aggregated statistics for LeadsTech analysis results (respects all filters)."""
+    query = db.query(
+        func.count(LeadsTechAnalysisResult.id).label('total_count'),
+        func.coalesce(func.sum(LeadsTechAnalysisResult.vk_spent), 0).label('total_spent'),
+        func.coalesce(func.sum(LeadsTechAnalysisResult.lt_revenue), 0).label('total_revenue'),
+        func.coalesce(func.sum(LeadsTechAnalysisResult.profit), 0).label('total_profit'),
+        func.avg(LeadsTechAnalysisResult.roi_percent).label('avg_roi')
+    ).filter(LeadsTechAnalysisResult.user_id == user_id)
+
+    if cabinet_name:
+        query = query.filter(LeadsTechAnalysisResult.cabinet_name == cabinet_name)
+
+    # Apply same filters as results
+    if roi_min is not None:
+        query = query.filter(LeadsTechAnalysisResult.roi_percent >= roi_min)
+    if roi_max is not None:
+        query = query.filter(LeadsTechAnalysisResult.roi_percent <= roi_max)
+    if spent_min is not None:
+        query = query.filter(LeadsTechAnalysisResult.vk_spent >= spent_min)
+    if spent_max is not None:
+        query = query.filter(LeadsTechAnalysisResult.vk_spent <= spent_max)
+    if revenue_min is not None:
+        query = query.filter(LeadsTechAnalysisResult.lt_revenue >= revenue_min)
+    if revenue_max is not None:
+        query = query.filter(LeadsTechAnalysisResult.lt_revenue <= revenue_max)
+    if profit_min is not None:
+        query = query.filter(LeadsTechAnalysisResult.profit >= profit_min)
+    if profit_max is not None:
+        query = query.filter(LeadsTechAnalysisResult.profit <= profit_max)
+
+    result = query.first()
+
+    return {
+        'total_count': result.total_count or 0,
+        'total_spent': float(result.total_spent or 0),
+        'total_revenue': float(result.total_revenue or 0),
+        'total_profit': float(result.total_profit or 0),
+        'avg_roi': float(result.avg_roi or 0) if result.avg_roi else 0
+    }
+
+
 def get_disabled_banners_account_names(db: Session, user_id: int) -> List[str]:
     """Get all unique account names from disabled banners for a specific user"""
     results = db.query(BannerAction.account_name).filter(

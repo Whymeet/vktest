@@ -1729,7 +1729,22 @@ async def get_leadstech_analysis_results(
         profit_min=profit_min,
         profit_max=profit_max
     )
-    
+
+    # Get aggregated stats for ALL matching results (not just current page)
+    stats = crud.get_leadstech_analysis_stats(
+        db,
+        user_id=current_user.id,
+        cabinet_name=cabinet_name,
+        roi_min=roi_min,
+        roi_max=roi_max,
+        spent_min=spent_min,
+        spent_max=spent_max,
+        revenue_min=revenue_min,
+        revenue_max=revenue_max,
+        profit_min=profit_min,
+        profit_max=profit_max
+    )
+
     total_pages = (total + page_size - 1) // page_size if total > 0 else 1
 
     formatted = []
@@ -1754,12 +1769,13 @@ async def get_leadstech_analysis_results(
         })
 
     return {
-        "results": formatted, 
+        "results": formatted,
         "count": len(formatted),
         "total": total,
         "page": page,
         "page_size": page_size,
-        "total_pages": total_pages
+        "total_pages": total_pages,
+        "stats": stats  # Aggregated stats for all matching results
     }
 
 
