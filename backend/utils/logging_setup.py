@@ -62,9 +62,9 @@ def _format_record(record: dict) -> str:
     context = " | ".join(context_parts)
 
     level = record["level"].name
-    message = record["message"]
-
-    return f"{timestamp} | {level:<8} | {context} | {message}\n"
+    # Используем {message} плейсхолдер loguru вместо прямой подстановки
+    # Это позволяет loguru правильно обработать message без повторного парсинга
+    return timestamp + " | " + f"{level:<8}" + " | " + context + " | {message}\n"
 
 
 def _filter_by_service(service_name: str):
