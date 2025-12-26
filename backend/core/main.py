@@ -318,7 +318,8 @@ async def analyze_account(
 
         trigger_result = await trigger_statistics_refresh(session, access_token, BASE_URL, trigger_config)
         if not trigger_result.get("success") and not trigger_result.get("skipped"):
-            logger.warning(f"⚠️ Триггер обновления статистики не сработал: {trigger_result.get('error')}")
+            error_text = trigger_result.get('error')
+            logger.warning(f"⚠️ Триггер обновления статистики не сработал: {error_text}")
 
         # Загружаем правила для этого кабинета из БД
         db = SessionLocal()

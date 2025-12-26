@@ -567,9 +567,8 @@ async def toggle_ad_group_status(
         return {"success": True}
 
     text = await resp.text()
-    logger.error(
-        f"❌ Ошибка HTTP {resp.status} при переключении группы {group_id} на {new_status}: {text[:200]}"
-    )
+    error_msg = f"❌ Ошибка HTTP {resp.status} при переключении группы {group_id} на {new_status}: {text[:200]}"
+    logger.error(error_msg)
     return {"success": False, "error": f"HTTP {resp.status}: {text}"}
 
 
@@ -598,8 +597,9 @@ async def trigger_statistics_refresh(
     # Включаем группу
     result1 = await toggle_ad_group_status(session, token, base_url, group_id, "active")
     if not result1.get("success"):
-        logger.error(f"❌ Не удалось включить триггер группу {group_id}: {result1.get('error')}")
-        return {"success": False, "error": f"Ошибка включения: {result1.get('error')}"}
+        error_text = result1.get('error')
+        logger.error(f"❌ Не удалось включить триггер группу {group_id}: {error_text}")
+        return {"success": False, "error": f"Ошибка включения: {error_text}"}
 
     # Ждем
     logger.info(f"⏳ Ожидание {wait_seconds} сек. для обновления статистики VK...")
