@@ -63,7 +63,7 @@ def load_config_from_db():
         for acc in accounts_db:
             accounts[acc.name] = {
                 "api": acc.api_token,
-                "trigger": acc.client_id,
+                "trigger": None,  # Триггер указывается через UI в настройках, не через client_id
                 "spent_limit_rub": 100.0  # Default, можно потом добавить в модель
             }
 
