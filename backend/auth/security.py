@@ -110,7 +110,8 @@ def decode_token(token: str) -> Optional[TokenData]:
         user_id = payload.get("sub")
         username = payload.get("username")
 
-        logger.debug(f"decode_token: payload={payload}, user_id={user_id}, username={username}")
+        debug_msg = f"decode_token: payload={payload}, user_id={user_id}, username={username}"
+        logger.debug(debug_msg)
 
         if user_id is None:
             logger.debug("decode_token: user_id is None!")

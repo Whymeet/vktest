@@ -924,7 +924,8 @@ class VKAdsScheduler:
                             time.sleep(0.1)
                         else:
                             total_errors += 1
-                            self.logger.error(f"      ❌ Ошибка включения: {enable_result.get('error')}")
+                            error_text = enable_result.get('error')
+                            self.logger.error(f"      ❌ Ошибка включения: {error_text}")
                     else:
                         total_skipped += 1
                         self.logger.debug(f"   ⏭️ [{banner_id}] Всё ещё под правилами (spent={spent:.2f}, goals={goals})")

@@ -149,7 +149,8 @@ class LeadstechClient:
             try:
                 resp.raise_for_status()
             except requests.HTTPError as exc:
-                logger.error(f"LeadsTech: error requesting by-subid page={page}: {exc}, body={resp.text}")
+                error_msg = f"LeadsTech: error requesting by-subid page={page}: {exc}, body={resp.text}"
+                logger.error(error_msg)
                 raise
 
             payload = resp.json()
@@ -253,7 +254,8 @@ class VkAdsClient:
             try:
                 resp.raise_for_status()
             except requests.HTTPError as exc:
-                logger.error(f"VK Ads: error requesting banner stats: {exc}, body={resp.text}")
+                error_msg = f"VK Ads: error requesting banner stats: {exc}, body={resp.text}"
+                logger.error(error_msg)
                 raise
 
             payload = resp.json()

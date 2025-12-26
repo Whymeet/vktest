@@ -39,7 +39,8 @@ def send_telegram_message(config, message):
                 logger.info(f"📱 Сообщение отправлено в Telegram (chat_id: {chat_id})")
                 success_count += 1
             else:
-                logger.error(f"❌ Ошибка отправки в Telegram для {chat_id}: {response.status_code} - {response.text}")
+                error_msg = f"❌ Ошибка отправки в Telegram для {chat_id}: {response.status_code} - {response.text}"
+                logger.error(error_msg)
         except Exception as e:
             logger.error(f"❌ Исключение при отправке в Telegram для {chat_id}: {str(e)}")
     

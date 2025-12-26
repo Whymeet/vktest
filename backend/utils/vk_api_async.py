@@ -136,7 +136,8 @@ async def get_banners_active(
 
         if resp.status != 200:
             text = await resp.text()
-            logger.error(f"❌ Ошибка HTTP {resp.status} при загрузке объявлений: {text[:200]}")
+            error_text = text[:200]
+            logger.error(f"❌ Ошибка HTTP {resp.status} при загрузке объявлений: {error_text}")
             raise RuntimeError(f"[banners] HTTP {resp.status}: {text}")
 
         payload = await resp.json()
@@ -207,7 +208,8 @@ async def get_banners_stats_day(
 
         if resp.status != 200:
             text = await resp.text()
-            logger.error(f"❌ Ошибка HTTP {resp.status} при загрузке статистики: {text[:200]}")
+            error_text = text[:200]
+            logger.error(f"❌ Ошибка HTTP {resp.status} при загрузке статистики: {error_text}")
             raise RuntimeError(f"[stats day] HTTP {resp.status}: {text}")
 
         payload = await resp.json()
@@ -334,7 +336,8 @@ async def get_banners_stats_batched(
 
         if resp.status != 200:
             text = await resp.text()
-            logger.error(f"❌ Ошибка HTTP {resp.status} при загрузке статистики: {text[:200]}")
+            error_text = text[:200]
+            logger.error(f"❌ Ошибка HTTP {resp.status} при загрузке статистики: {error_text}")
             raise RuntimeError(f"[stats day] HTTP {resp.status}: {text}")
 
         payload = await resp.json()
@@ -450,7 +453,8 @@ async def disable_banner(
         return {"success": True, "banner_id": banner_id}
 
     text = await resp.text()
-    logger.error(f"❌ Ошибка HTTP {resp.status} при отключении баннера {banner_id}: {text[:200]}")
+    error_text = text[:200]
+    logger.error(f"❌ Ошибка HTTP {resp.status} при отключении баннера {banner_id}: {error_text}")
     return {"success": False, "error": f"HTTP {resp.status}: {text}", "banner_id": banner_id}
 
 
@@ -608,8 +612,9 @@ async def trigger_statistics_refresh(
     # Отключаем группу обратно
     result2 = await toggle_ad_group_status(session, token, base_url, group_id, "blocked")
     if not result2.get("success"):
-        logger.error(f"❌ Не удалось отключить триггер группу {group_id}: {result2.get('error')}")
-        return {"success": False, "error": f"Ошибка отключения: {result2.get('error')}"}
+        error_text = result2.get('error')
+        logger.error(f"❌ Не удалось отключить триггер группу {group_id}: {error_text}")
+        return {"success": False, "error": f"Ошибка отключения: {error_text}"}
 
     logger.info(f"✅ Триггер обновления статистики завершен (группа {group_id})")
     return {"success": True, "group_id": group_id, "wait_seconds": wait_seconds}

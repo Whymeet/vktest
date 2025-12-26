@@ -279,7 +279,8 @@ async def stop_cab_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 disabled_count += 1
             else:
                 failed_count += 1
-                logger.error(f"Ошибка отключения группы {group_id} ({group_name}): {result.get('error')}")
+                error_text = result.get('error')
+                logger.error(f"Ошибка отключения группы {group_id} ({group_name}): {error_text}")
         
         # Формируем итоговое сообщение
         if dry_run:

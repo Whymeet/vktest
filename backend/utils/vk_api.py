@@ -178,7 +178,8 @@ def get_banners_active(token: str, base_url: str, fields: str = "id,name,status,
         try:
             r = requests.get(url, headers=_headers(token), params=params, timeout=20)
             if r.status_code != 200:
-                logger.error(f"❌ Ошибка HTTP {r.status_code} при загрузке объявлений: {r.text[:200]}")
+                error_text = r.text[:200]
+                logger.error(f"❌ Ошибка HTTP {r.status_code} при загрузке объявлений: {error_text}")
                 raise RuntimeError(f"[banners] HTTP {r.status_code}: {r.text}")
             payload = r.json()
             items = payload.get("items", [])
@@ -205,7 +206,8 @@ def get_banners_stats_day(token: str, base_url: str, date_from: str, date_to: st
         params["id"] = ",".join(map(str, banner_ids))
     r = requests.get(url, headers=_headers(token), params=params, timeout=30)
     if r.status_code != 200:
-        logger.error(f"❌ Ошибка HTTP {r.status_code} при получении статистики: {r.text[:200]}")
+        error_text = r.text[:200]
+        logger.error(f"❌ Ошибка HTTP {r.status_code} при получении статистики: {error_text}")
         raise RuntimeError(f"[banners stats] HTTP {r.status_code}: {r.text}")
     payload = r.json()
     return payload.get("items", [])
@@ -419,7 +421,8 @@ def get_ad_groups_active(token: str, base_url: str, fields: str = "id,name,statu
         try:
             r = requests.get(url, headers=_headers(token), params=params, timeout=20)
             if r.status_code != 200:
-                logger.error(f"❌ Ошибка HTTP {r.status_code} при загрузке групп: {r.text[:200]}")
+                error_text = r.text[:200]
+                logger.error(f"❌ Ошибка HTTP {r.status_code} при загрузке групп: {error_text}")
                 raise RuntimeError(f"[ad_groups] HTTP {r.status_code}: {r.text}")
             
             payload = r.json()
@@ -476,7 +479,8 @@ def get_ad_groups_all(token: str, base_url: str, fields: str = "id,name,status",
             try:
                 r = requests.get(url, headers=_headers(token), params=params, timeout=20)
                 if r.status_code != 200:
-                    logger.error(f"❌ Ошибка HTTP {r.status_code} при загрузке групп (status={status}): {r.text[:200]}")
+                    error_text = r.text[:200]
+                    logger.error(f"❌ Ошибка HTTP {r.status_code} при загрузке групп (status={status}): {error_text}")
                     raise RuntimeError(f"[ad_groups] HTTP {r.status_code}: {r.text}")
                 
                 payload = r.json()
@@ -608,7 +612,8 @@ def get_banners_by_ad_group(token: str, base_url: str, ad_group_id: int, include
             response = requests.get(url, headers=_headers(token), params=params, timeout=20)
 
             if response.status_code != 200:
-                logger.error(f"❌ Ошибка загрузки объявлений группы {ad_group_id}: HTTP {response.status_code} - {response.text[:500] if response.text else 'empty'}")
+                error_text = response.text[:500] if response.text else 'empty'
+                logger.error(f"❌ Ошибка загрузки объявлений группы {ad_group_id}: HTTP {response.status_code} - {error_text}")
                 break
 
             data = response.json()
@@ -989,7 +994,8 @@ def duplicate_ad_group_full(
                 final_status = 'active'
                 logger.info(f"✅ Группа {new_group_id} активирована")
             else:
-                logger.warning(f"⚠️ Не удалось активировать группу: {activate_result.get('error', 'Unknown error')[:100]}")
+                error_text = str(activate_result.get('error', 'Unknown error'))[:100]
+                logger.warning(f"⚠️ Не удалось активировать группу: {error_text}")
 
         # Формируем результат
         duplicated_banners = []
@@ -1117,7 +1123,8 @@ def get_ad_groups_with_stats(token: str, base_url: str, date_from: str, date_to:
                 continue
 
             if response.status_code != 200:
-                logger.error(f"❌ Ошибка получения статистики батча {batch_num}: HTTP {response.status_code}, Response: {response.text[:300]}")
+                error_text = response.text[:300]
+                logger.error(f"❌ Ошибка получения статистики батча {batch_num}: HTTP {response.status_code}, Response: {error_text}")
                 continue
 
             batch_stats = response.json().get("items", [])

@@ -156,7 +156,8 @@ async def whitelist_profitable_banners(roi_threshold: float, enable_banners: boo
                                     logger.info(f"⚠️ Кампания {campaign_id} выключена (статус: {campaign_status}), включаем...")
                                     campaign_result = toggle_campaign_status(api_token, base_url, campaign_id, "active")
                                     if not campaign_result.get("success"):
-                                        logger.error(f"❌ Не удалось включить кампанию {campaign_id}: {campaign_result.get('error')}")
+                                        error_text = campaign_result.get('error')
+                                        logger.error(f"❌ Не удалось включить кампанию {campaign_id}: {error_text}")
                                         failed_count += 1
                                         continue
                                     logger.info(f"✅ Кампания {campaign_id} включена")
@@ -170,7 +171,8 @@ async def whitelist_profitable_banners(roi_threshold: float, enable_banners: boo
                                 logger.info(f"⚠️ Группа {ad_group_id} выключена (статус: {group_status}), включаем...")
                                 group_result = toggle_ad_group_status(api_token, base_url, ad_group_id, "active")
                                 if not group_result.get("success"):
-                                    logger.error(f"❌ Не удалось включить группу {ad_group_id}: {group_result.get('error')}")
+                                    error_text = group_result.get('error')
+                                    logger.error(f"❌ Не удалось включить группу {ad_group_id}: {error_text}")
                                     failed_count += 1
                                     continue
                                 logger.info(f"✅ Группа {ad_group_id} включена")
@@ -192,7 +194,8 @@ async def whitelist_profitable_banners(roi_threshold: float, enable_banners: boo
                             logger.info(f"✅ Enabled banner {banner_id} (ROI {result.roi_percent:.1f}%)")
                         else:
                             failed_count += 1
-                            logger.error(f"❌ Failed to enable {banner_id}: {vk_result.get('error')}")
+                            error_text = vk_result.get('error')
+                            logger.error(f"❌ Failed to enable {banner_id}: {error_text}")
                     except Exception as e:
                         failed_count += 1
                         logger.error(f"❌ Exception enabling {banner_id}: {e}")
