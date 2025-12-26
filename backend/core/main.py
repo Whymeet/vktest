@@ -307,14 +307,19 @@ async def analyze_account(
         # Запускаем триггер обновления статистики
         trigger_config = account_config.get("statistics_trigger", {}).copy()
         account_trigger_id = account_config.get("account_trigger_id")
+        trigger_globally_enabled = trigger_config.get("enabled", False)
 
-        if account_trigger_id:
+        # Триггер работает только если: 1) глобально включён И 2) есть ID группы
+        if trigger_globally_enabled and account_trigger_id:
             trigger_config["group_id"] = account_trigger_id
             trigger_config["enabled"] = True
             logger.info(f"🎯 Используем индивидуальный триггер для кабинета {account_name}: группа {account_trigger_id}")
         else:
             trigger_config["enabled"] = False
-            logger.info(f"⚠️ Для кабинета {account_name} триггер не настроен — пропускаем обновление статистики")
+            if not trigger_globally_enabled:
+                logger.info(f"⚠️ Для кабинета {account_name} триггер выключен в настройках — пропускаем")
+            else:
+                logger.info(f"⚠️ Для кабинета {account_name} не указан ID группы триггера — пропускаем")
 
         trigger_result = await trigger_statistics_refresh(session, access_token, BASE_URL, trigger_config)
         if not trigger_result.get("success") and not trigger_result.get("skipped"):
