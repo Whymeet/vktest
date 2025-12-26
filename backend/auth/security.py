@@ -10,6 +10,7 @@ from typing import Optional
 import bcrypt
 from jose import JWTError, jwt
 from pydantic import BaseModel
+from loguru import logger
 
 
 # Configuration from environment variables
@@ -109,15 +110,15 @@ def decode_token(token: str) -> Optional[TokenData]:
         user_id = payload.get("sub")
         username = payload.get("username")
 
-        print(f"[DEBUG] decode_token: payload={payload}, user_id={user_id}, username={username}")
+        logger.debug(f"decode_token: payload={payload}, user_id={user_id}, username={username}")
 
         if user_id is None:
-            print(f"[DEBUG] decode_token: user_id is None!")
+            logger.debug("decode_token: user_id is None!")
             return None
 
         return TokenData(user_id=int(user_id), username=username)
     except JWTError as e:
-        print(f"[DEBUG] decode_token: JWTError: {e}")
+        logger.debug(f"decode_token: JWTError: {e}")
         return None
 
 
