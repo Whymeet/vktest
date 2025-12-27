@@ -336,6 +336,7 @@ async def start_leadstech_analysis(
 
         env = os.environ.copy()
         env["VK_ADS_USER_ID"] = str(current_user.id)
+        env["VK_ADS_USERNAME"] = current_user.username
 
         process = subprocess.Popen(
             [sys.executable, str(leadstech_script)],
@@ -464,6 +465,7 @@ async def whitelist_profitable_banners(
 
         env = os.environ.copy()
         env["VK_ADS_USER_ID"] = str(current_user.id)
+        env["VK_ADS_USERNAME"] = current_user.username
 
         process = subprocess.Popen(
             cmd,

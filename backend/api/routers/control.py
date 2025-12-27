@@ -70,6 +70,7 @@ async def start_scheduler(
 
         env = os.environ.copy()
         env["VK_ADS_USER_ID"] = str(current_user.id)
+        env["VK_ADS_USERNAME"] = current_user.username
 
         process = subprocess.Popen(
             [sys.executable, str(SCHEDULER_SCRIPT)],
@@ -254,6 +255,7 @@ async def start_scaling_scheduler(
 
         env = os.environ.copy()
         env["VK_ADS_USER_ID"] = str(current_user.id)
+        env["VK_ADS_USERNAME"] = current_user.username
 
         process = subprocess.Popen(
             [sys.executable, str(SCALING_SCHEDULER_SCRIPT)],

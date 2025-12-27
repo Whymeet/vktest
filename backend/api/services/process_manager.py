@@ -144,9 +144,10 @@ def autostart_scaling_schedulers():
                 scaling_scheduler_stdout = open(LOGS_DIR / f"{user_log_prefix}_scaling_scheduler_stdout.log", "a", encoding="utf-8")
                 scaling_scheduler_stderr = open(LOGS_DIR / f"{user_log_prefix}_scaling_scheduler_stderr.log", "a", encoding="utf-8")
 
-                # Pass user_id as environment variable to the scaling scheduler
+                # Pass user_id and username as environment variables to the scaling scheduler
                 env = os.environ.copy()
                 env["VK_ADS_USER_ID"] = str(user.id)
+                env["VK_ADS_USERNAME"] = user.username
 
                 process = subprocess.Popen(
                     [sys.executable, str(SCALING_SCHEDULER_SCRIPT)],
