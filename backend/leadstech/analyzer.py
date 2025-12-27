@@ -96,7 +96,7 @@ def analyze_cabinet(
     vk_client = VkAdsClient(vk_cfg)
 
     try:
-        vk_spent_by_banner = vk_client.get_spent_by_banner(
+        vk_spent_by_banner, vk_valid_ids = vk_client.get_spent_by_banner(
             config.date_from,
             config.date_to,
             banner_ids,
@@ -104,25 +104,26 @@ def analyze_cabinet(
     except Exception as e:
         logger.error(f"Failed to fetch VK Ads data for {cabinet_name}: {e}")
         vk_spent_by_banner = {}
+        vk_valid_ids = set()
 
-    # Log how many banners have spending data
-    banners_with_spent = sum(1 for v in vk_spent_by_banner.values() if v > 0)
+    # Log statistics
     logger.info(
-        f"Cabinet {cabinet_name}: VK returned spend for "
-        f"{len(vk_spent_by_banner)}/{len(banner_ids)} banners "
-        f"({banners_with_spent} with non-zero spent)"
+        f"Cabinet {cabinet_name}: VK returned data for "
+        f"{len(vk_valid_ids)}/{len(banner_ids)} banner IDs "
+        f"({len(vk_spent_by_banner)} with non-zero spent)"
     )
 
-    if len(vk_spent_by_banner) == 0:
+    if len(vk_valid_ids) == 0:
         logger.warning(
             f"Cabinet {cabinet_name}: VK API returned NO data for any banners! "
             f"Check if banner IDs exist in this VK account."
         )
 
-    # 3. Merge and calculate ROI
+    # 3. Merge and calculate ROI (only for banners VK returned data for)
     results = merge_data_and_calculate_roi(
         lt_by_banner=lt_by_banner,
         vk_spent_by_banner=vk_spent_by_banner,
+        vk_valid_ids=vk_valid_ids,
         cabinet_name=cabinet_name,
         lt_label=lt_label,
         date_from=config.date_from,

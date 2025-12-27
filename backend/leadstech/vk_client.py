@@ -7,7 +7,7 @@ Synchronous client for fetching banner statistics from VK Ads API.
 import time
 from dataclasses import dataclass
 from datetime import date
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Set, Tuple
 
 import requests
 
@@ -120,7 +120,7 @@ class VkAdsClient:
         date_from: date,
         date_to: date,
         banner_ids: List[int],
-    ) -> Dict[int, float]:
+    ) -> Tuple[Dict[int, float], Set[int]]:
         """
         Get spending by banner with chunking.
 
@@ -130,12 +130,15 @@ class VkAdsClient:
             banner_ids: List of banner IDs to fetch
 
         Returns:
-            Dictionary mapping banner ID to spent amount
+            Tuple of:
+            - Dictionary mapping banner ID to spent amount (only non-zero)
+            - Set of all valid banner IDs that VK API returned data for
         """
         if not banner_ids:
-            return {}
+            return {}, set()
 
         spent_by_id: Dict[int, float] = {}
+        valid_ids: Set[int] = set()
         chunk_size = 150
         chunk_delay = 0.5  # Delay between chunks to avoid rate limiting
 
@@ -160,15 +163,23 @@ class VkAdsClient:
                 if bid is None:
                     continue
 
-                total_base = item.get("total", {}).get("base", {})
-                spent = float(total_base.get("spent", 0) or 0)
-
                 try:
                     banner_id_int = int(bid)
                 except (TypeError, ValueError):
                     continue
 
+                # This banner ID is valid (VK returned data for it)
+                valid_ids.add(banner_id_int)
+
+                total_base = item.get("total", {}).get("base", {})
+                spent = float(total_base.get("spent", 0) or 0)
+
+                # Store all spent values (including zero)
                 spent_by_id[banner_id_int] = spent
 
-        logger.info(f"VK Ads: collected spend for {len(spent_by_id)} banners")
-        return spent_by_id
+        non_zero_count = sum(1 for v in spent_by_id.values() if v > 0)
+        logger.info(
+            f"VK Ads: {len(valid_ids)} valid banner IDs, "
+            f"{non_zero_count} with non-zero spent"
+        )
+        return spent_by_id, valid_ids
