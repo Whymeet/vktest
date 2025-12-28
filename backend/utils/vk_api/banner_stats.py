@@ -5,7 +5,7 @@ Optimized for processing 10,000-15,000 banners efficiently
 import time
 from typing import Dict, List, Generator, Tuple, Set, Optional
 from utils.logging_setup import get_logger
-from utils.vk_api.core import _headers, _request_with_retries
+from utils.vk_api.core import _headers, _request_with_retries, API_RETRY_DELAY_SCALING
 
 import requests
 
@@ -63,7 +63,8 @@ def get_banners_paginated(
                     "GET", url,
                     headers=_headers(token),
                     params=params,
-                    timeout=30
+                    timeout=30,
+                    retry_delay=API_RETRY_DELAY_SCALING  # Быстрые ретраи для scaling
                 )
 
                 if response.status_code != 200:
@@ -160,7 +161,8 @@ def get_banners_stats_batch(
                 "GET", stats_url,
                 headers=_headers(token),
                 params=params,
-                timeout=30
+                timeout=30,
+                retry_delay=API_RETRY_DELAY_SCALING  # Быстрые ретраи для scaling
             )
 
             if response.status_code == 414:
@@ -173,7 +175,8 @@ def get_banners_stats_batch(
                         "GET", stats_url,
                         headers=_headers(token),
                         params=params,
-                        timeout=30
+                        timeout=30,
+                        retry_delay=API_RETRY_DELAY_SCALING  # Быстрые ретраи для scaling
                     )
                     if sub_response.status_code == 200:
                         _parse_stats_response(sub_response.json(), stats_by_banner)

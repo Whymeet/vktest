@@ -13,7 +13,7 @@ logger = get_logger(service="vk_api")
 
 # Константы для ретраев
 API_MAX_RETRIES = 3
-API_RETRY_DELAY_SECONDS = 15  # Уменьшено с 30 до 15 секунд
+API_RETRY_DELAY_SECONDS = 3  # Уменьшено до 3 секунд
 API_RETRY_STATUS_CODES = {429, 500, 502, 503, 504}
 
 
@@ -47,7 +47,7 @@ async def _request_with_retries(
                 )
                 raise
 
-            wait = min(5 + attempt * 3, 15)
+            wait = min(1 + attempt, 3)
             logger.warning(
                 f"⚠️ {method} {url} — сетевая ошибка: {e}. "
                 f"Пауза {wait} сек перед повтором ({attempt}/{max_retries})"
