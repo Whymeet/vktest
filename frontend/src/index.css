@@ -235,16 +235,17 @@ body {
   background-color: rgba(51, 65, 85, 0.3);
 }
 
-/* Toggle switch */
+/* Toggle switch - compact */
 .toggle {
   position: relative;
   display: inline-flex;
-  height: 1.5rem;
-  width: 2.75rem;
+  height: 1.25rem;
+  width: 2.25rem;
   align-items: center;
   border-radius: 9999px;
   transition: background-color 0.2s;
   cursor: pointer;
+  flex-shrink: 0;
 }
 
 .toggle-on {
@@ -257,8 +258,8 @@ body {
 
 .toggle-dot {
   display: inline-block;
-  height: 1rem;
-  width: 1rem;
+  height: 0.875rem;
+  width: 0.875rem;
   transform: translateX(0);
   border-radius: 9999px;
   background-color: white;
@@ -266,11 +267,11 @@ body {
 }
 
 .toggle-on .toggle-dot {
-  transform: translateX(1.5rem);
+  transform: translateX(1.125rem);
 }
 
 .toggle-off .toggle-dot {
-  transform: translateX(0.25rem);
+  transform: translateX(0.1875rem);
 }
 
 /* Modal */
@@ -287,11 +288,21 @@ body {
 .modal {
   background-color: #1e293b;
   border-radius: 0.75rem;
-  padding: 1.5rem;
+  padding: 1rem;
   max-width: 32rem;
   width: 100%;
-  margin: 0 1rem;
+  margin: 0.5rem;
   border: 1px solid #334155;
+  max-height: calc(100vh - 1rem);
+  overflow-y: auto;
+}
+
+@media (min-width: 640px) {
+  .modal {
+    padding: 1.5rem;
+    margin: 1rem;
+    max-height: calc(100vh - 2rem);
+  }
 }
 
 /* Animations */
