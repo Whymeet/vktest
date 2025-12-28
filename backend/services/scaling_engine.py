@@ -234,7 +234,8 @@ class BannerScalingEngine:
                         progress_callback=lambda p, t: self._update_task_progress(
                             "classifying",
                             f"Account {account.name}: {p} banners processed"
-                        )
+                        ),
+                        cancel_check_fn=self._is_task_cancelled
                     )
 
                     # Track which account owns which groups
@@ -248,9 +249,29 @@ class BannerScalingEngine:
 
                     logger.info(f"  Account {account.name}: {len(positive_ids)} positive, {len(negative_ids)} negative")
 
+                    # Check if cancelled during classification
+                    if self._is_task_cancelled():
+                        logger.warning("Task cancelled by user during classification")
+                        break
+
                 except Exception as e:
                     logger.error(f"  Error processing account {account.name}: {e}")
                     self._update_task_error(f"Error in account {account.name}: {str(e)}")
+
+            # Check if task was cancelled
+            if self._is_task_cancelled():
+                logger.warning("Task cancelled - stopping before duplication phase")
+                return ScalingResult(
+                    success=False,
+                    total_banners_analyzed=len(all_banner_to_group),
+                    positive_banners=len(all_positive_ids),
+                    negative_banners=len(all_negative_ids),
+                    groups_found=0,
+                    groups_duplicated=0,
+                    successful_duplications=0,
+                    failed_duplications=0,
+                    errors=["Task cancelled by user"]
+                )
 
             # Summary after classification
             summary = get_classification_summary(all_positive_ids, all_negative_ids, all_banner_to_group)

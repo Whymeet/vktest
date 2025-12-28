@@ -296,7 +296,8 @@ def classify_banners_streaming(
     check_conditions_fn,
     include_blocked: bool = True,
     batch_size: int = BANNER_LIST_BATCH_SIZE,  # Max 250 per VK API
-    progress_callback=None
+    progress_callback=None,
+    cancel_check_fn=None
 ) -> Tuple[Set[int], Set[int], Dict[int, int]]:
     """
     Streaming banner classification - memory efficient.
@@ -311,6 +312,7 @@ def classify_banners_streaming(
         include_blocked: Include blocked banners
         batch_size: Batch size for loading
         progress_callback: Optional callback(processed, total) for progress updates
+        cancel_check_fn: Optional function() -> bool to check if task was cancelled
 
     Returns:
         Tuple of (positive_ids, negative_ids, banner_to_group)
@@ -327,8 +329,16 @@ def classify_banners_streaming(
 
     logger.info(f"[INFO] Starting streaming banner classification for period {date_from} - {date_to}")
 
+    cancelled = False
+
     # Iterate through banner batches
     for batch in get_banners_paginated(token, base_url, batch_size=batch_size, include_blocked=include_blocked):
+        # Check for cancellation
+        if cancel_check_fn and cancel_check_fn():
+            logger.warning("[WARN] Classification cancelled by user")
+            cancelled = True
+            break
+
         # Accumulate banners
         for banner in batch:
             banner_id = banner.get("id")
@@ -351,8 +361,8 @@ def classify_banners_streaming(
             logger.info(f"[INFO] Processed {total_processed} banners, positive: {len(positive_ids)}, negative: {len(negative_ids)}")
             batch_buffer = []
 
-    # Process remaining banners
-    if batch_buffer:
+    # Process remaining banners (only if not cancelled)
+    if batch_buffer and not cancelled:
         _process_banner_batch(
             token, base_url, batch_buffer, date_from, date_to,
             check_conditions_fn, positive_ids, negative_ids
