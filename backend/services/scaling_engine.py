@@ -22,6 +22,8 @@ from utils.vk_api.banner_stats import (
     get_group_banner_classification
 )
 from utils.vk_api.scaling import duplicate_ad_group_full, get_banners_by_ad_group
+from utils.vk_api.ad_groups import get_ad_group_full
+from utils.vk_api.campaigns import toggle_campaign_status
 from services.banner_classifier import create_conditions_checker, get_classification_summary
 from leadstech.roi_enricher import get_banners_by_ad_group as get_banners_mapping, enrich_groups_with_roi
 
@@ -255,6 +257,11 @@ class BannerScalingEngine:
                 logger.info(f"")
                 logger.info(f"Duplicating group {group_id}: {len(group_positive)} positive, {len(group_negative)} negative")
 
+                # Activate campaign before duplicating (so ads can be shown)
+                if self.engine_config.activate_positive_banners:
+                    logger.info(f"  Checking campaign status before duplication...")
+                    self._activate_campaign_for_group(account.api_token, group_id)
+
                 for dup_num in range(1, self.engine_config.duplicates_count + 1):
                     if self._is_task_cancelled():
                         break
@@ -485,6 +492,51 @@ class BannerScalingEngine:
         response = requests.delete(url, headers=_headers(token), timeout=20)
         if response.status_code not in (200, 204):
             raise RuntimeError(f"Failed to delete banner: {response.text[:200]}")
+
+    def _activate_campaign_for_group(self, token: str, group_id: int) -> bool:
+        """
+        Get campaign ID from group and activate it if blocked.
+        Returns True if campaign is active (or was activated), False on error.
+        """
+        try:
+            # Get group details to find campaign ID
+            group_data = get_ad_group_full(token, VK_API_BASE_URL, group_id)
+            if not group_data:
+                logger.warning(f"    Could not load group {group_id} to find campaign")
+                return False
+
+            campaign_id = group_data.get("ad_plan_id")
+            if not campaign_id:
+                logger.warning(f"    Group {group_id} has no campaign ID (ad_plan_id)")
+                return False
+
+            # Check campaign status
+            from utils.vk_api.campaigns import get_campaign_full
+            campaign_data = get_campaign_full(token, VK_API_BASE_URL, campaign_id)
+            if not campaign_data:
+                logger.warning(f"    Could not load campaign {campaign_id}")
+                return False
+
+            campaign_status = campaign_data.get("status")
+            logger.info(f"    Campaign {campaign_id} status: {campaign_status}")
+
+            if campaign_status == "active":
+                logger.info(f"    Campaign {campaign_id} is already active")
+                return True
+
+            # Activate the campaign
+            logger.info(f"    Activating campaign {campaign_id}...")
+            result = toggle_campaign_status(token, VK_API_BASE_URL, campaign_id, "active")
+            if result.get("success"):
+                logger.info(f"    ✓ Campaign {campaign_id} activated successfully")
+                return True
+            else:
+                logger.error(f"    ✗ Failed to activate campaign {campaign_id}: {result.get('error')}")
+                return False
+
+        except Exception as e:
+            logger.error(f"    Error activating campaign for group {group_id}: {e}")
+            return False
 
     def _create_scaling_log(
         self,
