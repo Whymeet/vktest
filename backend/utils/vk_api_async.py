@@ -70,7 +70,7 @@ async def _request_with_retries(
 
             # 429 Too Many Requests
             if resp.status == 429:
-                wait = 15  # Уменьшено с 60 до 15 секунд
+                wait = 3  # VK API statistics endpoint limit is 2 RPS, quick recovery
                 retry_after = resp.headers.get("Retry-After")
                 if retry_after:
                     try:
@@ -165,8 +165,8 @@ async def get_banners_stats_day(
     date_to: str,
     banner_ids: list | None = None,
     metrics: str = "base",
-    batch_size: int = 50,
-    sleep_between_calls: float = 0.25,
+    batch_size: int = 200,  # VK API max is ~250
+    sleep_between_calls: float = 0.6,  # VK API statistics limit is 2 RPS
 ) -> dict:
     """
     Получает статистику по объявлениям асинхронно.
@@ -275,8 +275,8 @@ async def get_banners_stats_batched(
     banner_ids: list,
     banners_info: dict[int, dict],
     metrics: str = "base",
-    batch_size: int = 50,
-    sleep_between_calls: float = 0.25,
+    batch_size: int = 200,  # VK API max is ~250
+    sleep_between_calls: float = 0.6,  # VK API statistics limit is 2 RPS
 ):
     """
     Асинхронный генератор: загружает статистику батчами и yield'ит каждый батч.

@@ -2,11 +2,57 @@
 Banner-Level Scaling Engine
 Main orchestrator for the new banner-level auto-scaling system.
 
-Architecture:
-1. Phase 1 (Streaming Classification): Load banners in batches, classify, store only IDs
-2. Phase 2 (Duplication): Duplicate groups with positive banners, control banner statuses via toggles
+============================================================================
+СХЕМА РАБОТЫ АВТОМАСШТАБИРОВАНИЯ
+============================================================================
 
-Memory efficient: stores only Set[int] for classification results (~1MB for 15k banners)
+ФАЗА 1: КЛАССИФИКАЦИЯ БАННЕРОВ
+------------------------------
+1. Загружаем список активных баннеров:
+   GET https://ads.vk.com/api/v2/banners.json?status=active&limit=200
+
+2. Загружаем статистику для баннеров (батчами по 200 ID):
+   GET https://ads.vk.com/api/v2/statistics/banners/day.json?id=123,456,789&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&metrics=base
+
+   Ответ содержит: shows, clicks, spent, vk.goals (конверсии)
+
+3. Классифицируем каждый баннер по условиям:
+   - Positive: баннер соответствует условиям (например: goals >= 5 AND cost_per_goal < 150)
+   - Negative: баннер НЕ соответствует условиям
+
+4. Группируем по ad_group_id, находим группы с хотя бы 1 positive баннером
+
+ФАЗА 2: ДУБЛИРОВАНИЕ ГРУПП
+--------------------------
+Для каждой группы с positive баннерами:
+
+1. Получаем полную информацию о группе:
+   GET https://ads.vk.com/api/v2/ad_groups/{group_id}.json
+
+2. Создаём копию группы:
+   POST https://ads.vk.com/api/v2/ad_groups.json
+   Body: { campaign_id, name, budget, ... }
+
+3. Получаем баннеры исходной группы:
+   GET https://ads.vk.com/api/v2/banners.json?ad_group_id={group_id}
+
+4. Копируем каждый баннер в новую группу:
+   POST https://ads.vk.com/api/v2/banners.json
+   Body: { ad_group_id: new_group_id, name, content_type, ... }
+
+5. Управляем статусами баннеров через toggle:
+   - Positive баннеры: status=active (если activate_positive_banners=true)
+   - Negative баннеры: status=blocked (если duplicate_negative_banners=true, activate_negative=false)
+
+   POST https://ads.vk.com/api/v2/banners/{banner_id}.json
+   Body: { status: "active" | "blocked" }
+
+RATE LIMITS:
+- statistics/banners/day.json: 2 RPS (requests per second)
+- Остальные endpoints: ~35 RPS
+- Используем sleep=0.6 сек между запросами статистики
+
+============================================================================
 """
 import time
 from datetime import datetime, timedelta
@@ -152,16 +198,20 @@ class BannerScalingEngine:
             logger.info(f"Analysis period: {date_from} to {date_to}")
             logger.info(f"Accounts to process: {len(accounts)}")
 
-            # Create conditions checker function
+            # Создаём функцию проверки условий из настроек конфига
+            # Например: [{"metric": "goals", "operator": ">=", "value": 5}, {"metric": "cost_per_goal", "operator": "<", "value": 150}]
             check_conditions = create_conditions_checker(self.conditions_list)
 
-            # Collect results from all accounts
-            all_positive_ids: Set[int] = set()
-            all_negative_ids: Set[int] = set()
-            all_banner_to_group: Dict[int, int] = {}
-            account_by_group: Dict[int, Account] = {}  # group_id -> account
+            # Результаты классификации со всех аккаунтов
+            all_positive_ids: Set[int] = set()      # ID баннеров, соответствующих условиям
+            all_negative_ids: Set[int] = set()      # ID баннеров, НЕ соответствующих условиям
+            all_banner_to_group: Dict[int, int] = {}  # banner_id -> ad_group_id
+            account_by_group: Dict[int, Account] = {}  # group_id -> account (для получения токена)
 
-            # Phase 1: Classification
+            # ========================================================================
+            # ФАЗА 1: КЛАССИФИКАЦИЯ
+            # Загружаем баннеры и статистику, классифицируем по условиям
+            # ========================================================================
             self._update_task_progress("classifying", "Classifying banners...")
 
             for account in accounts:
@@ -169,7 +219,10 @@ class BannerScalingEngine:
                 logger.info(f"Processing account: {account.name}")
 
                 try:
-                    # Streaming classification for this account
+                    # Потоковая классификация баннеров:
+                    # 1. GET /banners.json?status=active - загружаем список баннеров
+                    # 2. GET /statistics/banners/day.json?id=... - загружаем статистику батчами по 200
+                    # 3. Для каждого баннера проверяем условия -> positive или negative
                     positive_ids, negative_ids, banner_to_group = classify_banners_streaming(
                         token=account.api_token,
                         base_url=VK_API_BASE_URL,
