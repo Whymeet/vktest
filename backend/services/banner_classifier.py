@@ -72,6 +72,11 @@ def check_banner_conditions(stats: dict, conditions: List[dict], verbose: bool =
                 clicks = stats.get("clicks", 0) or 0
                 spent = stats.get("spent", 0) or 0
                 actual_value = (spent / clicks) if clicks > 0 else float('inf')
+            elif metric == "cr":
+                # Conversion Rate: goals / clicks * 100%
+                clicks = stats.get("clicks", 0) or 0
+                goals = stats.get("goals", 0) or stats.get("vk_goals", 0) or 0
+                actual_value = (goals / clicks * 100) if clicks > 0 else 0
             elif metric == "roi":
                 # ROI from LeadsTech - None means no data available
                 log(f"ROI not available for this banner")

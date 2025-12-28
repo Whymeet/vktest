@@ -48,6 +48,7 @@ const FALLBACK_METRICS = [
   { value: 'shows', label: 'Показы', description: 'Количество показов объявления' },
   { value: 'ctr', label: 'CTR (%)', description: 'Click-through rate (клики/показы * 100)' },
   { value: 'cpc', label: 'CPC (₽)', description: 'Cost per click (цена за клик)' },
+  { value: 'cr', label: 'CR (%)', description: 'Conversion Rate (конверсии/клики * 100)' },
   { value: 'cost_per_goal', label: 'Цена результата (₽)', description: 'Стоимость одной конверсии' },
   { value: 'roi', label: 'ROI (%)', description: 'Рентабельность из LeadsTech' },
 ];

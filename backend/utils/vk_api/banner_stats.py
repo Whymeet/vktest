@@ -199,7 +199,7 @@ def _parse_stats_response(payload: dict, stats_by_banner: Dict[int, dict]) -> No
     """
     Parse VK API statistics response and update stats_by_banner dict.
 
-    Extracts: spent, shows (impressions), clicks, goals (vk_goals)
+    Extracts: spent, shows (impressions), clicks, goals (vk.goals), cr (vk.cr)
     """
     items = payload.get("items", [])
 
@@ -212,9 +212,10 @@ def _parse_stats_response(payload: dict, stats_by_banner: Dict[int, dict]) -> No
         total = item.get("total", {})
         base = total.get("base", {}) if isinstance(total, dict) else {}
 
-        # VK goals are in total.base.vk.goals
+        # VK metrics are in total.base.vk
         vk_data = base.get("vk", {}) if isinstance(base.get("vk"), dict) else {}
         vk_goals = float(vk_data.get("goals", 0) or 0)
+        vk_cr = float(vk_data.get("cr", 0) or 0)  # CR from VK API (goals/clicks * 100)
 
         # Main metrics
         spent = float(base.get("spent", 0) or 0)
@@ -224,19 +225,24 @@ def _parse_stats_response(payload: dict, stats_by_banner: Dict[int, dict]) -> No
         # If total.base is empty, try to aggregate from rows
         if spent == 0 and shows == 0 and clicks == 0:
             rows = item.get("rows", [])
+            total_vk_goals = 0
             for row in rows:
                 row_base = row.get("base", {}) if isinstance(row.get("base"), dict) else row
                 spent += float(row_base.get("spent", 0) or 0)
                 shows += float(row_base.get("impressions", row_base.get("shows", 0)) or 0)
                 clicks += float(row_base.get("clicks", 0) or 0)
                 row_vk = row_base.get("vk", {}) if isinstance(row_base.get("vk"), dict) else {}
-                vk_goals += float(row_vk.get("goals", 0) or 0)
+                total_vk_goals += float(row_vk.get("goals", 0) or 0)
+            vk_goals = total_vk_goals
+            # Recalculate CR from aggregated data
+            vk_cr = (vk_goals / clicks * 100) if clicks > 0 else 0.0
 
         stats_by_banner[banner_id] = {
             "spent": spent,
             "shows": shows,
             "clicks": clicks,
-            "goals": vk_goals
+            "goals": vk_goals,
+            "vk_cr": vk_cr  # Store VK's CR value
         }
 
 
@@ -245,10 +251,10 @@ def calculate_derived_metrics(stats: dict) -> dict:
     Calculate derived metrics from base stats.
 
     Args:
-        stats: Dict with spent, shows, clicks, goals
+        stats: Dict with spent, shows, clicks, goals, vk_cr
 
     Returns:
-        Dict with original stats + cost_per_goal, ctr, cpc
+        Dict with original stats + cost_per_goal, ctr, cpc, cr
     """
     spent = float(stats.get("spent", 0) or 0)
     shows = float(stats.get("shows", 0) or 0)
@@ -260,6 +266,13 @@ def calculate_derived_metrics(stats: dict) -> dict:
     ctr = (clicks / shows * 100) if shows > 0 else 0.0
     cpc = spent / clicks if clicks > 0 else float('inf')
 
+    # Use VK's CR if available, otherwise calculate
+    vk_cr = stats.get("vk_cr")
+    if vk_cr is not None and vk_cr > 0:
+        cr = float(vk_cr)
+    else:
+        cr = (goals / clicks * 100) if clicks > 0 else 0.0
+
     return {
         "spent": spent,
         "shows": shows,
@@ -267,7 +280,8 @@ def calculate_derived_metrics(stats: dict) -> dict:
         "goals": goals,
         "cost_per_goal": cost_per_goal,
         "ctr": ctr,
-        "cpc": cpc
+        "cpc": cpc,
+        "cr": cr
     }
 
 
