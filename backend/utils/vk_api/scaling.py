@@ -203,7 +203,8 @@ def duplicate_ad_group_full(
         # Other read-only fields
         'stats_info', 'preview_url', 'audit_pixels',
         # Field status - remove, as when creating group with banners, status is inherited from group
-        'status', 'name'
+        'status'
+        # Note: 'name' is NOT excluded - we want to preserve banner names
     }
 
     def clean_content(content_data):

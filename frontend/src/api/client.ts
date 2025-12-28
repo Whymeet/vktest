@@ -586,6 +586,11 @@ export interface ScalingConfig {
   lookback_days: number;
   duplicates_count: number;  // Number of duplicates per group (1-100)
   vk_ad_group_ids: number[];  // VK ad_group_id for manual scaling
+  use_leadstech_roi: boolean;  // Use LeadsTech ROI for conditions
+  // Banner-level scaling toggles
+  activate_positive_banners: boolean;  // Activate positive banners (default: true)
+  duplicate_negative_banners: boolean;  // Include negative banners in duplication (default: true)
+  activate_negative_banners: boolean;  // Activate negative banners (default: false)
   last_run_at: string | null;
   created_at: string;
   conditions: ScalingCondition[];
@@ -605,6 +610,17 @@ export interface ScalingConfigCreate {
   enabled?: boolean;
   conditions?: ScalingCondition[];
   vk_ad_group_ids?: number[];  // VK ad_group_id for manual scaling
+  use_leadstech_roi?: boolean;  // Use LeadsTech ROI for conditions
+  // Banner-level scaling toggles
+  activate_positive_banners?: boolean;
+  duplicate_negative_banners?: boolean;
+  activate_negative_banners?: boolean;
+}
+
+// LeadsTech status for accounts (for ROI checkbox availability)
+export interface LeadsTechAccountStatus {
+  enabled: boolean;
+  label: string | null;
 }
 
 export interface DuplicatedBannerInfo {
@@ -629,6 +645,11 @@ export interface ScalingLog {
   total_banners: number;
   duplicated_banners: number;
   duplicated_banner_ids: DuplicatedBannerInfo[] | null;
+  // Banner-level classification data
+  positive_banner_ids: number[] | null;
+  negative_banner_ids: number[] | null;
+  positive_count: number;
+  negative_count: number;
   created_at: string;
 }
 
@@ -699,6 +720,10 @@ export const getScalingLogs = (configId?: number, limit = 100, offset = 0) => {
   params.append('offset', offset.toString());
   return api.get<{ items: ScalingLog[]; total: number }>(`/scaling/logs?${params.toString()}`);
 };
+
+// Get LeadsTech availability status for accounts (for ROI checkbox)
+export const getLeadsTechStatus = () =>
+  api.get<Record<number, LeadsTechAccountStatus>>('/scaling/leadstech-status');
 
 // Scaling Task types
 export interface ScalingTask {

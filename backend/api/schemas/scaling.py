@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 
 class ScalingConditionModel(BaseModel):
-    metric: str  # spent, shows, clicks, goals, cost_per_goal
+    metric: str  # spent, shows, clicks, goals, cost_per_goal, ctr, cpc, roi
     operator: str  # >, <, >=, <=, ==, !=
     value: float
 
@@ -25,6 +25,11 @@ class ScalingConfigCreate(BaseModel):
     enabled: bool = False
     conditions: List[ScalingConditionModel] = []
     vk_ad_group_ids: Optional[List[int]] = None
+    use_leadstech_roi: bool = False  # Enable LeadsTech ROI for conditions
+    # Banner-level scaling options
+    activate_positive_banners: bool = True  # Activate positive banners (status=active)
+    duplicate_negative_banners: bool = True  # Duplicate negative banners in group
+    activate_negative_banners: bool = False  # Activate negative banners (status=active)
 
 
 class ScalingConfigUpdate(BaseModel):
@@ -41,6 +46,11 @@ class ScalingConfigUpdate(BaseModel):
     enabled: Optional[bool] = None
     conditions: Optional[List[ScalingConditionModel]] = None
     vk_ad_group_ids: Optional[List[int]] = None
+    use_leadstech_roi: Optional[bool] = None  # Enable LeadsTech ROI for conditions
+    # Banner-level scaling options
+    activate_positive_banners: Optional[bool] = None  # Activate positive banners (status=active)
+    duplicate_negative_banners: Optional[bool] = None  # Duplicate negative banners in group
+    activate_negative_banners: Optional[bool] = None  # Activate negative banners (status=active)
 
 
 class ManualDuplicateRequest(BaseModel):

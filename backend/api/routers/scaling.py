@@ -49,6 +49,11 @@ async def get_scaling_configs_endpoint(
             "lookback_days": config.lookback_days,
             "duplicates_count": config.duplicates_count or 1,
             "vk_ad_group_ids": manual_groups,
+            "use_leadstech_roi": getattr(config, 'use_leadstech_roi', False),
+            # Banner-level scaling toggles
+            "activate_positive_banners": getattr(config, 'activate_positive_banners', True),
+            "duplicate_negative_banners": getattr(config, 'duplicate_negative_banners', True),
+            "activate_negative_banners": getattr(config, 'activate_negative_banners', False),
             "last_run_at": config.last_run_at.isoformat() if config.last_run_at else None,
             "created_at": config.created_at.isoformat(),
             "conditions": [
@@ -92,6 +97,11 @@ async def get_scaling_config_endpoint(
         "lookback_days": config.lookback_days,
         "duplicates_count": config.duplicates_count or 1,
         "vk_ad_group_ids": manual_groups,
+        "use_leadstech_roi": getattr(config, 'use_leadstech_roi', False),
+        # Banner-level scaling toggles
+        "activate_positive_banners": getattr(config, 'activate_positive_banners', True),
+        "duplicate_negative_banners": getattr(config, 'duplicate_negative_banners', True),
+        "activate_negative_banners": getattr(config, 'activate_negative_banners', False),
         "last_run_at": config.last_run_at.isoformat() if config.last_run_at else None,
         "created_at": config.created_at.isoformat(),
         "conditions": [
@@ -123,7 +133,12 @@ async def create_scaling_config_endpoint(
             duplicates_count=data.duplicates_count,
             enabled=data.enabled,
             scheduled_enabled=data.scheduled_enabled,
-            vk_ad_group_ids=data.vk_ad_group_ids
+            vk_ad_group_ids=data.vk_ad_group_ids,
+            use_leadstech_roi=data.use_leadstech_roi,
+            # Banner-level scaling toggles
+            activate_positive_banners=data.activate_positive_banners,
+            duplicate_negative_banners=data.duplicate_negative_banners,
+            activate_negative_banners=data.activate_negative_banners
         )
 
         if data.conditions:
@@ -160,7 +175,12 @@ async def update_scaling_config_endpoint(
             duplicates_count=data.duplicates_count,
             enabled=data.enabled,
             scheduled_enabled=data.scheduled_enabled,
-            vk_ad_group_ids=data.vk_ad_group_ids
+            vk_ad_group_ids=data.vk_ad_group_ids,
+            use_leadstech_roi=data.use_leadstech_roi,
+            # Banner-level scaling toggles
+            activate_positive_banners=data.activate_positive_banners,
+            duplicate_negative_banners=data.duplicate_negative_banners,
+            activate_negative_banners=data.activate_negative_banners
         )
 
         if not config:
@@ -219,6 +239,11 @@ async def get_scaling_logs_endpoint(
                 "total_banners": log.total_banners,
                 "duplicated_banners": log.duplicated_banners,
                 "duplicated_banner_ids": log.duplicated_banner_ids,
+                # Banner-level classification data
+                "positive_banner_ids": getattr(log, 'positive_banner_ids', None),
+                "negative_banner_ids": getattr(log, 'negative_banner_ids', None),
+                "positive_count": getattr(log, 'positive_count', 0),
+                "negative_count": getattr(log, 'negative_count', 0),
                 "created_at": log.created_at.isoformat()
             }
             for log in logs
@@ -469,4 +494,32 @@ async def run_scaling_config(
         "config_name": config.name
     }
 
+
+@router.get("/leadstech-status")
+async def get_leadstech_status_for_accounts(
+    current_user: User = Depends(require_feature("scaling")),
+    db: Session = Depends(get_db)
+):
+    """
+    Get LeadsTech availability status for all user accounts.
+    Returns dict mapping account_id to {enabled: bool, cabinet_name: str}.
+    Used by frontend to enable/disable LeadsTech ROI checkbox.
+    """
+    accounts = crud.get_accounts(db, user_id=current_user.id)
+
+    result = {}
+    for account in accounts:
+        lt_cabinet = crud.get_leadstech_cabinet_by_account(db, account.id)
+        if lt_cabinet and lt_cabinet.enabled:
+            result[account.id] = {
+                "enabled": True,
+                "label": lt_cabinet.leadstech_label,
+            }
+        else:
+            result[account.id] = {
+                "enabled": False,
+                "label": None,
+            }
+
+    return result
 

@@ -27,6 +27,7 @@ import {
   duplicateAdGroup,
   runScalingConfig,
   getDisableRuleMetrics,
+  getLeadsTechStatus,
 } from '../api/client';
 import type {
   Account,
@@ -48,6 +49,7 @@ const FALLBACK_METRICS = [
   { value: 'ctr', label: 'CTR (%)', description: 'Click-through rate (клики/показы * 100)' },
   { value: 'cpc', label: 'CPC (₽)', description: 'Cost per click (цена за клик)' },
   { value: 'cost_per_goal', label: 'Цена результата (₽)', description: 'Стоимость одной конверсии' },
+  { value: 'roi', label: 'ROI (%)', description: 'Рентабельность из LeadsTech' },
 ];
 
 const FALLBACK_OPERATORS = [
@@ -161,7 +163,7 @@ function ConditionEditor({
 
       {conditions.length > 0 && (
         <p className="text-xs text-slate-500">
-          Группа будет продублирована если ВСЕ условия выполнены одновременно
+          Объявление считается позитивным если ВСЕ условия выполнены. Группа дублируется если есть хотя бы 1 позитивное объявление.
         </p>
       )}
     </div>
@@ -177,6 +179,7 @@ function ConfigFormModal({
   onSave,
   metrics,
   operators,
+  leadsTechStatus,
 }: {
   isOpen: boolean;
   onClose: () => void;
@@ -185,6 +188,7 @@ function ConfigFormModal({
   onSave: (data: Partial<ScalingConfig>) => void;
   metrics: Array<{ value: string; label: string; description: string }>;
   operators: Array<{ value: string; label: string; description: string }>;
+  leadsTechStatus: Record<number, { enabled: boolean; label: string | null }>;
 }) {
   const [name, setName] = useState('');
   const [scheduleTime, setScheduleTime] = useState('08:00');
@@ -192,10 +196,13 @@ function ConfigFormModal({
   const [accountIds, setAccountIds] = useState<number[]>([]);
   const [newBudget, setNewBudget] = useState<string>('');
   const [newName, setNewName] = useState<string>('');
-  const [autoActivate, setAutoActivate] = useState(false);
   const [lookbackDays, setLookbackDays] = useState(7);
   const [duplicatesCount, setDuplicatesCount] = useState(1);
   const [conditions, setConditions] = useState<ScalingCondition[]>([]);
+  // Banner-level scaling toggles
+  const [activatePositiveBanners, setActivatePositiveBanners] = useState(true);
+  const [duplicateNegativeBanners, setDuplicateNegativeBanners] = useState(true);
+  const [activateNegativeBanners, setActivateNegativeBanners] = useState(false);
 
   useEffect(() => {
     if (config) {
@@ -205,10 +212,13 @@ function ConfigFormModal({
       setAccountIds(config.account_ids || []);
       setNewBudget(config.new_budget?.toString() || '');
       setNewName(config.new_name || '');
-      setAutoActivate(config.auto_activate);
       setLookbackDays(config.lookback_days);
       setDuplicatesCount(config.duplicates_count || 1);
       setConditions(config.conditions || []);
+      // Banner-level scaling toggles
+      setActivatePositiveBanners(config.activate_positive_banners ?? true);
+      setDuplicateNegativeBanners(config.duplicate_negative_banners ?? true);
+      setActivateNegativeBanners(config.activate_negative_banners ?? false);
     } else {
       setName('');
       setScheduleTime('08:00');
@@ -216,10 +226,13 @@ function ConfigFormModal({
       setAccountIds([]);
       setNewBudget('');
       setNewName('');
-      setAutoActivate(false);
       setLookbackDays(7);
       setDuplicatesCount(1);
       setConditions([{ metric: 'goals', operator: 'greater_than', value: 2 }]);
+      // Banner-level scaling defaults
+      setActivatePositiveBanners(true);
+      setDuplicateNegativeBanners(true);
+      setActivateNegativeBanners(false);
     }
   }, [config, isOpen]);
 
@@ -232,12 +245,28 @@ function ConfigFormModal({
       account_ids: accountIds,
       new_budget: newBudget ? parseFloat(newBudget) : null,
       new_name: newName.trim() || null,
-      auto_activate: autoActivate,
+      auto_activate: activatePositiveBanners,  // Группа активируется вместе с позитивными объявлениями
       lookback_days: lookbackDays,
       duplicates_count: duplicatesCount,
       conditions,
+      // Автоматически включаем LeadsTech ROI если есть условие по ROI
+      use_leadstech_roi: conditions.some(c => c.metric === 'roi'),
+      // Banner-level scaling toggles
+      activate_positive_banners: activatePositiveBanners,
+      duplicate_negative_banners: duplicateNegativeBanners,
+      activate_negative_banners: activateNegativeBanners,
     });
   };
+
+  // Check if LeadsTech is available for any selected account
+  const isLeadstechAvailable = accountIds.length === 0
+    ? Object.values(leadsTechStatus).some(s => s.enabled)
+    : accountIds.some(id => leadsTechStatus[id]?.enabled);
+
+  // Filter metrics - ROI only available if LeadsTech is configured
+  const availableMetrics = isLeadstechAvailable
+    ? metrics
+    : metrics.filter(m => m.value !== 'roi');
 
   const toggleAccount = (accountId: number) => {
     setAccountIds(prev => 
@@ -389,17 +418,46 @@ function ConfigFormModal({
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <Toggle checked={autoActivate} onChange={setAutoActivate} />
-          <span className="text-sm text-slate-300">Авто-активация после создания</span>
-        </div>
-
         <ConditionEditor
           conditions={conditions}
           onChange={setConditions}
-          metrics={metrics}
+          metrics={availableMetrics}
           operators={operators}
         />
+
+        {/* Banner-level Scaling Settings */}
+        <div className="p-4 bg-slate-800/50 rounded-lg border border-slate-700 space-y-3">
+          <h4 className="text-sm font-medium text-slate-300 mb-2">Настройки объявлений</h4>
+          <p className="text-xs text-slate-500 mb-3">
+            Позитивные = соответствуют ВСЕМ условиям, Негативные = не соответствуют хотя бы одному
+          </p>
+
+          <div className="flex items-center gap-3">
+            <Toggle checked={activatePositiveBanners} onChange={setActivatePositiveBanners} />
+            <div>
+              <span className="text-sm text-slate-300">Активировать позитивные объявления и группу</span>
+              <p className="text-xs text-slate-500">Установить статус "активно" для группы и объявлений, соответствующих условиям</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <Toggle checked={duplicateNegativeBanners} onChange={setDuplicateNegativeBanners} />
+            <div>
+              <span className="text-sm text-slate-300">Дублировать негативные объявления</span>
+              <p className="text-xs text-slate-500">Включать объявления, не соответствующие условиям, в дубликат группы</p>
+            </div>
+          </div>
+
+          {duplicateNegativeBanners && (
+            <div className="flex items-center gap-3 ml-6 pl-3 border-l-2 border-slate-700">
+              <Toggle checked={activateNegativeBanners} onChange={setActivateNegativeBanners} />
+              <div>
+                <span className="text-sm text-slate-300">Активировать негативные объявления</span>
+                <p className="text-xs text-slate-500">Установить статус "активно" для негативных объявлений (иначе - заблокированы)</p>
+              </div>
+            </div>
+          )}
+        </div>
 
         <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 pt-4 border-t border-slate-700">
           <button
@@ -709,6 +767,12 @@ export function Scaling() {
     queryFn: () => getDisableRuleMetrics().then((r) => r.data),
   });
 
+  // Load LeadsTech status for accounts
+  const { data: leadsTechStatus = {} } = useQuery({
+    queryKey: ['leadsTechStatus'],
+    queryFn: () => getLeadsTechStatus().then((r) => r.data),
+  });
+
   const metrics = metricsData?.metrics || FALLBACK_METRICS;
   const operators = metricsData?.operators || FALLBACK_OPERATORS;
 
@@ -996,6 +1060,7 @@ export function Scaling() {
                         </div>
                       )}
                     </div>
+
                   </div>
                 )}
               </div>
@@ -1140,6 +1205,7 @@ export function Scaling() {
         onSave={handleSaveConfig}
         metrics={metrics}
         operators={operators}
+        leadsTechStatus={leadsTechStatus}
       />
 
       <ManualDuplicateModal

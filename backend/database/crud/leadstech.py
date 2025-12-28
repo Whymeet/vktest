@@ -7,7 +7,10 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from utils.time_utils import get_moscow_time
+from utils.logging_setup import get_logger
 from database.models import LeadsTechConfig, LeadsTechCabinet, LeadsTechAnalysisResult
+
+logger = get_logger(service="crud", function="leadstech")
 
 
 # ===== LeadsTech Config =====
@@ -296,6 +299,67 @@ def get_leadstech_analysis_cabinet_names(db: Session, user_id: int) -> List[str]
         LeadsTechAnalysisResult.user_id == user_id
     ).distinct().all()
     return sorted([r[0] for r in results if r[0]])
+
+
+def get_leadstech_data_for_banners(
+    db: Session,
+    user_id: int,
+    cabinet_name: str
+) -> dict:
+    """
+    Get LeadsTech data for ROI enrichment in scaling.
+
+    Returns a mapping of banner_id to its LeadsTech metrics:
+    {
+        banner_id: {
+            "lt_revenue": float,
+            "vk_spent": float,
+            "profit": float,
+            "roi_percent": float or None
+        }
+    }
+
+    Args:
+        db: Database session
+        user_id: User ID
+        cabinet_name: VK cabinet name to filter by
+
+    Returns:
+        Dict mapping banner_id to metrics
+    """
+    logger.info(f"🔍 Загрузка LeadsTech данных для кабинета '{cabinet_name}' (user_id={user_id})...")
+
+    results = db.query(LeadsTechAnalysisResult).filter(
+        LeadsTechAnalysisResult.user_id == user_id,
+        LeadsTechAnalysisResult.cabinet_name == cabinet_name
+    ).all()
+
+    data = {}
+    total_revenue = 0.0
+    total_spent = 0.0
+
+    for r in results:
+        data[r.banner_id] = {
+            "lt_revenue": float(r.lt_revenue or 0),
+            "vk_spent": float(r.vk_spent or 0),
+            "profit": float(r.profit or 0),
+            "roi_percent": float(r.roi_percent) if r.roi_percent is not None else None
+        }
+        total_revenue += float(r.lt_revenue or 0)
+        total_spent += float(r.vk_spent or 0)
+
+    if data:
+        logger.info(f"✅ Найдено {len(data)} баннеров с LeadsTech данными")
+        logger.info(f"   Общий доход: {total_revenue:.2f}₽, расход: {total_spent:.2f}₽")
+        # Логируем первые 3 баннера для отладки
+        for i, (bid, bdata) in enumerate(list(data.items())[:3]):
+            roi = bdata['roi_percent']
+            roi_str = f"{roi:.1f}%" if roi is not None else "N/A"
+            logger.debug(f"   Баннер {bid}: revenue={bdata['lt_revenue']:.0f}, spent={bdata['vk_spent']:.0f}, ROI={roi_str}")
+    else:
+        logger.warning(f"⚠️ Нет LeadsTech данных для кабинета '{cabinet_name}'")
+
+    return data
 
 
 def get_leadstech_analysis_stats(

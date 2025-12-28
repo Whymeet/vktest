@@ -106,7 +106,12 @@ def create_scaling_config(
     lookback_days: int = 7,
     duplicates_count: int = 1,
     enabled: bool = False,
-    vk_ad_group_ids: Optional[List[int]] = None
+    vk_ad_group_ids: Optional[List[int]] = None,
+    use_leadstech_roi: bool = False,
+    # New banner-level scaling options
+    activate_positive_banners: bool = True,
+    duplicate_negative_banners: bool = True,
+    activate_negative_banners: bool = False
 ) -> ScalingConfig:
     """Create new scaling configuration
 
@@ -114,6 +119,10 @@ def create_scaling_config(
         scheduled_enabled: TRUE = run by schedule, FALSE = manual only
         new_name: New name for duplicated groups (NULL = use original name)
         vk_ad_group_ids: List of VK ad_group_id for manual scaling
+        use_leadstech_roi: Enable LeadsTech ROI for conditions
+        activate_positive_banners: Activate positive banners (status=active)
+        duplicate_negative_banners: Duplicate negative banners in group
+        activate_negative_banners: Activate negative banners (status=active)
     """
     config = ScalingConfig(
         user_id=user_id,
@@ -126,7 +135,11 @@ def create_scaling_config(
         auto_activate=auto_activate,
         lookback_days=lookback_days,
         duplicates_count=duplicates_count,
-        enabled=enabled
+        enabled=enabled,
+        use_leadstech_roi=use_leadstech_roi,
+        activate_positive_banners=activate_positive_banners,
+        duplicate_negative_banners=duplicate_negative_banners,
+        activate_negative_banners=activate_negative_banners
     )
     db.add(config)
     db.commit()
@@ -157,7 +170,12 @@ def update_scaling_config(
     lookback_days: Optional[int] = None,
     duplicates_count: Optional[int] = None,
     enabled: Optional[bool] = None,
-    vk_ad_group_ids: Optional[List[int]] = None
+    vk_ad_group_ids: Optional[List[int]] = None,
+    use_leadstech_roi: Optional[bool] = None,
+    # New banner-level scaling options
+    activate_positive_banners: Optional[bool] = None,
+    duplicate_negative_banners: Optional[bool] = None,
+    activate_negative_banners: Optional[bool] = None
 ) -> Optional[ScalingConfig]:
     """Update scaling configuration
 
@@ -165,6 +183,10 @@ def update_scaling_config(
         scheduled_enabled: TRUE = run by schedule, FALSE = manual only
         new_name: New name for duplicated groups (empty string or NULL = use original name)
         vk_ad_group_ids: List of VK ad_group_id for manual scaling
+        use_leadstech_roi: Enable LeadsTech ROI for conditions
+        activate_positive_banners: Activate positive banners (status=active)
+        duplicate_negative_banners: Duplicate negative banners in group
+        activate_negative_banners: Activate negative banners (status=active)
     """
     config = get_scaling_config_by_id(db, config_id)
     if not config:
@@ -191,6 +213,14 @@ def update_scaling_config(
         config.duplicates_count = max(1, min(100, duplicates_count))  # 1-100
     if enabled is not None:
         config.enabled = enabled
+    if use_leadstech_roi is not None:
+        config.use_leadstech_roi = use_leadstech_roi
+    if activate_positive_banners is not None:
+        config.activate_positive_banners = activate_positive_banners
+    if duplicate_negative_banners is not None:
+        config.duplicate_negative_banners = duplicate_negative_banners
+    if activate_negative_banners is not None:
+        config.activate_negative_banners = activate_negative_banners
 
     config.updated_at = get_moscow_time()
     db.commit()
@@ -436,7 +466,7 @@ def check_group_conditions(stats: dict, conditions: List[ScalingCondition], logg
     Uses the same logic as check_banner_against_rules for consistency.
 
     Args:
-        stats: Dict with keys: spent, shows, clicks, goals, cost_per_goal, ctr, cpc
+        stats: Dict with keys: spent, shows, clicks, goals, cost_per_goal, ctr, cpc, roi
         conditions: List of ScalingCondition objects
         logger: Optional logger object with info() method
 
@@ -484,6 +514,10 @@ def check_group_conditions(stats: dict, conditions: List[ScalingCondition], logg
                 spent = stats.get("spent", 0) or 0
                 actual_value = (spent / clicks) if clicks > 0 else float('inf')
                 log(f"            → cpc = {actual_value:.2f} (spent={spent}, clicks={clicks})")
+            elif metric == "roi":
+                # ROI from LeadsTech - None means no data available
+                log(f"            → roi = нет данных LeadsTech для этой группы")
+                return False  # Skip group if no ROI data when ROI condition is used
             else:
                 actual_value = 0
                 log(f"            → значение отсутствует, используем 0")
