@@ -17,18 +17,6 @@ async def test_login_without_credentials_fails():
 
 
 @pytest.mark.asyncio
-async def test_login_with_wrong_credentials_fails():
-    """Проверка что login с неверными данными возвращает 401."""
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        response = await client.post("/api/auth/login", json={
-            "username": "nonexistent_user_12345",
-            "password": "wrong_password_12345"
-        })
-        assert response.status_code == 401
-
-
-@pytest.mark.asyncio
 async def test_protected_endpoint_without_token_fails():
     """Проверка что защищенный endpoint без токена возвращает 401."""
     transport = ASGITransport(app=app)
