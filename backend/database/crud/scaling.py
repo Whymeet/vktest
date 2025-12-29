@@ -584,6 +584,10 @@ def create_scaling_task(
     total_operations: int = 0
 ) -> ScalingTask:
     """Create a new scaling task"""
+    # Truncate account_name to fit VARCHAR(100)
+    if account_name and len(account_name) > 100:
+        account_name = account_name[:97] + "..."
+
     task = ScalingTask(
         user_id=user_id,
         task_type=task_type,
