@@ -92,6 +92,7 @@ from database.crud.stats import (
     # Process State
     get_process_state,
     get_all_process_states,
+    get_autostart_process_states,
     set_process_running,
     set_process_stopped,
     update_process_status,
@@ -261,6 +262,7 @@ __all__ = [
     # Stats
     "get_process_state",
     "get_all_process_states",
+    "get_autostart_process_states",
     "set_process_running",
     "set_process_stopped",
     "update_process_status",

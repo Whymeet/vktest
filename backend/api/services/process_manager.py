@@ -13,6 +13,7 @@ from database import crud, SessionLocal
 from api.core.config import (
     PROJECT_ROOT,
     LOGS_DIR,
+    SCHEDULER_SCRIPT,
     SCALING_SCHEDULER_SCRIPT,
 )
 
@@ -113,8 +114,8 @@ def is_process_running_by_db(process_name: str, db, user_id: int = None) -> tupl
     if check_process_is_python_script(state.pid, script_name):
         return True, state.pid
 
-    # PID is dead or not our process - update DB
-    crud.set_process_stopped(db, full_name, error="Process no longer running")
+    # PID is dead or not our process - update DB (keep auto_start unchanged for auto-restart)
+    crud.set_process_stopped(db, full_name, error="Process no longer running", disable_autostart=False)
     return False, None
 
 
@@ -168,5 +169,72 @@ def autostart_scaling_schedulers():
                 print(f"    Scaling scheduler started for user {user.username} (PID: {process.pid})")
             except Exception as e:
                 print(f"    Failed to start scaling scheduler for user {user.username}: {e}")
+    finally:
+        db.close()
+
+
+def autostart_schedulers():
+    """Auto-start schedulers that were running before server restart (based on auto_start flag)"""
+    db = SessionLocal()
+    try:
+        from database.models import User
+
+        # Get all process states with auto_start=True for schedulers
+        autostart_states = crud.get_autostart_process_states(db, process_type="scheduler_")
+
+        if not autostart_states:
+            print("    No schedulers to auto-start")
+            return
+
+        for state in autostart_states:
+            # Extract user_id from process name (e.g., "scheduler_1" -> 1)
+            try:
+                user_id = int(state.name.split("_")[1])
+            except (IndexError, ValueError):
+                print(f"    Invalid scheduler name format: {state.name}")
+                continue
+
+            # Get user info
+            user = db.query(User).filter(User.id == user_id).first()
+            if not user:
+                print(f"    User {user_id} not found for scheduler {state.name}")
+                continue
+
+            # Check if already running
+            is_running, existing_pid = is_process_running_by_db("scheduler", db, user_id)
+            if is_running:
+                print(f"    Scheduler already running for user {user.username} (PID: {existing_pid})")
+                continue
+
+            # Start the scheduler
+            try:
+                LOGS_DIR.mkdir(parents=True, exist_ok=True)
+
+                user_log_prefix = f"user_{user.id}"
+                scheduler_stdout = open(LOGS_DIR / f"{user_log_prefix}_scheduler_stdout.log", "a", encoding="utf-8")
+                scheduler_stderr = open(LOGS_DIR / f"{user_log_prefix}_scheduler_stderr.log", "a", encoding="utf-8")
+
+                env = os.environ.copy()
+                env["VK_ADS_USER_ID"] = str(user.id)
+                env["VK_ADS_USERNAME"] = user.username
+
+                process = subprocess.Popen(
+                    [sys.executable, str(SCHEDULER_SCRIPT)],
+                    stdout=scheduler_stdout,
+                    stderr=scheduler_stderr,
+                    cwd=str(PROJECT_ROOT),
+                    start_new_session=True,
+                    env=env
+                )
+
+                process_name = f"scheduler_{user.id}"
+                # Keep auto_start=True since we're auto-starting
+                crud.set_process_running(db, process_name, process.pid, str(SCHEDULER_SCRIPT), user_id=user.id, auto_start=True)
+
+                running_processes[process_name] = process
+
+                print(f"    Scheduler auto-started for user {user.username} (PID: {process.pid})")
+            except Exception as e:
+                print(f"    Failed to auto-start scheduler for user {user.username}: {e}")
     finally:
         db.close()

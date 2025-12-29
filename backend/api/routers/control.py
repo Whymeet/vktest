@@ -82,7 +82,8 @@ async def start_scheduler(
         )
 
         process_name = f"scheduler_{current_user.id}"
-        crud.set_process_running(db, process_name, process.pid, str(SCHEDULER_SCRIPT), user_id=current_user.id)
+        # Set auto_start=True so scheduler will be restarted after server restart
+        crud.set_process_running(db, process_name, process.pid, str(SCHEDULER_SCRIPT), user_id=current_user.id, auto_start=True)
         running_processes[process_name] = process
 
         print(f"Scheduler started with PID: {process.pid} for user {current_user.username}")

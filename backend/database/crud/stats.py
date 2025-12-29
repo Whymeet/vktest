@@ -23,12 +23,22 @@ def get_all_process_states(db: Session) -> List[ProcessState]:
     return db.query(ProcessState).all()
 
 
+def get_autostart_process_states(db: Session, process_type: str = None) -> List[ProcessState]:
+    """Get all process states with auto_start=True, optionally filtered by process type"""
+    query = db.query(ProcessState).filter(ProcessState.auto_start == True)
+    if process_type:
+        # Filter by process type (e.g., 'scheduler' matches 'scheduler_1', 'scheduler_2')
+        query = query.filter(ProcessState.name.like(f"{process_type}%"))
+    return query.all()
+
+
 def set_process_running(
     db: Session,
     name: str,
     pid: int,
     script_path: Optional[str] = None,
-    user_id: Optional[int] = None
+    user_id: Optional[int] = None,
+    auto_start: bool = False
 ) -> ProcessState:
     """Mark process as running with PID"""
     state = get_process_state(db, name)
@@ -42,6 +52,7 @@ def set_process_running(
         state.stopped_at = None
         state.last_error = None
         state.updated_at = now
+        state.auto_start = auto_start
         if user_id:
             state.user_id = user_id
     else:
@@ -51,7 +62,8 @@ def set_process_running(
             script_path=script_path,
             status='running',
             started_at=now,
-            user_id=user_id
+            user_id=user_id,
+            auto_start=auto_start
         )
         db.add(state)
 
@@ -60,8 +72,16 @@ def set_process_running(
     return state
 
 
-def set_process_stopped(db: Session, name: str, error: Optional[str] = None) -> Optional[ProcessState]:
-    """Mark process as stopped"""
+def set_process_stopped(db: Session, name: str, error: Optional[str] = None, disable_autostart: bool = True) -> Optional[ProcessState]:
+    """Mark process as stopped
+
+    Args:
+        db: Database session
+        name: Process name
+        error: Optional error message
+        disable_autostart: If True, sets auto_start=False (user manually stopped).
+                          If False, keeps auto_start unchanged (server restart/crash).
+    """
     state = get_process_state(db, name)
     if not state:
         return None
@@ -72,6 +92,10 @@ def set_process_stopped(db: Session, name: str, error: Optional[str] = None) -> 
     state.stopped_at = now
     state.last_error = error
     state.updated_at = now
+
+    # Only disable auto_start if explicitly requested (user clicked Stop)
+    if disable_autostart:
+        state.auto_start = False
 
     db.commit()
     db.refresh(state)

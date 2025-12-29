@@ -402,6 +402,9 @@ class ProcessState(Base):
     # Last error if crashed
     last_error = Column(Text, nullable=True)
 
+    # Auto-start flag - automatically restart this process on server startup
+    auto_start = Column(Boolean, default=False, nullable=False)
+
     # Timestamps
     created_at = Column(DateTime, default=get_moscow_time, nullable=False)
     updated_at = Column(DateTime, default=get_moscow_time, onupdate=get_moscow_time, nullable=False)
@@ -410,7 +413,7 @@ class ProcessState(Base):
     user = relationship("User", back_populates="process_states")
 
     def __repr__(self):
-        return f"<ProcessState(name='{self.name}', pid={self.pid}, status='{self.status}')>"
+        return f"<ProcessState(name='{self.name}', pid={self.pid}, status='{self.status}', auto_start={self.auto_start})>"
 
 
 class LeadsTechConfig(Base):
