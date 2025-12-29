@@ -10,7 +10,8 @@ logger = get_logger(service="vk_api")
 
 # ===== Constants =====
 API_MAX_RETRIES = 3
-API_RETRY_DELAY_SECONDS = 15  # Reduced from 90 to 15 seconds
+API_RETRY_DELAY_SECONDS = 15  # Default delay for retries
+API_RETRY_DELAY_SCALING = 3   # Shorter delay for scaling operations
 API_RETRY_STATUS_CODES = {429, 500, 502, 503, 504}
 VK_MIN_DAILY_BUDGET = 100  # Minimum daily budget in rubles
 
@@ -113,7 +114,7 @@ def _request_with_retries(
 
             # Special case - 429 Too Many Requests
             if resp.status_code == 429:
-                wait = 15  # Reduced from 60 to 15 seconds for rate limit
+                wait = retry_delay  # Use configured retry delay for rate limit
                 try:
                     retry_after = int(resp.headers.get("Retry-After", "0"))
                     if retry_after > 0:
@@ -146,7 +147,7 @@ def _request_with_retries(
                 if resp.status_code in [500, 502, 503, 504]:
                     # For unknown_api_error use even shorter intervals
                     if error_type == "unknown_api_error":
-                        wait = min(5 + attempt * 2, 15)  # 5, 7, 9 seconds max
+                        wait = min(5 + attempt * 3, 15)  # 5, 8, 11 seconds max
                     else:
                         wait = min(10 + attempt * 5, retry_delay)  # 10, 15, 20 seconds
                 else:

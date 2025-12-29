@@ -21,6 +21,8 @@ from database import crud
 from utils.vk_api import get_ad_groups_with_stats, duplicate_ad_group_full
 from utils.time_utils import get_moscow_time
 from utils.logging_setup import get_logger, setup_logging, add_user_log_file, set_context
+from leadstech.roi_enricher import get_banners_by_ad_group, enrich_groups_with_roi
+from services.scaling_engine import BannerScalingEngine
 
 # Инициализируем логирование
 setup_logging()
@@ -73,11 +75,14 @@ def run_scaling_config_with_tracking(config_id: int):
 
 
 def _execute_scaling_config(db, config):
-    """Внутренняя функция выполнения конфигурации с полным трекингом"""
+    """
+    Внутренняя функция выполнения конфигурации с полным трекингом.
+    Использует новый BannerScalingEngine для анализа на уровне объявлений.
+    """
 
     logger.info(f"")
     logger.info(f"{'='*80}")
-    logger.info(f"🚀 ЗАПУСК АВТОМАСШТАБИРОВАНИЯ: {config.name}")
+    logger.info(f"🚀 ЗАПУСК BANNER-LEVEL АВТОМАСШТАБИРОВАНИЯ: {config.name}")
     logger.info(f"{'='*80}")
 
     conditions = crud.get_scaling_conditions(db, config.id)
@@ -118,7 +123,79 @@ def _execute_scaling_config(db, config):
     # Стартуем задачу
     crud.start_scaling_task(db, task_id)
 
-    # Вычисляем период анализа
+    # Проверяем есть ли ручные группы для масштабирования
+    manual_group_ids = crud.get_manual_scaling_groups(db, config.id)
+
+    if manual_group_ids:
+        # Ручное масштабирование - используем старую логику
+        _execute_manual_scaling(db, config, accounts, task_id, manual_group_ids)
+    else:
+        # Автомасштабирование - используем новый BannerScalingEngine
+        _execute_banner_scaling(db, config, accounts, task_id)
+
+    # Обновляем время последнего запуска
+    crud.update_scaling_config_last_run(db, config.id)
+
+
+def _execute_banner_scaling(db, config, accounts, task_id):
+    """
+    Выполняет banner-level масштабирование через новый движок.
+    Анализирует каждое объявление отдельно, классифицирует на позитивные/негативные.
+    """
+    logger.info(f"📊 Режим: Banner-Level Scaling")
+    logger.info(f"   Аккаунтов: {len(accounts)}")
+    logger.info(f"   Настройки: activate_positive={getattr(config, 'activate_positive_banners', True)}, "
+                f"duplicate_negative={getattr(config, 'duplicate_negative_banners', True)}, "
+                f"activate_negative={getattr(config, 'activate_negative_banners', False)}")
+
+    try:
+        # Создаём и запускаем движок
+        engine = BannerScalingEngine(
+            config_id=config.id,
+            user_id=config.user_id,
+            task_id=task_id,
+            db_session=db
+        )
+
+        result = engine.run(accounts)
+
+        # Завершаем задачу
+        if result.failed_duplications == 0:
+            final_status = 'completed'
+        elif result.successful_duplications == 0:
+            final_status = 'failed'
+        else:
+            final_status = 'completed'
+
+        crud.complete_scaling_task(db, task_id, status=final_status)
+
+        # Итоги
+        logger.info(f"")
+        logger.info(f"{'='*80}")
+        logger.info(f"✅ BANNER-LEVEL МАСШТАБИРОВАНИЕ ЗАВЕРШЕНО: {config.name}")
+        logger.info(f"{'='*80}")
+        logger.info(f"   Проанализировано баннеров: {result.total_banners_analyzed}")
+        logger.info(f"   Позитивных: {result.positive_banners}")
+        logger.info(f"   Негативных: {result.negative_banners}")
+        logger.info(f"   Групп для дублирования: {result.groups_found}")
+        logger.info(f"   Успешно скопировано: {result.successful_duplications}")
+        logger.info(f"   Ошибок: {result.failed_duplications}")
+        logger.info(f"   Задача #{task_id} завершена со статусом: {final_status}")
+        logger.info(f"{'='*80}")
+
+    except Exception as e:
+        logger.error(f"❌ Ошибка в BannerScalingEngine: {e}")
+        crud.update_scaling_task_progress(db, task_id, last_error=str(e))
+        crud.complete_scaling_task(db, task_id, status='failed')
+
+
+def _execute_manual_scaling(db, config, accounts, task_id, manual_group_ids):
+    """
+    Выполняет ручное масштабирование указанных групп.
+    Использует старую логику - дублирует указанные группы целиком.
+    """
+    logger.info(f"📋 Режим ручного масштабирования: {len(manual_group_ids)} групп")
+
     date_to = datetime.now().strftime("%Y-%m-%d")
     date_from = (datetime.now() - timedelta(days=config.lookback_days)).strftime("%Y-%m-%d")
     base_url = "https://ads.vk.com/api/v2"
@@ -127,91 +204,45 @@ def _execute_scaling_config(db, config):
     successful = 0
     failed = 0
     duplicates_count = config.duplicates_count or 1
-
-    # Получаем new_name из конфигурации
     new_name = getattr(config, 'new_name', None)
 
-    # Проверяем есть ли ручные группы для масштабирования
-    manual_group_ids = crud.get_manual_scaling_groups(db, config.id)
-
-    # Собираем все группы которые нужно обработать
+    # Собираем группы для обработки
     groups_to_process = []
 
-    if manual_group_ids:
-        # Ручное масштабирование - берём указанные группы из всех кабинетов
-        logger.info(f"📋 Режим ручного масштабирования: {len(manual_group_ids)} групп")
+    for account in accounts:
+        logger.info(f"📁 Поиск групп в кабинете: {account.name}")
 
-        for account in accounts:
-            logger.info(f"📁 Поиск групп в кабинете: {account.name}")
+        try:
+            groups = get_ad_groups_with_stats(
+                token=account.api_token,
+                base_url=base_url,
+                date_from=date_from,
+                date_to=date_to
+            )
 
-            try:
-                groups = get_ad_groups_with_stats(
-                    token=account.api_token,
-                    base_url=base_url,
-                    date_from=date_from,
-                    date_to=date_to
-                )
-
-                for group in groups:
-                    group_id = group.get("id")
-                    if group_id in manual_group_ids:
-                        group_name = group.get("name", "Unknown")
-                        stats = group.get("stats", {})
-                        logger.info(f"   ✅ Найдена группа '{group_name}' (ID: {group_id})")
-                        groups_to_process.append({
-                            'account': account,
-                            'group_id': group_id,
-                            'group_name': group_name,
-                            'stats': stats
-                        })
-
-            except Exception as e:
-                logger.error(f"   ❌ Ошибка при сканировании кабинета {account.name}: {e}")
-                crud.update_scaling_task_progress(
-                    db, task_id,
-                    last_error=f"Ошибка сканирования {account.name}: {str(e)}"
-                )
-    else:
-        # Автомасштабирование - фильтруем по условиям
-        for account in accounts:
-            logger.info(f"📁 Сканирование кабинета: {account.name}")
-
-            try:
-                groups = get_ad_groups_with_stats(
-                    token=account.api_token,
-                    base_url=base_url,
-                    date_from=date_from,
-                    date_to=date_to
-                )
-
-                logger.info(f"   Найдено {len(groups)} групп")
-
-                for group in groups:
-                    group_id = group.get("id")
+            for group in groups:
+                group_id = group.get("id")
+                if group_id in manual_group_ids:
                     group_name = group.get("name", "Unknown")
                     stats = group.get("stats", {})
+                    logger.info(f"   ✅ Найдена группа '{group_name}' (ID: {group_id})")
+                    groups_to_process.append({
+                        'account': account,
+                        'group_id': group_id,
+                        'group_name': group_name,
+                        'stats': stats
+                    })
 
-                    # Проверяем условия
-                    if crud.check_group_conditions(stats, conditions, logger=logger):
-                        logger.info(f"   ✅ Группа '{group_name}' соответствует условиям")
-                        groups_to_process.append({
-                            'account': account,
-                            'group_id': group_id,
-                            'group_name': group_name,
-                            'stats': stats
-                        })
-
-            except Exception as e:
-                logger.error(f"   ❌ Ошибка при сканировании кабинета {account.name}: {e}")
-                crud.update_scaling_task_progress(
-                    db, task_id,
-                    last_error=f"Ошибка сканирования {account.name}: {str(e)}"
-                )
+        except Exception as e:
+            logger.error(f"   ❌ Ошибка при сканировании кабинета {account.name}: {e}")
+            crud.update_scaling_task_progress(
+                db, task_id,
+                last_error=f"Ошибка сканирования {account.name}: {str(e)}"
+            )
 
     # Обновляем общее количество операций
     total_operations = len(groups_to_process) * duplicates_count
     if total_operations > 0:
-        # Update task with correct total (need to do this via direct update)
         task_obj = crud.get_scaling_task(db, task_id)
         if task_obj:
             task_obj.total_operations = total_operations
@@ -222,10 +253,8 @@ def _execute_scaling_config(db, config):
     if total_operations == 0:
         logger.info(f"ℹ️ Нет групп для дублирования")
         crud.complete_scaling_task(db, task_id, status='completed')
-        crud.update_scaling_config_last_run(db, config.id)
         return
 
-    # Флаг отмены
     cancelled = False
 
     # Обрабатываем группы
@@ -251,25 +280,22 @@ def _execute_scaling_config(db, config):
                 break
 
             try:
-                # Обновляем текущую операцию
                 crud.update_scaling_task_progress(
                     db, task_id,
                     current_group_id=group_id,
                     current_group_name=f"{group_name} (копия {dup_num}/{duplicates_count})"
                 )
 
-                # Дублируем группу
                 result = duplicate_ad_group_full(
                     token=account.api_token,
                     base_url=base_url,
                     ad_group_id=group_id,
-                    new_name=new_name,  # Передаём new_name (None = используем оригинальное имя)
+                    new_name=new_name,
                     new_budget=config.new_budget,
                     auto_activate=config.auto_activate,
                     rate_limit_delay=0.03
                 )
 
-                # Логируем операцию
                 banner_ids_data = None
                 if result.get("duplicated_banners"):
                     banner_ids_data = [
@@ -307,10 +333,7 @@ def _execute_scaling_config(db, config):
                     failed += 1
                     error_msg = result.get("error", "Unknown error")
                     logger.error(f"   ❌ Копия {dup_num}/{duplicates_count}: {error_msg}")
-                    crud.update_scaling_task_progress(
-                        db, task_id,
-                        last_error=error_msg
-                    )
+                    crud.update_scaling_task_progress(db, task_id, last_error=error_msg)
 
             except Exception as e:
                 failed += 1
@@ -329,10 +352,7 @@ def _execute_scaling_config(db, config):
                     error_message=error_msg
                 )
 
-                crud.update_scaling_task_progress(
-                    db, task_id,
-                    last_error=error_msg
-                )
+                crud.update_scaling_task_progress(db, task_id, last_error=error_msg)
 
             completed += 1
             crud.update_scaling_task_progress(
@@ -342,10 +362,7 @@ def _execute_scaling_config(db, config):
                 failed=failed
             )
 
-    # Обновляем время последнего запуска
-    crud.update_scaling_config_last_run(db, config.id)
-
-    # Завершаем задачу (если не была отменена)
+    # Завершаем задачу
     if not cancelled:
         final_status = 'completed' if failed == 0 else ('failed' if successful == 0 else 'completed')
         crud.complete_scaling_task(db, task_id, status=final_status)
@@ -354,9 +371,9 @@ def _execute_scaling_config(db, config):
     logger.info(f"")
     logger.info(f"{'='*80}")
     if cancelled:
-        logger.info(f"⛔ АВТОМАСШТАБИРОВАНИЕ ОТМЕНЕНО: {config.name}")
+        logger.info(f"⛔ РУЧНОЕ МАСШТАБИРОВАНИЕ ОТМЕНЕНО: {config.name}")
     else:
-        logger.info(f"✅ АВТОМАСШТАБИРОВАНИЕ ЗАВЕРШЕНО: {config.name}")
+        logger.info(f"✅ РУЧНОЕ МАСШТАБИРОВАНИЕ ЗАВЕРШЕНО: {config.name}")
     logger.info(f"{'='*80}")
     logger.info(f"   Успешно: {successful}")
     logger.info(f"   Ошибок: {failed}")

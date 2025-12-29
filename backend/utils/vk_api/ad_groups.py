@@ -211,6 +211,11 @@ def create_ad_group(token: str, base_url: str, group_data: dict):
     """Create a new ad group"""
     url = f"{base_url}/ad_groups.json"
 
+    # Log the data being sent for debugging
+    logger.debug(f"[DEBUG] Creating ad group with data keys: {list(group_data.keys())}")
+    if 'budget_limit_day' in group_data:
+        logger.debug(f"[DEBUG] budget_limit_day value: {group_data['budget_limit_day']} (type: {type(group_data['budget_limit_day'])})")
+
     try:
         response = requests.post(url, headers=_headers(token), json=group_data, timeout=30)
 

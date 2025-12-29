@@ -157,7 +157,8 @@ def duplicate_ad_group_full(
     new_name: str = None,
     new_budget: float = None,
     auto_activate: bool = False,
-    rate_limit_delay: float = 0.03
+    rate_limit_delay: float = 0.03,
+    account_name: str = None  # For logging
 ):
     """
     Full duplication of ad group with all non-deleted banners.
@@ -167,6 +168,7 @@ def duplicate_ad_group_full(
         token: VK Ads API token
         base_url: VK Ads API base URL
         ad_group_id: ID of group to duplicate
+        account_name: Account name for logging (optional)
         new_name: New group name. If None or empty - uses ORIGINAL name.
         new_budget: New group budget in rubles. If None or 0 - copies original budget.
         auto_activate: Automatically activate group and banners
@@ -203,7 +205,8 @@ def duplicate_ad_group_full(
         # Other read-only fields
         'stats_info', 'preview_url', 'audit_pixels',
         # Field status - remove, as when creating group with banners, status is inherited from group
-        'status', 'name'
+        'status'
+        # Note: 'name' is NOT excluded - we want to preserve banner names
     }
 
     def clean_content(content_data):
@@ -227,10 +230,13 @@ def duplicate_ad_group_full(
                 cleaned[key] = {'id': value['id']}
         return cleaned if cleaned else None
 
+    # Log prefix with account name
+    log_prefix = f"[{account_name}]" if account_name else ""
+
     try:
         print(f"")
         print(f"{'='*80}")
-        print(f"[TARGET] DUPLICATING GROUP {ad_group_id}")
+        print(f"{log_prefix} [TARGET] DUPLICATING GROUP {ad_group_id}")
         print(f"{'='*80}")
 
         # ===== STEP 1: Load group data =====
@@ -274,7 +280,7 @@ def duplicate_ad_group_full(
             # Use original group name
             new_group_data['name'] = original_group.get('name', 'Copy')
 
-        # Set budget
+        # Set budget - VK API requires budget_limit_day
         budget_to_set = None
         if new_budget is not None and new_budget > 0:
             if new_budget >= VK_MIN_DAILY_BUDGET:
@@ -282,17 +288,26 @@ def duplicate_ad_group_full(
                 logger.info(f"[INFO] Set new daily budget: {budget_to_set} rub")
         else:
             original_budget = original_group.get('budget_limit_day')
+            logger.debug(f"[DEBUG] Original budget_limit_day: {original_budget} (type: {type(original_budget)})")
             if original_budget:
                 try:
                     budget_int = int(float(original_budget))
                     if budget_int >= VK_MIN_DAILY_BUDGET:
                         budget_to_set = budget_int
                         logger.info(f"[INFO] Copied budget from original: {budget_int} rub")
-                except (ValueError, TypeError):
-                    pass
+                    else:
+                        logger.warning(f"[WARN] Original budget {budget_int} < min {VK_MIN_DAILY_BUDGET}, using minimum")
+                        budget_to_set = VK_MIN_DAILY_BUDGET
+                except (ValueError, TypeError) as e:
+                    logger.warning(f"[WARN] Failed to parse original budget '{original_budget}': {e}")
 
-        if budget_to_set is not None:
-            new_group_data['budget_limit_day'] = str(budget_to_set)
+        # If still no budget, use minimum (VK API requires this field)
+        if budget_to_set is None:
+            budget_to_set = VK_MIN_DAILY_BUDGET
+            logger.info(f"[INFO] No budget specified, using minimum: {budget_to_set} rub")
+
+        # VK API accepts budget_limit_day as integer (in rubles)
+        new_group_data['budget_limit_day'] = budget_to_set
 
         # IMPORTANT: Always create group with 'blocked' status to bypass active banners limit
         # If auto-activation needed - activate after creation

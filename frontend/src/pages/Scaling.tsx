@@ -27,6 +27,7 @@ import {
   duplicateAdGroup,
   runScalingConfig,
   getDisableRuleMetrics,
+  getLeadsTechStatus,
 } from '../api/client';
 import type {
   Account,
@@ -47,7 +48,9 @@ const FALLBACK_METRICS = [
   { value: 'shows', label: 'Показы', description: 'Количество показов объявления' },
   { value: 'ctr', label: 'CTR (%)', description: 'Click-through rate (клики/показы * 100)' },
   { value: 'cpc', label: 'CPC (₽)', description: 'Cost per click (цена за клик)' },
+  { value: 'cr', label: 'CR (%)', description: 'Conversion Rate (конверсии/клики * 100)' },
   { value: 'cost_per_goal', label: 'Цена результата (₽)', description: 'Стоимость одной конверсии' },
+  { value: 'roi', label: 'ROI (%)', description: 'Рентабельность из LeadsTech' },
 ];
 
 const FALLBACK_OPERATORS = [
@@ -105,20 +108,20 @@ function ConditionEditor({
       </div>
 
       {conditions.length === 0 ? (
-        <p className="text-sm text-slate-500 italic">
-          Нет условий. Добавьте хотя бы одно условие для работы автомасштабирования.
+        <p className="text-xs text-slate-500 italic">
+          Добавьте условие для автомасштабирования
         </p>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-1.5 max-h-40 overflow-y-auto">
           {conditions.map((condition, index) => (
             <div
               key={index}
-              className="flex flex-col sm:flex-row sm:items-center gap-2 p-3 bg-slate-800 rounded-lg border border-slate-700"
+              className="flex items-center gap-1.5 p-1.5 bg-slate-800 rounded border border-slate-700"
             >
               <select
                 value={condition.metric}
                 onChange={(e) => updateCondition(index, 'metric', e.target.value)}
-                className="flex-1 px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm"
+                className="flex-1 min-w-0 px-2 py-1 bg-slate-700 border border-slate-600 rounded text-white text-xs"
               >
                 {metrics.map((m) => (
                   <option key={m.value} value={m.value}>
@@ -130,7 +133,7 @@ function ConditionEditor({
               <select
                 value={condition.operator}
                 onChange={(e) => updateCondition(index, 'operator', e.target.value)}
-                className="sm:w-32 px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm"
+                className="w-14 px-1 py-1 bg-slate-700 border border-slate-600 rounded text-white text-xs text-center"
               >
                 {operators.map((op) => (
                   <option key={op.value} value={op.value}>
@@ -143,16 +146,16 @@ function ConditionEditor({
                 type="number"
                 value={condition.value}
                 onChange={(e) => updateCondition(index, 'value', parseFloat(e.target.value) || 0)}
-                className="sm:w-28 px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm"
+                className="w-20 px-2 py-1 bg-slate-700 border border-slate-600 rounded text-white text-xs"
                 step="any"
               />
 
               <button
                 type="button"
                 onClick={() => removeCondition(index)}
-                className="p-2 text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded transition-colors sm:flex-shrink-0"
+                className="p-1 text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded transition-colors flex-shrink-0"
               >
-                <Trash2 className="w-4 h-4" />
+                <Trash2 className="w-3.5 h-3.5" />
               </button>
             </div>
           ))}
@@ -161,7 +164,7 @@ function ConditionEditor({
 
       {conditions.length > 0 && (
         <p className="text-xs text-slate-500">
-          Группа будет продублирована если ВСЕ условия выполнены одновременно
+          Объявление считается позитивным если ВСЕ условия выполнены. Группа дублируется если есть хотя бы 1 позитивное объявление.
         </p>
       )}
     </div>
@@ -177,6 +180,7 @@ function ConfigFormModal({
   onSave,
   metrics,
   operators,
+  leadsTechStatus,
 }: {
   isOpen: boolean;
   onClose: () => void;
@@ -185,6 +189,7 @@ function ConfigFormModal({
   onSave: (data: Partial<ScalingConfig>) => void;
   metrics: Array<{ value: string; label: string; description: string }>;
   operators: Array<{ value: string; label: string; description: string }>;
+  leadsTechStatus: Record<number, { enabled: boolean; label: string | null }>;
 }) {
   const [name, setName] = useState('');
   const [scheduleTime, setScheduleTime] = useState('08:00');
@@ -192,10 +197,13 @@ function ConfigFormModal({
   const [accountIds, setAccountIds] = useState<number[]>([]);
   const [newBudget, setNewBudget] = useState<string>('');
   const [newName, setNewName] = useState<string>('');
-  const [autoActivate, setAutoActivate] = useState(false);
   const [lookbackDays, setLookbackDays] = useState(7);
   const [duplicatesCount, setDuplicatesCount] = useState(1);
   const [conditions, setConditions] = useState<ScalingCondition[]>([]);
+  // Banner-level scaling toggles
+  const [activatePositiveBanners, setActivatePositiveBanners] = useState(true);
+  const [duplicateNegativeBanners, setDuplicateNegativeBanners] = useState(true);
+  const [activateNegativeBanners, setActivateNegativeBanners] = useState(false);
 
   useEffect(() => {
     if (config) {
@@ -205,10 +213,13 @@ function ConfigFormModal({
       setAccountIds(config.account_ids || []);
       setNewBudget(config.new_budget?.toString() || '');
       setNewName(config.new_name || '');
-      setAutoActivate(config.auto_activate);
       setLookbackDays(config.lookback_days);
       setDuplicatesCount(config.duplicates_count || 1);
       setConditions(config.conditions || []);
+      // Banner-level scaling toggles
+      setActivatePositiveBanners(config.activate_positive_banners ?? true);
+      setDuplicateNegativeBanners(config.duplicate_negative_banners ?? true);
+      setActivateNegativeBanners(config.activate_negative_banners ?? false);
     } else {
       setName('');
       setScheduleTime('08:00');
@@ -216,10 +227,13 @@ function ConfigFormModal({
       setAccountIds([]);
       setNewBudget('');
       setNewName('');
-      setAutoActivate(false);
       setLookbackDays(7);
       setDuplicatesCount(1);
       setConditions([{ metric: 'goals', operator: 'greater_than', value: 2 }]);
+      // Banner-level scaling defaults
+      setActivatePositiveBanners(true);
+      setDuplicateNegativeBanners(true);
+      setActivateNegativeBanners(false);
     }
   }, [config, isOpen]);
 
@@ -232,12 +246,28 @@ function ConfigFormModal({
       account_ids: accountIds,
       new_budget: newBudget ? parseFloat(newBudget) : null,
       new_name: newName.trim() || null,
-      auto_activate: autoActivate,
+      auto_activate: activatePositiveBanners,  // Группа активируется вместе с позитивными объявлениями
       lookback_days: lookbackDays,
       duplicates_count: duplicatesCount,
       conditions,
+      // Автоматически включаем LeadsTech ROI если есть условие по ROI
+      use_leadstech_roi: conditions.some(c => c.metric === 'roi'),
+      // Banner-level scaling toggles
+      activate_positive_banners: activatePositiveBanners,
+      duplicate_negative_banners: duplicateNegativeBanners,
+      activate_negative_banners: activateNegativeBanners,
     });
   };
+
+  // Check if LeadsTech is available for any selected account
+  const isLeadstechAvailable = accountIds.length === 0
+    ? Object.values(leadsTechStatus).some(s => s.enabled)
+    : accountIds.some(id => leadsTechStatus[id]?.enabled);
+
+  // Filter metrics - ROI only available if LeadsTech is configured
+  const availableMetrics = isLeadstechAvailable
+    ? metrics
+    : metrics.filter(m => m.value !== 'roi');
 
   const toggleAccount = (accountId: number) => {
     setAccountIds(prev => 
@@ -256,164 +286,159 @@ function ConfigFormModal({
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={config ? 'Редактировать конфигурацию' : 'Новая конфигурация'}>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-slate-300 mb-1">Название</label>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm sm:text-base"
-            placeholder="Например: Масштабирование прибыльных"
-            required
-          />
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+    <Modal isOpen={isOpen} onClose={onClose} title={config ? 'Редактировать' : 'Новая конфигурация'}>
+      <form onSubmit={handleSubmit} className="space-y-3">
+        {/* Название и время в одну строку */}
+        <div className="grid grid-cols-3 gap-2">
+          <div className="col-span-2">
+            <label className="block text-xs font-medium text-slate-400 mb-1">Название</label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full px-2 py-1.5 bg-slate-700 border border-slate-600 rounded text-white text-sm"
+              placeholder="Название конфигурации"
+              required
+            />
+          </div>
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1">
-              <Clock className="w-4 h-4 inline mr-1" />
-              Время запуска (МСК)
+            <label className="block text-xs font-medium text-slate-400 mb-1">
+              <Clock className="w-3 h-3 inline mr-0.5" />
+              Время
             </label>
             <input
               type="time"
               value={scheduleTime}
               onChange={(e) => setScheduleTime(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm sm:text-base"
+              className="w-full px-2 py-1.5 bg-slate-700 border border-slate-600 rounded text-white text-sm"
             />
           </div>
+        </div>
 
+        {/* Период, бюджет, дубли в одну строку */}
+        <div className="grid grid-cols-3 gap-2">
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1">Период анализа (дней)</label>
+            <label className="block text-xs font-medium text-slate-400 mb-1">Период (дн)</label>
             <input
               type="number"
               value={lookbackDays}
               onChange={(e) => setLookbackDays(parseInt(e.target.value) || 7)}
-              className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm sm:text-base"
+              className="w-full px-2 py-1.5 bg-slate-700 border border-slate-600 rounded text-white text-sm"
               min="1"
               max="90"
             />
           </div>
-        </div>
-
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <label className="text-sm font-medium text-slate-300">Кабинеты</label>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={selectAllAccounts}
-                className="text-xs text-blue-400 hover:text-blue-300"
-              >
-                Все
-              </button>
-              <span className="text-slate-600">|</span>
-              <button
-                type="button"
-                onClick={clearAllAccounts}
-                className="text-xs text-slate-400 hover:text-slate-300"
-              >
-                Очистить
-              </button>
-            </div>
-          </div>
-          <div className="max-h-32 sm:max-h-40 overflow-y-auto bg-slate-800 border border-slate-700 rounded p-2 space-y-1">
-            {accounts.length === 0 ? (
-              <p className="text-sm text-slate-500 italic">Нет кабинетов</p>
-            ) : (
-              accounts.map((acc) => (
-                <label
-                  key={acc.id}
-                  className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-slate-700 cursor-pointer"
-                >
-                  <input
-                    type="checkbox"
-                    checked={accountIds.includes(acc.id!)}
-                    onChange={() => toggleAccount(acc.id!)}
-                    className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-blue-600 focus:ring-blue-500"
-                  />
-                  <span className="text-sm text-white truncate">{acc.name}</span>
-                </label>
-              ))
-            )}
-          </div>
-          <p className="text-xs text-slate-500 mt-1">
-            {accountIds.length === 0
-              ? 'Не выбрано - применится ко ВСЕМ'
-              : `Выбрано: ${accountIds.length} из ${accounts.length}`}
-          </p>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-slate-300 mb-1">
-            Новое название для дублей
-          </label>
-          <input
-            type="text"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm sm:text-base"
-            placeholder="Пусто = оригинальное название"
-          />
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1">
-              Бюджет (₽)
-            </label>
+            <label className="block text-xs font-medium text-slate-400 mb-1">Бюджет (₽)</label>
             <input
               type="number"
               value={newBudget}
               onChange={(e) => setNewBudget(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm sm:text-base"
-              placeholder="Как в оригинале"
+              className="w-full px-2 py-1.5 bg-slate-700 border border-slate-600 rounded text-white text-sm"
+              placeholder="—"
               min="0"
               step="0.01"
             />
           </div>
-
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1">
-              Кол-во дублей
-            </label>
+            <label className="block text-xs font-medium text-slate-400 mb-1">Дублей</label>
             <input
               type="number"
               value={duplicatesCount}
               onChange={(e) => setDuplicatesCount(Math.max(1, Math.min(100, parseInt(e.target.value) || 1)))}
-              className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm sm:text-base"
+              className="w-full px-2 py-1.5 bg-slate-700 border border-slate-600 rounded text-white text-sm"
               min="1"
               max="100"
             />
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <Toggle checked={autoActivate} onChange={setAutoActivate} />
-          <span className="text-sm text-slate-300">Авто-активация после создания</span>
+        {/* Кабинеты - компактный список */}
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-xs font-medium text-slate-400">Кабинеты</label>
+            <div className="flex gap-1.5 text-xs">
+              <button type="button" onClick={selectAllAccounts} className="text-blue-400 hover:text-blue-300">Все</button>
+              <span className="text-slate-600">|</span>
+              <button type="button" onClick={clearAllAccounts} className="text-slate-400 hover:text-slate-300">Очистить</button>
+            </div>
+          </div>
+          <div className="max-h-24 overflow-y-auto bg-slate-800 border border-slate-700 rounded p-1.5 space-y-0.5">
+            {accounts.length === 0 ? (
+              <p className="text-xs text-slate-500 italic">Нет кабинетов</p>
+            ) : (
+              accounts.map((acc) => (
+                <label key={acc.id} className="flex items-center gap-1.5 px-1.5 py-1 rounded hover:bg-slate-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={accountIds.includes(acc.id!)}
+                    onChange={() => toggleAccount(acc.id!)}
+                    className="w-3.5 h-3.5 rounded border-slate-600 bg-slate-700 text-blue-600"
+                  />
+                  <span className="text-xs text-white truncate">{acc.name}</span>
+                </label>
+              ))
+            )}
+          </div>
+          <p className="text-xs text-slate-500 mt-0.5">
+            {accountIds.length === 0 ? 'Ко всем' : `${accountIds.length}/${accounts.length}`}
+          </p>
+        </div>
+
+        {/* Новое название - опционально */}
+        <div>
+          <label className="block text-xs font-medium text-slate-400 mb-1">Новое название (опционально)</label>
+          <input
+            type="text"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            className="w-full px-2 py-1.5 bg-slate-700 border border-slate-600 rounded text-white text-sm"
+            placeholder="Пусто = как в оригинале"
+          />
         </div>
 
         <ConditionEditor
           conditions={conditions}
           onChange={setConditions}
-          metrics={metrics}
+          metrics={availableMetrics}
           operators={operators}
         />
 
-        <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 pt-4 border-t border-slate-700">
+        {/* Banner-level Scaling Settings - компактно */}
+        <div className="p-2.5 bg-slate-800/50 rounded border border-slate-700 space-y-2">
+          <h4 className="text-xs font-medium text-slate-400">Настройки объявлений</h4>
+
+          <div className="flex items-center gap-2">
+            <Toggle checked={activatePositiveBanners} onChange={setActivatePositiveBanners} />
+            <span className="text-xs text-slate-300">Активировать позитивные + группу</span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Toggle checked={duplicateNegativeBanners} onChange={setDuplicateNegativeBanners} />
+            <span className="text-xs text-slate-300">Дублировать негативные</span>
+          </div>
+
+          {duplicateNegativeBanners && (
+            <div className="flex items-center gap-2 ml-5 pl-2 border-l border-slate-700">
+              <Toggle checked={activateNegativeBanners} onChange={setActivateNegativeBanners} />
+              <span className="text-xs text-slate-300">Активировать негативные</span>
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2 pt-3 border-t border-slate-700">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-slate-400 hover:text-white transition-colors text-sm sm:text-base"
+            className="px-3 py-1.5 text-slate-400 hover:text-white transition-colors text-sm"
           >
             Отмена
           </button>
           <button
             type="submit"
-            className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-white transition-colors text-sm sm:text-base"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 rounded text-white text-sm"
           >
-            <Save className="w-4 h-4" />
+            <Save className="w-3.5 h-3.5" />
             Сохранить
           </button>
         </div>
@@ -709,6 +734,12 @@ export function Scaling() {
     queryFn: () => getDisableRuleMetrics().then((r) => r.data),
   });
 
+  // Load LeadsTech status for accounts
+  const { data: leadsTechStatus = {} } = useQuery({
+    queryKey: ['leadsTechStatus'],
+    queryFn: () => getLeadsTechStatus().then((r) => r.data),
+  });
+
   const metrics = metricsData?.metrics || FALLBACK_METRICS;
   const operators = metricsData?.operators || FALLBACK_OPERATORS;
 
@@ -996,6 +1027,7 @@ export function Scaling() {
                         </div>
                       )}
                     </div>
+
                   </div>
                 )}
               </div>
@@ -1140,6 +1172,7 @@ export function Scaling() {
         onSave={handleSaveConfig}
         metrics={metrics}
         operators={operators}
+        leadsTechStatus={leadsTechStatus}
       />
 
       <ManualDuplicateModal

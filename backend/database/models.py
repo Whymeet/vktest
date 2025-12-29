@@ -552,6 +552,12 @@ class ScalingConfig(Base):
     auto_activate = Column(Boolean, default=False)  # Activate duplicated groups immediately
     lookback_days = Column(Integer, default=7)  # Period for statistics analysis
     duplicates_count = Column(Integer, default=1)  # Number of duplicates to create per group
+    use_leadstech_roi = Column(Boolean, default=False)  # Use LeadsTech ROI for conditions
+
+    # Banner-level scaling options (new)
+    activate_positive_banners = Column(Boolean, default=True)  # Activate positive banners (status=active)
+    duplicate_negative_banners = Column(Boolean, default=True)  # Duplicate negative banners in group
+    activate_negative_banners = Column(Boolean, default=False)  # Activate negative banners (status=active)
 
     # Timestamps
     created_at = Column(DateTime, default=get_moscow_time, nullable=False)
@@ -651,6 +657,12 @@ class ScalingLog(Base):
     total_banners = Column(Integer, default=0)
     duplicated_banners = Column(Integer, default=0)
     duplicated_banner_ids = Column(JSON, nullable=True)  # List of {original_id, new_id, name}
+
+    # Banner classification info (new - for banner-level scaling)
+    positive_banner_ids = Column(JSON, nullable=True)  # List of positive banner IDs
+    negative_banner_ids = Column(JSON, nullable=True)  # List of negative banner IDs
+    positive_count = Column(Integer, default=0)  # Count of positive banners
+    negative_count = Column(Integer, default=0)  # Count of negative banners
 
     # Timestamp
     created_at = Column(DateTime, default=get_moscow_time, nullable=False, index=True)

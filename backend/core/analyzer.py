@@ -388,7 +388,7 @@ async def analyze_account(
             banner_ids=banner_ids,
             banners_info=banners_info,
             metrics="base",
-            batch_size=50,
+            batch_size=200,  # VK API max is ~250
             sleep_between_calls=config.settings.sleep_between_calls
         ):
             batch_num = batch_data["batch_num"]

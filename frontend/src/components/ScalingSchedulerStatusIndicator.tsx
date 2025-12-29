@@ -14,7 +14,7 @@ function TaskProgressBar({ task }: { task: ScalingTask }) {
     <div className="w-full bg-slate-700 rounded-full h-1.5 overflow-hidden">
       <div
         className={`h-1.5 rounded-full transition-all duration-300 ${
-          task.status === 'running' ? 'bg-blue-500' :
+          task.status === 'running' || task.status === 'pending' ? 'bg-blue-500' :
           task.status === 'completed' ? 'bg-green-500' :
           task.status === 'failed' ? 'bg-red-500' :
           'bg-slate-500'
@@ -42,7 +42,7 @@ function ActiveTaskCard({ task, onCancel }: { task: ScalingTask; onCancel: () =>
             <CircleDot className="w-3 h-3 text-blue-400 animate-pulse" />
           )}
         </div>
-        {task.status === 'running' && (
+        {(task.status === 'running' || task.status === 'pending') && (
           <button
             onClick={onCancel}
             className="p-1 text-slate-400 hover:text-red-400 hover:bg-red-900/20 rounded transition-colors"

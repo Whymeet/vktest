@@ -3,7 +3,7 @@ CRUD operations for Disable Rules (auto-disable banners)
 Includes: DisableRule, DisableRuleCondition, DisableRuleAccount
 """
 from typing import List, Optional
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import desc
 
 from utils.time_utils import get_moscow_time
@@ -14,7 +14,9 @@ from database.models import DisableRule, DisableRuleCondition, DisableRuleAccoun
 
 def get_disable_rules(db: Session, user_id: int = None, enabled_only: bool = False) -> List[DisableRule]:
     """Get all disable rules, optionally filtered by user_id and enabled status"""
-    query = db.query(DisableRule)
+    query = db.query(DisableRule).options(
+        joinedload(DisableRule.conditions)
+    )
     if user_id is not None:
         query = query.filter(DisableRule.user_id == user_id)
     if enabled_only:
@@ -272,7 +274,9 @@ def get_rules_for_account(db: Session, account_id: int, enabled_only: bool = Tru
     if not rule_ids:
         return []
 
-    query = db.query(DisableRule).filter(DisableRule.id.in_(rule_ids))
+    query = db.query(DisableRule).options(
+        joinedload(DisableRule.conditions)
+    ).filter(DisableRule.id.in_(rule_ids))
     if enabled_only:
         query = query.filter(DisableRule.enabled == True)
 

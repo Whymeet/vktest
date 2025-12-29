@@ -98,6 +98,7 @@ async def get_disable_rule_metrics(
             {"value": "shows", "label": "Показы", "description": "Количество показов объявления"},
             {"value": "ctr", "label": "CTR (%)", "description": "Click-through rate (клики/показы * 100)"},
             {"value": "cpc", "label": "CPC (₽)", "description": "Cost per click (цена за клик)"},
+            {"value": "cr", "label": "CR (%)", "description": "Conversion Rate (конверсии/клики * 100)"},
             {"value": "cost_per_goal", "label": "Цена результата (₽)", "description": "Стоимость одной конверсии"},
             {"value": "roi", "label": "ROI (%)", "description": "Return on Investment ((доход - затраты) / затраты * 100). Если дохода нет или объявление не в Leadstech - ROI = 0"}
         ],

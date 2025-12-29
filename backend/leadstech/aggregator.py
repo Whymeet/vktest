@@ -70,7 +70,11 @@ def aggregate_leadstech_by_banner(
     banner_sub_fields: Optional[List[str]] = None,
 ) -> Dict[int, BannerAggregation]:
     """
-    Aggregate LeadsTech data by banner ID from multiple sub fields.
+    Aggregate LeadsTech data by banner ID from ALL enabled sub fields.
+
+    For each row, extracts banner IDs from ALL specified sub fields and aggregates
+    data for each ID separately. This allows tracking the same conversion data
+    under multiple banner IDs if they exist in different sub fields.
 
     Args:
         rows: Raw rows from LeadsTech API
@@ -87,20 +91,22 @@ def aggregate_leadstech_by_banner(
     result: Dict[int, BannerAggregation] = {}
 
     for row in rows:
-        # Try each sub field to extract banner_id
-        banner_id = None
+        # Extract ALL banner IDs from ALL enabled sub fields
+        banner_ids_from_row: List[int] = []
         for sub_field in banner_sub_fields:
             sub_value = row.get(sub_field)
             if sub_value:
                 try:
                     banner_id = int(str(sub_value))
-                    break  # Found valid banner_id, stop looking
+                    if banner_id not in banner_ids_from_row:
+                        banner_ids_from_row.append(banner_id)
                 except (TypeError, ValueError):
                     continue
 
-        if banner_id is None:
+        if not banner_ids_from_row:
             continue
 
+        # Get stats from this row
         revenue = float(row.get("sumwebmaster", 0) or 0)
         clicks = int(row.get("clicks", 0) or 0)
         conversions = int(row.get("conversions", 0) or 0)
@@ -108,18 +114,20 @@ def aggregate_leadstech_by_banner(
         approved = int(row.get("approved", 0) or 0)
         rejected = int(row.get("rejected", 0) or 0)
 
-        if banner_id not in result:
-            result[banner_id] = BannerAggregation(banner_id=banner_id)
+        # Add stats to EACH banner ID found in this row
+        for banner_id in banner_ids_from_row:
+            if banner_id not in result:
+                result[banner_id] = BannerAggregation(banner_id=banner_id)
 
-        agg = result[banner_id]
-        agg.lt_revenue += revenue
-        agg.lt_clicks += clicks
-        agg.lt_conversions += conversions
-        agg.lt_inprogress += inprogress
-        agg.lt_approved += approved
-        agg.lt_rejected += rejected
+            agg = result[banner_id]
+            agg.lt_revenue += revenue
+            agg.lt_clicks += clicks
+            agg.lt_conversions += conversions
+            agg.lt_inprogress += inprogress
+            agg.lt_approved += approved
+            agg.lt_rejected += rejected
 
-    logger.info(f"Aggregated {len(result)} banners from LeadsTech")
+    logger.info(f"Aggregated {len(result)} unique banner IDs from LeadsTech")
     return result
 
 
@@ -143,6 +151,7 @@ def calculate_roi(lt_revenue: float, vk_spent: float) -> Optional[float]:
 def merge_data_and_calculate_roi(
     lt_by_banner: Dict[int, BannerAggregation],
     vk_spent_by_banner: Dict[int, float],
+    vk_valid_ids: set,
     cabinet_name: str,
     lt_label: str,
     date_from: date,
@@ -152,11 +161,13 @@ def merge_data_and_calculate_roi(
     """
     Merge LeadsTech and VK Ads data, calculate ROI for each banner.
 
-    Only includes banners that exist in both LeadsTech and VK Ads data.
+    Includes banners that VK API returned data for (even if spent=0).
+    Skips banners that VK API returned an error for (not in vk_valid_ids).
 
     Args:
         lt_by_banner: Aggregated LeadsTech data by banner ID
-        vk_spent_by_banner: VK Ads spending by banner ID
+        vk_spent_by_banner: VK Ads spending by banner ID (including zero values)
+        vk_valid_ids: Set of banner IDs that VK API successfully returned data for
         cabinet_name: Name of the VK Ads cabinet
         lt_label: LeadsTech label for this cabinet
         date_from: Start date of analysis period
@@ -171,12 +182,13 @@ def merge_data_and_calculate_roi(
     skipped_banners = 0
 
     for banner_id, lt_data in lt_by_banner.items():
-        # Skip banners not found in VK (invalid IDs from sub fields)
-        if banner_id not in vk_spent_by_banner:
+        # Skip banners that VK API didn't return data for (not valid VK banner IDs)
+        if banner_id not in vk_valid_ids:
             skipped_banners += 1
             continue
 
         valid_banners += 1
+        # Get spent (0.0 if not in dict means VK returned empty/zero data)
         vk_spent = vk_spent_by_banner.get(banner_id, 0.0)
         lt_revenue = lt_data.lt_revenue
 
