@@ -137,7 +137,7 @@ export function Settings() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">Настройки</h1>
-          <p className="text-slate-400 mt-1">Конфигурация системы VK Ads Manager</p>
+          <p className="text-zinc-400 mt-1">Конфигурация системы VK Ads Manager</p>
         </div>
       </div>
 
@@ -171,10 +171,10 @@ export function Settings() {
               className="input"
             />
           </div>
-          <div className="flex items-center justify-between p-4 bg-slate-700/50 rounded-lg md:col-span-2">
+          <div className="flex items-center justify-between p-4 bg-zinc-700/50 rounded-lg md:col-span-2">
             <div>
               <p className="text-white font-medium">Тестовый режим (Dry Run)</p>
-              <p className="text-sm text-slate-400">Не отключает объявления, только выводит</p>
+              <p className="text-sm text-zinc-400">Не отключает объявления, только выводит</p>
             </div>
             <Toggle
               checked={analysisForm.dry_run}
@@ -182,8 +182,8 @@ export function Settings() {
             />
           </div>
         </div>
-        <div className="mt-4 pt-4 border-t border-slate-700">
-          <p className="text-sm text-slate-400 mb-3">
+        <div className="mt-4 pt-4 border-t border-zinc-700">
+          <p className="text-sm text-zinc-400 mb-3">
             💡 Правила отключения объявлений настраиваются на странице "Правила отключения"
           </p>
           <button
@@ -200,10 +200,10 @@ export function Settings() {
       {/* Telegram Settings */}
       <Card title="Telegram" icon={MessageSquare}>
         <div className="space-y-4">
-          <div className="flex items-center justify-between p-4 bg-slate-700/50 rounded-lg">
+          <div className="flex items-center justify-between p-4 bg-zinc-700/50 rounded-lg">
             <div>
               <p className="text-white font-medium">Уведомления в Telegram</p>
-              <p className="text-sm text-slate-400">Отправлять результаты анализа в Telegram</p>
+              <p className="text-sm text-zinc-400">Отправлять результаты анализа в Telegram</p>
             </div>
             <Toggle
               checked={telegramForm.enabled}
@@ -223,7 +223,7 @@ export function Settings() {
               <button
                 type="button"
                 onClick={() => setShowToken(!showToken)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white"
               >
                 {showToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
@@ -248,12 +248,12 @@ export function Settings() {
               placeholder="471729567, 503415345"
               rows={2}
             />
-            <p className="text-xs text-slate-400 mt-1">
+            <p className="text-xs text-zinc-400 mt-1">
               Можно указать несколько Chat ID через запятую
             </p>
           </div>
         </div>
-        <div className="mt-4 pt-4 border-t border-slate-700">
+        <div className="mt-4 pt-4 border-t border-zinc-700">
           <button
             onClick={() => telegramMutation.mutate(telegramForm)}
             className="btn btn-primary"
@@ -296,13 +296,13 @@ export function Settings() {
               <button
                 type="button"
                 onClick={() => setShowLtPassword(!showLtPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white"
               >
                 {showLtPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
             {settings?.leadstech?.configured && !leadstechForm.password && (
-              <p className="text-xs text-slate-500 mt-1">Оставьте пустым, чтобы не менять пароль</p>
+              <p className="text-xs text-zinc-500 mt-1">Оставьте пустым, чтобы не менять пароль</p>
             )}
           </div>
           <div>
@@ -321,7 +321,7 @@ export function Settings() {
             </div>
           )}
         </div>
-        <div className="mt-4 pt-4 border-t border-slate-700">
+        <div className="mt-4 pt-4 border-t border-zinc-700">
           <button
             onClick={() => leadstechMutation.mutate({
               login: leadstechForm.login,
@@ -340,10 +340,10 @@ export function Settings() {
       {/* Scheduler Settings */}
       <Card title="Планировщик" icon={Clock}>
         <div className="space-y-4">
-          <div className="flex items-center justify-between p-4 bg-slate-700/50 rounded-lg">
+          <div className="flex items-center justify-between p-4 bg-zinc-700/50 rounded-lg">
             <div>
               <p className="text-white font-medium">Автозапуск</p>
-              <p className="text-sm text-slate-400">Автоматический запуск анализа по расписанию</p>
+              <p className="text-sm text-zinc-400">Автоматический запуск анализа по расписанию</p>
             </div>
             <Toggle
               checked={schedulerForm.enabled}
@@ -361,7 +361,7 @@ export function Settings() {
                 min="0.1"
                 step="0.1"
               />
-              <p className="text-xs text-slate-500 mt-1">0.5 = 30 сек, 0.1 = 6 сек</p>
+              <p className="text-xs text-zinc-500 mt-1">0.5 = 30 сек, 0.1 = 6 сек</p>
             </div>
             <div>
               <label className="label">Макс. запусков (0 = ∞)</label>
@@ -386,10 +386,10 @@ export function Settings() {
           </div>
 
           {/* Retry settings */}
-          <div className="flex items-center justify-between p-4 bg-slate-700/50 rounded-lg">
+          <div className="flex items-center justify-between p-4 bg-zinc-700/50 rounded-lg">
             <div>
               <p className="text-white font-medium">Повторять при ошибках</p>
-              <p className="text-sm text-slate-400">Автоматически повторять анализ при ошибках</p>
+              <p className="text-sm text-zinc-400">Автоматически повторять анализ при ошибках</p>
             </div>
             <Toggle
               checked={schedulerForm.retry_on_error}
@@ -422,10 +422,10 @@ export function Settings() {
           )}
 
           {/* Quiet Hours */}
-          <div className="flex items-center justify-between p-4 bg-slate-700/50 rounded-lg">
+          <div className="flex items-center justify-between p-4 bg-zinc-700/50 rounded-lg">
             <div>
               <p className="text-white font-medium">Тихие часы</p>
-              <p className="text-sm text-slate-400">Не запускать анализ в указанное время</p>
+              <p className="text-sm text-zinc-400">Не запускать анализ в указанное время</p>
             </div>
             <Toggle
               checked={schedulerForm.quiet_hours.enabled}
@@ -465,16 +465,16 @@ export function Settings() {
           )}
 
           {/* Re-Enable Settings */}
-          <div className="mt-6 pt-6 border-t border-slate-600">
+          <div className="mt-6 pt-6 border-t border-zinc-600">
             <h4 className="text-lg font-medium text-white mb-4">🔄 Автовключение</h4>
-            <p className="text-sm text-slate-400 mb-4">
+            <p className="text-sm text-zinc-400 mb-4">
               После анализа проверяет ранее отключённые объявления. Если статистика обновилась и они больше не подпадают под правила — включает обратно.
             </p>
             
-            <div className="flex items-center justify-between p-4 bg-slate-700/50 rounded-lg mb-4">
+            <div className="flex items-center justify-between p-4 bg-zinc-700/50 rounded-lg mb-4">
               <div>
                 <p className="text-white font-medium">Включить автовключение</p>
-                <p className="text-sm text-slate-400">Запускать после каждого цикла анализа</p>
+                <p className="text-sm text-zinc-400">Запускать после каждого цикла анализа</p>
               </div>
               <Toggle
                 checked={schedulerForm.reenable?.enabled || false}
@@ -499,7 +499,7 @@ export function Settings() {
                   min="0.1"
                   step="0.1"
                 />
-                <p className="text-xs text-slate-500 mt-1">0.5 = 30 сек, 1 = 1 мин</p>
+                <p className="text-xs text-zinc-500 mt-1">0.5 = 30 сек, 1 = 1 мин</p>
               </div>
               <div>
                 <label className="label">Период просмотра (часов)</label>
@@ -513,7 +513,7 @@ export function Settings() {
                   className="input"
                   min="1"
                 />
-                <p className="text-xs text-slate-500 mt-1">За сколько часов смотреть отключённые</p>
+                <p className="text-xs text-zinc-500 mt-1">За сколько часов смотреть отключённые</p>
               </div>
               <div>
                 <label className="label">Пауза перед запуском (сек)</label>
@@ -527,14 +527,14 @@ export function Settings() {
                   className="input"
                   min="0"
                 />
-                <p className="text-xs text-slate-500 mt-1">Пауза после основного анализа</p>
+                <p className="text-xs text-zinc-500 mt-1">Пауза после основного анализа</p>
               </div>
             </div>
 
             <div className="flex items-center justify-between p-4 bg-yellow-900/20 border border-yellow-700/30 rounded-lg">
               <div>
                 <p className="text-white font-medium">Тестовый режим (Dry Run)</p>
-                <p className="text-sm text-slate-400">Не включает баннеры реально, только логирует действия</p>
+                <p className="text-sm text-zinc-400">Не включает баннеры реально, только логирует действия</p>
               </div>
               <Toggle
                 checked={schedulerForm.reenable?.dry_run ?? true}
@@ -546,7 +546,7 @@ export function Settings() {
             </div>
           </div>
         </div>
-        <div className="mt-4 pt-4 border-t border-slate-700">
+        <div className="mt-4 pt-4 border-t border-zinc-700">
           <button
             onClick={() => schedulerMutation.mutate(schedulerForm)}
             className="btn btn-primary"
@@ -561,10 +561,10 @@ export function Settings() {
       {/* Statistics Trigger */}
       <Card title="Триггер статистики" icon={BarChart3}>
         <div className="space-y-4">
-          <div className="flex items-center justify-between p-4 bg-slate-700/50 rounded-lg">
+          <div className="flex items-center justify-between p-4 bg-zinc-700/50 rounded-lg">
             <div>
               <p className="text-white font-medium">Обновлять статистику VK</p>
-              <p className="text-sm text-slate-400">Запрашивать обновление статистики перед анализом</p>
+              <p className="text-sm text-zinc-400">Запрашивать обновление статистики перед анализом</p>
             </div>
             <Toggle
               checked={triggerForm.enabled}
@@ -584,7 +584,7 @@ export function Settings() {
             </div>
           )}
         </div>
-        <div className="mt-4 pt-4 border-t border-slate-700">
+        <div className="mt-4 pt-4 border-t border-zinc-700">
           <button
             onClick={() => triggerMutation.mutate(triggerForm)}
             className="btn btn-primary"

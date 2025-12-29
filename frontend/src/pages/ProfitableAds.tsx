@@ -93,13 +93,13 @@ const TableRow = memo(function TableRow({
   return (
     <div
       style={style}
-      className="flex items-center border-b border-slate-700/50 hover:bg-slate-700/30 transition-colors px-4"
+      className="flex items-center border-b border-zinc-700/50 hover:bg-zinc-700/30 transition-colors px-4"
     >
       <div className={`py-3 pr-4 ${COLUMN_WIDTHS.banner_id}`}>
         <span className="text-white font-mono text-sm">{result.banner_id}</span>
       </div>
       <div className={`py-3 pr-4 ${COLUMN_WIDTHS.cabinet} truncate`}>
-        <span className="text-sm text-slate-300">{result.cabinet_name}</span>
+        <span className="text-sm text-zinc-300">{result.cabinet_name}</span>
       </div>
       <div className={`py-3 pr-4 text-right ${COLUMN_WIDTHS.vk_spent}`}>
         <span className="text-orange-400 text-sm">{formatMoney(result.vk_spent)}</span>
@@ -116,7 +116,7 @@ const TableRow = memo(function TableRow({
         <span
           className={`font-medium text-sm ${
             result.roi_percent === null
-              ? 'text-slate-400'
+              ? 'text-zinc-400'
               : result.roi_percent >= 0
               ? 'text-green-400'
               : 'text-red-400'
@@ -140,14 +140,14 @@ const MobileCard = memo(function MobileCard({
   return (
     <div
       style={style}
-      className="bg-slate-700/30 rounded-lg p-4 border border-slate-700/50"
+      className="bg-zinc-700/30 rounded-lg p-4 border border-zinc-700/50"
     >
       {/* Header row: ID and ROI */}
       <div className="flex items-center justify-between mb-2">
         <span className="text-white font-mono text-sm font-medium">#{result.banner_id}</span>
         <div className={`px-2 py-1 rounded-md text-sm font-bold ${
           result.roi_percent === null
-            ? 'bg-slate-600/50 text-slate-400'
+            ? 'bg-zinc-600/50 text-zinc-400'
             : result.roi_percent >= 0
             ? 'bg-green-900/40 text-green-400'
             : 'bg-red-900/40 text-red-400'
@@ -157,20 +157,20 @@ const MobileCard = memo(function MobileCard({
       </div>
 
       {/* Cabinet name */}
-      <div className="text-xs text-slate-400 truncate mb-3">{result.cabinet_name}</div>
+      <div className="text-xs text-zinc-400 truncate mb-3">{result.cabinet_name}</div>
 
       {/* Stats grid */}
       <div className="grid grid-cols-3 gap-3 text-xs">
-        <div className="bg-slate-800/50 rounded p-2">
-          <div className="text-slate-500 mb-1">Траты</div>
+        <div className="bg-zinc-800/50 rounded p-2">
+          <div className="text-zinc-500 mb-1">Траты</div>
           <div className="text-orange-400 font-medium">{formatMoney(result.vk_spent)}</div>
         </div>
-        <div className="bg-slate-800/50 rounded p-2">
-          <div className="text-slate-500 mb-1">Доход</div>
+        <div className="bg-zinc-800/50 rounded p-2">
+          <div className="text-zinc-500 mb-1">Доход</div>
           <div className="text-blue-400 font-medium">{formatMoney(result.lt_revenue)}</div>
         </div>
-        <div className="bg-slate-800/50 rounded p-2">
-          <div className="text-slate-500 mb-1">Прибыль</div>
+        <div className="bg-zinc-800/50 rounded p-2">
+          <div className="text-zinc-500 mb-1">Прибыль</div>
           <div className={`font-medium ${result.profit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
             {formatMoney(result.profit)}
           </div>
@@ -210,7 +210,7 @@ function MobileCardsVirtualized({
           className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
             sortField === 'roi_percent'
               ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/25'
-              : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+              : 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600'
           }`}
         >
           ROI <SortIcon field="roi_percent" />
@@ -220,7 +220,7 @@ function MobileCardsVirtualized({
           className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
             sortField === 'profit'
               ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/25'
-              : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+              : 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600'
           }`}
         >
           Прибыль <SortIcon field="profit" />
@@ -230,7 +230,7 @@ function MobileCardsVirtualized({
           className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
             sortField === 'vk_spent'
               ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/25'
-              : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+              : 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600'
           }`}
         >
           Траты <SortIcon field="vk_spent" />
@@ -240,7 +240,7 @@ function MobileCardsVirtualized({
           className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
             sortField === 'lt_revenue'
               ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/25'
-              : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+              : 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600'
           }`}
         >
           Доход <SortIcon field="lt_revenue" />
@@ -307,7 +307,7 @@ function DesktopTableVirtualized({
   if (results.length === 0) {
     return (
       <div className="hidden lg:block">
-        <div className="text-center py-8 text-slate-400">
+        <div className="text-center py-8 text-zinc-400">
           Нет данных для отображения
         </div>
       </div>
@@ -317,7 +317,7 @@ function DesktopTableVirtualized({
   return (
     <div className="hidden lg:block overflow-x-auto">
       {/* Header - fixed outside scroll container */}
-      <div className="flex items-center text-sm text-slate-400 border-b border-slate-700 pb-3 px-4 min-w-[700px]">
+      <div className="flex items-center text-sm text-zinc-400 border-b border-zinc-700 pb-3 px-4 min-w-[700px]">
         <div className={COLUMN_WIDTHS.banner_id}>
           <button
             onClick={() => onSort('banner_id')}
@@ -578,7 +578,7 @@ export function ProfitableAds() {
             <p className="font-medium text-green-400">
               Процесс добавления в белый список запущен (PID: {(response as any).data.pid}).
             </p>
-            <p className="text-sm text-slate-300">
+            <p className="text-sm text-zinc-300">
               Вы можете следить за статусом выполнения в верхней части страницы.
             </p>
           </div>
@@ -698,7 +698,7 @@ export function ProfitableAds() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
             <h1 className="text-xl lg:text-2xl font-bold text-white">Прибыльные объявления</h1>
-            <p className="text-slate-400 text-sm mt-1 hidden sm:block">Анализ ROI объявлений через LeadsTech</p>
+            <p className="text-zinc-400 text-sm mt-1 hidden sm:block">Анализ ROI объявлений через LeadsTech</p>
           </div>
           <div className="flex items-center gap-2">
             {isRunning ? (
@@ -739,7 +739,7 @@ export function ProfitableAds() {
                     isOpen: true,
                     title: 'Логи анализа (' + response.data.source + ')',
                     content: (
-                      <pre className="bg-slate-900 p-4 rounded text-xs overflow-auto max-h-96 text-slate-300">
+                      <pre className="bg-zinc-900 p-4 rounded text-xs overflow-auto max-h-96 text-zinc-300">
                         {response.data.logs}
                       </pre>
                     ),
@@ -798,13 +798,13 @@ export function ProfitableAds() {
       )}
 
       {/* Tabs */}
-      <div className="flex gap-2 border-b border-slate-700 pb-2">
+      <div className="flex gap-2 border-b border-zinc-700 pb-2">
         <button
           onClick={() => setActiveTab('results')}
           className={`px-4 py-2 rounded-t-lg transition-colors ${
             activeTab === 'results'
-              ? 'bg-slate-700 text-white'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800'
+              ? 'bg-zinc-700 text-white'
+              : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
           }`}
         >
           <div className="flex items-center gap-2">
@@ -816,8 +816,8 @@ export function ProfitableAds() {
           onClick={() => setActiveTab('settings')}
           className={`px-4 py-2 rounded-t-lg transition-colors ${
             activeTab === 'settings'
-              ? 'bg-slate-700 text-white'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800'
+              ? 'bg-zinc-700 text-white'
+              : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
           }`}
         >
           <div className="flex items-center gap-2">
@@ -832,37 +832,37 @@ export function ProfitableAds() {
         <>
           {/* Summary Cards - 2 columns on mobile, 3 on tablet, 5 on desktop */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-4">
-            <div className="bg-slate-800/50 rounded-lg p-3 sm:p-4 border border-slate-700">
+            <div className="bg-zinc-800/50 rounded-lg p-3 sm:p-4 border border-zinc-700">
               <div className="flex items-center gap-2 sm:gap-3">
                 <div className="p-1.5 sm:p-2 bg-orange-900/30 rounded-lg">
                   <DollarSign className="w-4 h-4 sm:w-5 sm:h-5 text-orange-400" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-xs sm:text-sm text-slate-400 truncate">Потрачено VK</p>
+                  <p className="text-xs sm:text-sm text-zinc-400 truncate">Потрачено VK</p>
                   <p className="text-base sm:text-xl font-bold text-white truncate">{formatMoney(summary.totalSpent)}</p>
                 </div>
               </div>
             </div>
 
-            <div className="bg-slate-800/50 rounded-lg p-3 sm:p-4 border border-slate-700">
+            <div className="bg-zinc-800/50 rounded-lg p-3 sm:p-4 border border-zinc-700">
               <div className="flex items-center gap-2 sm:gap-3">
                 <div className="p-1.5 sm:p-2 bg-blue-900/30 rounded-lg">
                   <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-blue-400" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-xs sm:text-sm text-slate-400 truncate">Доход LT</p>
+                  <p className="text-xs sm:text-sm text-zinc-400 truncate">Доход LT</p>
                   <p className="text-base sm:text-xl font-bold text-white truncate">{formatMoney(summary.totalRevenue)}</p>
                 </div>
               </div>
             </div>
 
-            <div className="bg-slate-800/50 rounded-lg p-3 sm:p-4 border border-slate-700">
+            <div className="bg-zinc-800/50 rounded-lg p-3 sm:p-4 border border-zinc-700">
               <div className="flex items-center gap-2 sm:gap-3">
                 <div className={`p-1.5 sm:p-2 rounded-lg ${summary.totalProfit >= 0 ? 'bg-green-900/30' : 'bg-red-900/30'}`}>
                   <DollarSign className={`w-4 h-4 sm:w-5 sm:h-5 ${summary.totalProfit >= 0 ? 'text-green-400' : 'text-red-400'}`} />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-xs sm:text-sm text-slate-400 truncate">Прибыль</p>
+                  <p className="text-xs sm:text-sm text-zinc-400 truncate">Прибыль</p>
                   <p className={`text-base sm:text-xl font-bold truncate ${summary.totalProfit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                     {formatMoney(summary.totalProfit)}
                   </p>
@@ -870,13 +870,13 @@ export function ProfitableAds() {
               </div>
             </div>
 
-            <div className="bg-slate-800/50 rounded-lg p-3 sm:p-4 border border-slate-700">
+            <div className="bg-zinc-800/50 rounded-lg p-3 sm:p-4 border border-zinc-700">
               <div className="flex items-center gap-2 sm:gap-3">
                 <div className={`p-1.5 sm:p-2 rounded-lg ${(summary.avgRoi || 0) >= 0 ? 'bg-green-900/30' : 'bg-red-900/30'}`}>
                   <Percent className={`w-4 h-4 sm:w-5 sm:h-5 ${(summary.avgRoi || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`} />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-xs sm:text-sm text-slate-400 truncate">Средний ROI</p>
+                  <p className="text-xs sm:text-sm text-zinc-400 truncate">Средний ROI</p>
                   <p className={`text-base sm:text-xl font-bold ${(summary.avgRoi || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                     {summary.avgRoi !== null ? `${summary.avgRoi.toFixed(1)}%` : '-'}
                   </p>
@@ -884,13 +884,13 @@ export function ProfitableAds() {
               </div>
             </div>
 
-            <div className="bg-slate-800/50 rounded-lg p-3 sm:p-4 border border-slate-700 col-span-2 sm:col-span-1">
+            <div className="bg-zinc-800/50 rounded-lg p-3 sm:p-4 border border-zinc-700 col-span-2 sm:col-span-1">
               <div className="flex items-center gap-2 sm:gap-3">
                 <div className="p-1.5 sm:p-2 bg-purple-900/30 rounded-lg">
                   <Building2 className="w-4 h-4 sm:w-5 sm:h-5 text-purple-400" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-xs sm:text-sm text-slate-400 truncate">Объявлений</p>
+                  <p className="text-xs sm:text-sm text-zinc-400 truncate">Объявлений</p>
                   <p className="text-base sm:text-xl font-bold text-white">{summary.count}</p>
                 </div>
               </div>
@@ -903,7 +903,7 @@ export function ProfitableAds() {
               {/* First row: Cabinet + Reset button */}
               <div className="flex flex-wrap gap-4 items-end">
                 <div className="min-w-[200px] flex-1 sm:flex-none">
-                  <label className="block text-sm text-slate-400 mb-1">Кабинет</label>
+                  <label className="block text-sm text-zinc-400 mb-1">Кабинет</label>
                   <select
                     value={selectedCabinet}
                     onChange={(e) => {
@@ -944,7 +944,7 @@ export function ProfitableAds() {
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
                 {/* ROI filter */}
                 <div className="col-span-2 sm:col-span-1">
-                  <label className="block text-xs sm:text-sm text-slate-400 mb-1">
+                  <label className="block text-xs sm:text-sm text-zinc-400 mb-1">
                     <Percent className="w-3 h-3 inline mr-1" />
                     ROI от
                   </label>
@@ -958,7 +958,7 @@ export function ProfitableAds() {
                   />
                 </div>
                 <div className="col-span-2 sm:col-span-1">
-                  <label className="block text-xs sm:text-sm text-slate-400 mb-1">
+                  <label className="block text-xs sm:text-sm text-zinc-400 mb-1">
                     <Percent className="w-3 h-3 inline mr-1" />
                     ROI до
                   </label>
@@ -974,7 +974,7 @@ export function ProfitableAds() {
 
                 {/* Spent filter */}
                 <div className="col-span-2 sm:col-span-1">
-                  <label className="block text-xs sm:text-sm text-slate-400 mb-1">
+                  <label className="block text-xs sm:text-sm text-zinc-400 mb-1">
                     <DollarSign className="w-3 h-3 inline mr-1 text-orange-400" />
                     Траты от
                   </label>
@@ -988,7 +988,7 @@ export function ProfitableAds() {
                   />
                 </div>
                 <div className="col-span-2 sm:col-span-1">
-                  <label className="block text-xs sm:text-sm text-slate-400 mb-1">
+                  <label className="block text-xs sm:text-sm text-zinc-400 mb-1">
                     <DollarSign className="w-3 h-3 inline mr-1 text-orange-400" />
                     Траты до
                   </label>
@@ -1004,7 +1004,7 @@ export function ProfitableAds() {
 
                 {/* Revenue filter */}
                 <div className="col-span-2 sm:col-span-1">
-                  <label className="block text-xs sm:text-sm text-slate-400 mb-1">
+                  <label className="block text-xs sm:text-sm text-zinc-400 mb-1">
                     <TrendingUp className="w-3 h-3 inline mr-1 text-blue-400" />
                     Доход от
                   </label>
@@ -1018,7 +1018,7 @@ export function ProfitableAds() {
                   />
                 </div>
                 <div className="col-span-2 sm:col-span-1">
-                  <label className="block text-xs sm:text-sm text-slate-400 mb-1">
+                  <label className="block text-xs sm:text-sm text-zinc-400 mb-1">
                     <TrendingUp className="w-3 h-3 inline mr-1 text-blue-400" />
                     Доход до
                   </label>
@@ -1034,7 +1034,7 @@ export function ProfitableAds() {
 
                 {/* Profit filter */}
                 <div className="col-span-2 sm:col-span-1">
-                  <label className="block text-xs sm:text-sm text-slate-400 mb-1">
+                  <label className="block text-xs sm:text-sm text-zinc-400 mb-1">
                     <DollarSign className="w-3 h-3 inline mr-1 text-green-400" />
                     Прибыль от
                   </label>
@@ -1048,7 +1048,7 @@ export function ProfitableAds() {
                   />
                 </div>
                 <div className="col-span-2 sm:col-span-1">
-                  <label className="block text-xs sm:text-sm text-slate-400 mb-1">
+                  <label className="block text-xs sm:text-sm text-zinc-400 mb-1">
                     <DollarSign className="w-3 h-3 inline mr-1 text-green-400" />
                     Прибыль до
                   </label>
@@ -1065,7 +1065,7 @@ export function ProfitableAds() {
 
               {/* Active filters count */}
               {Object.values(filters).some(v => v !== '') && (
-                <div className="text-xs text-slate-400">
+                <div className="text-xs text-zinc-400">
                   Найдено: <span className="text-white font-medium">{analysisResults?.total || 0}</span> объявлений
                 </div>
               )}
@@ -1081,7 +1081,7 @@ export function ProfitableAds() {
             </div>
             <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4 sm:items-end">
               <div className="w-full sm:w-auto sm:min-w-[150px]">
-                <label className="block text-xs sm:text-sm text-slate-400 mb-1">Мин. ROI (%)</label>
+                <label className="block text-xs sm:text-sm text-zinc-400 mb-1">Мин. ROI (%)</label>
                 <input
                   type="number"
                   value={roiThreshold}
@@ -1097,9 +1097,9 @@ export function ProfitableAds() {
                   id="enable-banners"
                   checked={enableBanners}
                   onChange={(e) => setEnableBanners(e.target.checked)}
-                  className="w-4 h-4 rounded border-slate-500 bg-slate-700 text-blue-600"
+                  className="w-4 h-4 rounded border-zinc-500 bg-zinc-700 text-blue-600"
                 />
-                <label htmlFor="enable-banners" className="text-xs sm:text-sm text-slate-300">
+                <label htmlFor="enable-banners" className="text-xs sm:text-sm text-zinc-300">
                   Включить в VK Ads
                 </label>
               </div>
@@ -1121,7 +1121,7 @@ export function ProfitableAds() {
           {/* Results Table */}
           <Card title="Результаты анализа" icon={TrendingUp}>
             {!analysisResults?.count || analysisResults.count === 0 ? (
-              <div className="text-center py-8 text-slate-400">
+              <div className="text-center py-8 text-zinc-400">
                 <AlertCircle className="w-12 h-12 mx-auto mb-3 opacity-50" />
                 <p>Нет данных. Запустите анализ для получения результатов.</p>
               </div>
@@ -1146,7 +1146,7 @@ export function ProfitableAds() {
             
             {/* Pagination */}
             {analysisResults && analysisResults.total_pages > 1 && (
-              <div className="mt-4 pt-4 border-t border-slate-700">
+              <div className="mt-4 pt-4 border-t border-zinc-700">
                 <Pagination
                   currentPage={currentPage}
                   totalPages={analysisResults.total_pages}
@@ -1166,7 +1166,7 @@ export function ProfitableAds() {
           {/* LeadsTech Config */}
           <Card title="Настройки анализа" icon={Settings}>
             {/* Credentials status */}
-            <div className="mb-4 p-3 sm:p-4 bg-slate-700/30 rounded-lg">
+            <div className="mb-4 p-3 sm:p-4 bg-zinc-700/30 rounded-lg">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   {configData?.configured ? (
@@ -1193,7 +1193,7 @@ export function ProfitableAds() {
             {/* Analysis-specific settings */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               <div>
-                <label className="block text-xs sm:text-sm text-slate-400 mb-1">Период анализа</label>
+                <label className="block text-xs sm:text-sm text-zinc-400 mb-1">Период анализа</label>
                 <DateRangePicker
                   dateFrom={configForm.date_from}
                   dateTo={configForm.date_to}
@@ -1201,7 +1201,7 @@ export function ProfitableAds() {
                 />
               </div>
               <div>
-                <label className="block text-xs sm:text-sm text-slate-400 mb-1">Поля с ID объявления</label>
+                <label className="block text-xs sm:text-sm text-zinc-400 mb-1">Поля с ID объявления</label>
                 <div className="flex flex-wrap gap-3">
                   {['sub1', 'sub2', 'sub3', 'sub4', 'sub5'].map((sub) => (
                     <label key={sub} className="flex items-center gap-2 cursor-pointer">
@@ -1215,16 +1215,16 @@ export function ProfitableAds() {
                             setConfigForm({ ...configForm, banner_sub_fields: configForm.banner_sub_fields.filter(s => s !== sub) });
                           }
                         }}
-                        className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-blue-500 focus:ring-blue-500"
+                        className="w-4 h-4 rounded border-zinc-600 bg-zinc-700 text-blue-500 focus:ring-blue-500"
                       />
-                      <span className="text-sm text-slate-300">{sub}</span>
+                      <span className="text-sm text-zinc-300">{sub}</span>
                     </label>
                   ))}
                 </div>
-                <p className="text-xs text-slate-500 mt-2">Выберите одно или несколько полей. ID баннеров из всех полей будут объединены.</p>
+                <p className="text-xs text-zinc-500 mt-2">Выберите одно или несколько полей. ID баннеров из всех полей будут объединены.</p>
               </div>
             </div>
-            <div className="mt-4 pt-4 border-t border-slate-700">
+            <div className="mt-4 pt-4 border-t border-zinc-700">
               <button
                 onClick={handleSaveConfig}
                 disabled={updateConfigMutation.isPending || !configData?.configured || configForm.banner_sub_fields.length === 0 || !configForm.date_from || !configForm.date_to}
@@ -1248,25 +1248,25 @@ export function ProfitableAds() {
 
           {/* Cabinets Configuration */}
           <Card title="Кабинеты для анализа" icon={Building2}>
-            <p className="text-xs text-slate-400 mb-3">
+            <p className="text-xs text-zinc-400 mb-3">
               Label для ROI задается в настройках кабинета (раздел "Кабинеты VK Ads"). Здесь можно изменить label или посмотреть статус.
             </p>
 
             {/* Cabinets list */}
             <div className="space-y-2">
               {isLoadingCabinets ? (
-                <div className="text-center py-4 text-slate-400">
+                <div className="text-center py-4 text-zinc-400">
                   <Loader2 className="w-6 h-6 mx-auto animate-spin" />
                 </div>
               ) : cabinetsData?.cabinets.length === 0 ? (
-                <div className="text-center py-4 text-slate-400 text-sm">
+                <div className="text-center py-4 text-zinc-400 text-sm">
                   Нет кабинетов
                 </div>
               ) : (
                 cabinetsData?.cabinets.map((cabinet: any) => (
                   <div
                     key={cabinet.id}
-                    className={`flex items-center justify-between p-3 rounded-lg gap-2 ${cabinet.enabled && cabinet.leadstech_label ? 'bg-slate-700/30' : 'bg-slate-800/30'}`}
+                    className={`flex items-center justify-between p-3 rounded-lg gap-2 ${cabinet.enabled && cabinet.leadstech_label ? 'bg-zinc-700/30' : 'bg-zinc-800/30'}`}
                   >
                     <div className="flex items-center gap-2 sm:gap-4 min-w-0">
                       <input
@@ -1277,7 +1277,7 @@ export function ProfitableAds() {
                           data: { enabled: e.target.checked }
                         })}
                         disabled={!cabinet.leadstech_label}
-                        className="w-4 h-4 rounded border-slate-500 bg-slate-700 text-blue-600 focus:ring-blue-500 flex-shrink-0 disabled:opacity-50"
+                        className="w-4 h-4 rounded border-zinc-500 bg-zinc-700 text-blue-600 focus:ring-blue-500 flex-shrink-0 disabled:opacity-50"
                         title={cabinet.leadstech_label ? 'Включить/выключить для анализа' : 'Сначала задайте label'}
                       />
                       <div className="min-w-0">
@@ -1292,7 +1292,7 @@ export function ProfitableAds() {
                             autoFocus
                           />
                         ) : (
-                          <p className="text-xs text-slate-400 truncate">
+                          <p className="text-xs text-zinc-400 truncate">
                             {cabinet.leadstech_label ? `Label: ${cabinet.leadstech_label}` : 'Label не задан'}
                           </p>
                         )}
@@ -1308,13 +1308,13 @@ export function ProfitableAds() {
                                 data: { leadstech_label: editingLabel }
                               });
                             }}
-                            className="p-1.5 sm:p-2 text-green-400 hover:bg-slate-600 rounded"
+                            className="p-1.5 sm:p-2 text-green-400 hover:bg-zinc-600 rounded"
                           >
                             <Check className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => setEditingCabinetId(null)}
-                            className="p-1.5 sm:p-2 text-slate-400 hover:bg-slate-600 rounded"
+                            className="p-1.5 sm:p-2 text-zinc-400 hover:bg-zinc-600 rounded"
                           >
                             <X className="w-4 h-4" />
                           </button>
@@ -1325,7 +1325,7 @@ export function ProfitableAds() {
                             setEditingCabinetId(cabinet.id);
                             setEditingLabel(cabinet.leadstech_label || '');
                           }}
-                          className="p-1.5 sm:p-2 text-slate-400 hover:bg-slate-600 rounded"
+                          className="p-1.5 sm:p-2 text-zinc-400 hover:bg-zinc-600 rounded"
                         >
                           <Edit2 className="w-4 h-4" />
                         </button>
@@ -1345,7 +1345,7 @@ export function ProfitableAds() {
         title={modalConfig.title}
       >
         <div className="space-y-4">
-          <div className="text-slate-300">
+          <div className="text-zinc-300">
             {modalConfig.content}
           </div>
           
@@ -1354,7 +1354,7 @@ export function ProfitableAds() {
               <>
                 <button
                   onClick={() => setModalConfig(prev => ({ ...prev, isOpen: false }))}
-                  className="px-4 py-2 rounded-lg text-slate-300 hover:text-white hover:bg-slate-700 transition-colors"
+                  className="px-4 py-2 rounded-lg text-zinc-300 hover:text-white hover:bg-zinc-700 transition-colors"
                 >
                   Отмена
                 </button>
@@ -1371,7 +1371,7 @@ export function ProfitableAds() {
             ) : (
               <button
                 onClick={() => setModalConfig(prev => ({ ...prev, isOpen: false }))}
-                className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white transition-colors"
+                className="px-4 py-2 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-white transition-colors"
               >
                 Закрыть
               </button>

@@ -2,17 +2,18 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { api } from '../api/client';
 import { getActiveSessions, logoutAll, type Session } from '../api/auth';
+import { User, Key, Monitor, RefreshCw, LogOut, Shield, Clock } from 'lucide-react';
 
 export const Profile = () => {
   const { user, refetch } = useAuth();
-  
+
   // Profile form state
   const [username, setUsername] = useState(user?.username || '');
   const [email, setEmail] = useState(user?.email || '');
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileError, setProfileError] = useState('');
   const [profileSuccess, setProfileSuccess] = useState('');
-  
+
   // Password form state
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -109,16 +110,28 @@ export const Profile = () => {
   };
 
   return (
-    <div className="max-w-2xl mx-auto space-y-8">
-      <h1 className="text-2xl font-bold text-gray-900">Личный кабинет</h1>
+    <div className="max-w-2xl mx-auto space-y-6">
+      {/* Header */}
+      <div className="flex items-center gap-3">
+        <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center">
+          <User className="w-6 h-6 text-white" />
+        </div>
+        <div>
+          <h1 className="text-2xl font-bold text-white">Личный кабинет</h1>
+          <p className="text-zinc-400 text-sm">Управление профилем и безопасностью</p>
+        </div>
+      </div>
 
       {/* Profile Section */}
-      <div className="bg-white rounded-lg shadow-md p-6">
-        <h2 className="text-lg font-semibold text-gray-800 mb-4">Данные профиля</h2>
-        
+      <div className="card">
+        <div className="flex items-center gap-2 mb-4">
+          <User className="w-5 h-5 text-blue-400" />
+          <h2 className="text-lg font-semibold text-white">Данные профиля</h2>
+        </div>
+
         <form onSubmit={handleProfileSubmit} className="space-y-4">
           <div>
-            <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="username" className="label">
               Логин
             </label>
             <input
@@ -126,14 +139,14 @@ export const Profile = () => {
               id="username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+              className="input"
               required
               minLength={3}
             />
           </div>
 
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="email" className="label">
               Email (необязательно)
             </label>
             <input
@@ -141,19 +154,19 @@ export const Profile = () => {
               id="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+              className="input"
               placeholder="example@mail.com"
             />
           </div>
 
           {profileError && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+            <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm">
               {profileError}
             </div>
           )}
 
           {profileSuccess && (
-            <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm">
+            <div className="p-3 bg-green-500/10 border border-green-500/30 rounded-lg text-green-400 text-sm">
               {profileSuccess}
             </div>
           )}
@@ -161,7 +174,7 @@ export const Profile = () => {
           <button
             type="submit"
             disabled={profileLoading}
-            className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium rounded-lg transition duration-200"
+            className="btn btn-primary w-full justify-center"
           >
             {profileLoading ? 'Сохранение...' : 'Сохранить изменения'}
           </button>
@@ -169,12 +182,15 @@ export const Profile = () => {
       </div>
 
       {/* Password Section */}
-      <div className="bg-white rounded-lg shadow-md p-6">
-        <h2 className="text-lg font-semibold text-gray-800 mb-4">Смена пароля</h2>
-        
+      <div className="card">
+        <div className="flex items-center gap-2 mb-4">
+          <Key className="w-5 h-5 text-orange-400" />
+          <h2 className="text-lg font-semibold text-white">Смена пароля</h2>
+        </div>
+
         <form onSubmit={handlePasswordSubmit} className="space-y-4">
           <div>
-            <label htmlFor="currentPassword" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="currentPassword" className="label">
               Текущий пароль
             </label>
             <input
@@ -182,13 +198,13 @@ export const Profile = () => {
               id="currentPassword"
               value={currentPassword}
               onChange={(e) => setCurrentPassword(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+              className="input"
               required
             />
           </div>
 
           <div>
-            <label htmlFor="newPassword" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="newPassword" className="label">
               Новый пароль
             </label>
             <input
@@ -196,7 +212,7 @@ export const Profile = () => {
               id="newPassword"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+              className="input"
               required
               minLength={6}
               placeholder="Минимум 6 символов"
@@ -204,7 +220,7 @@ export const Profile = () => {
           </div>
 
           <div>
-            <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="confirmPassword" className="label">
               Подтвердите новый пароль
             </label>
             <input
@@ -212,28 +228,28 @@ export const Profile = () => {
               id="confirmPassword"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition ${
-                confirmPassword && newPassword !== confirmPassword 
-                  ? 'border-red-300 bg-red-50' 
-                  : 'border-gray-300'
+              className={`input ${
+                confirmPassword && newPassword !== confirmPassword
+                  ? 'border-red-500 bg-red-500/10'
+                  : ''
               }`}
               required
               minLength={6}
               placeholder="Повторите новый пароль"
             />
             {confirmPassword && newPassword !== confirmPassword && (
-              <p className="mt-1 text-sm text-red-600">Пароли не совпадают</p>
+              <p className="mt-1 text-sm text-red-400">Пароли не совпадают</p>
             )}
           </div>
 
           {passwordError && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+            <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm">
               {passwordError}
             </div>
           )}
 
           {passwordSuccess && (
-            <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm">
+            <div className="p-3 bg-green-500/10 border border-green-500/30 rounded-lg text-green-400 text-sm">
               {passwordSuccess}
             </div>
           )}
@@ -241,7 +257,7 @@ export const Profile = () => {
           <button
             type="submit"
             disabled={passwordLoading || (confirmPassword !== '' && newPassword !== confirmPassword)}
-            className="w-full py-2 px-4 bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400 text-white font-medium rounded-lg transition duration-200"
+            className="btn btn-warning w-full justify-center"
           >
             {passwordLoading ? 'Смена пароля...' : 'Сменить пароль'}
           </button>
@@ -249,51 +265,55 @@ export const Profile = () => {
       </div>
 
       {/* Active Sessions */}
-      <div className="bg-white rounded-lg shadow-md p-6">
+      <div className="card">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-semibold text-gray-800">Активные сессии</h2>
+          <div className="flex items-center gap-2">
+            <Monitor className="w-5 h-5 text-purple-400" />
+            <h2 className="text-lg font-semibold text-white">Активные сессии</h2>
+          </div>
           <button
             onClick={loadSessions}
             disabled={sessionsLoading}
-            className="px-3 py-1 text-sm text-blue-600 hover:text-blue-700 disabled:text-gray-400"
+            className="btn btn-secondary text-sm"
           >
+            <RefreshCw className={`w-4 h-4 ${sessionsLoading ? 'animate-spin' : ''}`} />
             {sessionsLoading ? 'Загрузка...' : 'Обновить'}
           </button>
         </div>
 
         {sessionsError && (
-          <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm mb-4">
+          <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm mb-4">
             {sessionsError}
           </div>
         )}
 
         {sessionsLoading && sessions.length === 0 ? (
-          <p className="text-gray-500 text-center py-4">Загрузка сессий...</p>
+          <p className="text-zinc-400 text-center py-4">Загрузка сессий...</p>
         ) : sessions.length === 0 ? (
-          <p className="text-gray-500 text-center py-4">Нет активных сессий</p>
+          <p className="text-zinc-400 text-center py-4">Нет активных сессий</p>
         ) : (
           <div className="space-y-3">
             {sessions.map((session) => (
-              <div key={session.id} className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+              <div key={session.id} className="p-4 bg-zinc-800 rounded-lg border border-zinc-700">
                 <div className="flex justify-between items-start">
-                  <div className="space-y-1 text-sm flex-1">
-                    <p className="text-gray-700">
-                      <strong>IP:</strong> {session.ip_address || 'Неизвестно'}
+                  <div className="space-y-2 text-sm flex-1">
+                    <p className="text-zinc-300">
+                      <span className="text-zinc-500">IP:</span> {session.ip_address || 'Неизвестно'}
                     </p>
                     {session.user_agent && (
-                      <p className="text-gray-600 truncate max-w-md" title={session.user_agent}>
-                        <strong>Устройство:</strong> {session.user_agent}
+                      <p className="text-zinc-400 truncate max-w-md" title={session.user_agent}>
+                        <span className="text-zinc-500">Устройство:</span> {session.user_agent}
                       </p>
                     )}
-                    <p className="text-gray-600">
-                      <strong>Создана:</strong> {new Date(session.created_at).toLocaleString('ru-RU')}
-                    </p>
-                    <p className="text-gray-600">
-                      <strong>Последняя активность:</strong> {new Date(session.last_used_at).toLocaleString('ru-RU')}
-                    </p>
-                    <p className="text-gray-600">
-                      <strong>Истекает:</strong> {new Date(session.expires_at).toLocaleString('ru-RU')}
-                    </p>
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-zinc-400">
+                      <span className="flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        Создана: {new Date(session.created_at).toLocaleString('ru-RU')}
+                      </span>
+                      <span>
+                        Активность: {new Date(session.last_used_at).toLocaleString('ru-RU')}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -302,8 +322,9 @@ export const Profile = () => {
             {sessions.length > 1 && (
               <button
                 onClick={handleLogoutAll}
-                className="w-full mt-4 py-2 px-4 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg transition duration-200"
+                className="btn btn-danger w-full justify-center mt-4"
               >
+                <LogOut className="w-4 h-4" />
                 Выйти из всех устройств ({sessions.length})
               </button>
             )}
@@ -312,15 +333,33 @@ export const Profile = () => {
       </div>
 
       {/* Account Info */}
-      <div className="bg-gray-50 rounded-lg p-4 text-sm text-gray-600">
-        <p><strong>ID:</strong> {user?.id}</p>
-        <p><strong>Статус:</strong> {user?.is_active ? 'Активен' : 'Неактивен'}</p>
-        <p><strong>Роль:</strong> {user?.is_superuser ? 'Администратор' : 'Пользователь'}</p>
-        {user?.last_login && (
-          <p><strong>Последний вход:</strong> {new Date(user.last_login).toLocaleString('ru-RU')}</p>
-        )}
+      <div className="card bg-zinc-800/50">
+        <div className="flex items-center gap-2 mb-3">
+          <Shield className="w-5 h-5 text-zinc-400" />
+          <h3 className="text-sm font-medium text-zinc-400">Информация об аккаунте</h3>
+        </div>
+        <div className="grid grid-cols-2 gap-2 text-sm">
+          <p className="text-zinc-500">ID:</p>
+          <p className="text-zinc-300">{user?.id}</p>
+
+          <p className="text-zinc-500">Статус:</p>
+          <p className={user?.is_active ? 'text-green-400' : 'text-red-400'}>
+            {user?.is_active ? 'Активен' : 'Неактивен'}
+          </p>
+
+          <p className="text-zinc-500">Роль:</p>
+          <p className={user?.is_superuser ? 'text-yellow-400' : 'text-zinc-300'}>
+            {user?.is_superuser ? 'Администратор' : 'Пользователь'}
+          </p>
+
+          {user?.last_login && (
+            <>
+              <p className="text-zinc-500">Последний вход:</p>
+              <p className="text-zinc-300">{new Date(user.last_login).toLocaleString('ru-RU')}</p>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
 };
-

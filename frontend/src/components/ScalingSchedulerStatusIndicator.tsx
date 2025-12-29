@@ -11,13 +11,13 @@ function TaskProgressBar({ task }: { task: ScalingTask }) {
     : 0;
 
   return (
-    <div className="w-full bg-slate-700 rounded-full h-1.5 overflow-hidden">
+    <div className="w-full bg-zinc-700 rounded-full h-1.5 overflow-hidden">
       <div
         className={`h-1.5 rounded-full transition-all duration-300 ${
           task.status === 'running' || task.status === 'pending' ? 'bg-blue-500' :
           task.status === 'completed' ? 'bg-green-500' :
           task.status === 'failed' ? 'bg-red-500' :
-          'bg-slate-500'
+          'bg-zinc-500'
         }`}
         style={{ width: `${progress}%` }}
       />
@@ -31,7 +31,7 @@ function ActiveTaskCard({ task, onCancel }: { task: ScalingTask; onCancel: () =>
     : 0;
 
   return (
-    <div className="p-3 bg-slate-800 rounded-lg border border-slate-700 space-y-2">
+    <div className="p-3 bg-zinc-800 rounded-lg border border-zinc-700 space-y-2">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Copy className="w-4 h-4 text-blue-400" />
@@ -45,7 +45,7 @@ function ActiveTaskCard({ task, onCancel }: { task: ScalingTask; onCancel: () =>
         {(task.status === 'running' || task.status === 'pending') && (
           <button
             onClick={onCancel}
-            className="p-1 text-slate-400 hover:text-red-400 hover:bg-red-900/20 rounded transition-colors"
+            className="p-1 text-zinc-400 hover:text-red-400 hover:bg-red-900/20 rounded transition-colors"
             title="Отменить"
           >
             <X className="w-4 h-4" />
@@ -53,7 +53,7 @@ function ActiveTaskCard({ task, onCancel }: { task: ScalingTask; onCancel: () =>
         )}
       </div>
 
-      <div className="flex items-center gap-2 text-xs text-slate-400">
+      <div className="flex items-center gap-2 text-xs text-zinc-400">
         {task.account_name && <span>{task.account_name}</span>}
         <span>|</span>
         <span>{task.completed_operations} / {task.total_operations} операций</span>
@@ -70,7 +70,7 @@ function ActiveTaskCard({ task, onCancel }: { task: ScalingTask; onCancel: () =>
       <TaskProgressBar task={task} />
 
       {task.current_group_name && (
-        <p className="text-xs text-slate-500 truncate">
+        <p className="text-xs text-zinc-500 truncate">
           Сейчас: {task.current_group_name}
         </p>
       )}
@@ -81,7 +81,7 @@ function ActiveTaskCard({ task, onCancel }: { task: ScalingTask; onCancel: () =>
         </p>
       )}
 
-      <div className="flex items-center justify-between text-xs text-slate-500">
+      <div className="flex items-center justify-between text-xs text-zinc-500">
         <span>{progress}%</span>
         {task.started_at && (
           <span>Начато: {new Date(task.started_at).toLocaleTimeString('ru')}</span>
@@ -195,7 +195,7 @@ export function ScalingSchedulerStatusIndicator() {
       <div className="space-y-2">
         <div className="flex items-center gap-2">
           <RefreshCw className="w-4 h-4 text-blue-400 animate-spin" />
-          <span className="text-sm font-medium text-slate-300">
+          <span className="text-sm font-medium text-zinc-300">
             Активные задачи ({activeTasks.length})
           </span>
         </div>

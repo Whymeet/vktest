@@ -93,7 +93,7 @@ export function Logs() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">Логи</h1>
-          <p className="text-slate-400 mt-1">Просмотр лог-файлов системы</p>
+          <p className="text-zinc-400 mt-1">Просмотр лог-файлов системы</p>
         </div>
         <button onClick={() => refetchLogs()} className="btn btn-secondary">
           <RefreshCw className="w-4 h-4" />
@@ -107,7 +107,7 @@ export function Logs() {
           <Card title="Файлы логов" icon={FileText}>
             {/* Search */}
             <div className="relative mb-4">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
               <input
                 type="text"
                 value={searchTerm}
@@ -127,12 +127,12 @@ export function Logs() {
                     className={`w-full text-left p-3 rounded-lg transition-colors flex items-center justify-between group ${
                       selectedLog?.path === log.path
                         ? 'bg-blue-600/20 border border-blue-600/50'
-                        : 'bg-slate-700/50 hover:bg-slate-700'
+                        : 'bg-zinc-700/50 hover:bg-zinc-700'
                     }`}
                   >
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium text-white truncate">{log.name}</p>
-                      <div className="flex items-center gap-3 mt-1 text-xs text-slate-400">
+                      <div className="flex items-center gap-3 mt-1 text-xs text-zinc-400">
                         <span className="flex items-center gap-1">
                           <Clock className="w-3 h-3" />
                           {formatDate(log.modified)}
@@ -148,11 +148,11 @@ export function Logs() {
                         {log.type === 'scheduler' ? 'Планировщик' : 'Основной'}
                       </span>
                     </div>
-                    <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-white flex-shrink-0" />
+                    <ChevronRight className="w-4 h-4 text-zinc-500 group-hover:text-white flex-shrink-0" />
                   </button>
                 ))
               ) : (
-                <p className="text-slate-400 text-center py-8">Нет лог-файлов</p>
+                <p className="text-zinc-400 text-center py-8">Нет лог-файлов</p>
               )}
             </div>
           </Card>
@@ -166,7 +166,7 @@ export function Logs() {
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <h3 className="text-lg font-semibold text-white">{selectedLog.name}</h3>
-                    <p className="text-sm text-slate-400">
+                    <p className="text-sm text-zinc-400">
                       {logContent?.total_lines || 0} строк • Показано последние {tailLines}
                     </p>
                   </div>
@@ -206,13 +206,13 @@ export function Logs() {
                         );
                       })
                     ) : (
-                      <p className="text-slate-500">Лог пуст</p>
+                      <p className="text-zinc-500">Лог пуст</p>
                     )}
                   </div>
                 )}
               </>
             ) : (
-              <div className="flex flex-col items-center justify-center h-64 text-slate-400">
+              <div className="flex flex-col items-center justify-center h-64 text-zinc-400">
                 <FileText className="w-12 h-12 mb-4 opacity-50" />
                 <p>Выберите лог-файл для просмотра</p>
               </div>

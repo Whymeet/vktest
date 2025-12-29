@@ -56,7 +56,7 @@ function AccountForm({ account, onSubmit, onCancel }: AccountFormProps) {
           <button
             type="button"
             onClick={() => setShowApi(!showApi)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white"
           >
             {showApi ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
           </button>
@@ -81,7 +81,7 @@ function AccountForm({ account, onSubmit, onCancel }: AccountFormProps) {
           className="input"
           placeholder="label_name"
         />
-        <p className="text-xs text-slate-500 mt-1">
+        <p className="text-xs text-zinc-500 mt-1">
           Label из LeadsTech для расчета ROI
         </p>
       </div>
@@ -172,7 +172,7 @@ export function Accounts() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">Кабинеты VK Ads</h1>
-          <p className="text-slate-400 mt-1">Управление рекламными кабинетами</p>
+          <p className="text-zinc-400 mt-1">Управление рекламными кабинетами</p>
         </div>
         <div className="flex gap-3">
           <button onClick={() => refetch()} className="btn btn-secondary">
@@ -201,21 +201,21 @@ export function Accounts() {
                 {accounts.map((account) => (
                   <tr key={account.name}>
                     <td className="font-medium text-white">{account.name}</td>
-                    <td className="text-slate-300">
-                      {account.trigger || <span className="text-slate-500">—</span>}
+                    <td className="text-zinc-300">
+                      {account.trigger || <span className="text-zinc-500">—</span>}
                     </td>
                     <td>
                       <div className="flex items-center justify-end gap-2">
                         <button
                           onClick={() => openEdit(account)}
-                          className="p-2 rounded-lg hover:bg-slate-700 text-slate-400 hover:text-white"
+                          className="p-2 rounded-lg hover:bg-zinc-700 text-zinc-400 hover:text-white"
                           title="Редактировать"
                         >
                           <Edit2 className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => setDeleteConfirm(account.name)}
-                          className="p-2 rounded-lg hover:bg-red-900/50 text-slate-400 hover:text-red-400"
+                          className="p-2 rounded-lg hover:bg-red-900/50 text-zinc-400 hover:text-red-400"
                           title="Удалить"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -228,7 +228,7 @@ export function Accounts() {
             </table>
           </div>
         ) : (
-          <div className="text-center py-12 text-slate-400">
+          <div className="text-center py-12 text-zinc-400">
             <p>Нет добавленных кабинетов</p>
             <button onClick={openCreate} className="btn btn-primary mt-4">
               <Plus className="w-4 h-4" />
@@ -263,7 +263,7 @@ export function Accounts() {
         onClose={() => setDeleteConfirm(null)}
         title="Удалить кабинет?"
       >
-        <p className="text-slate-300 mb-6">
+        <p className="text-zinc-300 mb-6">
           Вы уверены, что хотите удалить кабинет <strong className="text-white">{deleteConfirm}</strong>?
           Это действие нельзя отменить.
         </p>

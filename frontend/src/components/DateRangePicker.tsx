@@ -86,21 +86,21 @@ export function DateRangePicker({ dateFrom, dateTo, onChange, className = '' }: 
         className="input w-full text-left flex items-center justify-between gap-2 text-sm"
       >
         <div className="flex items-center gap-2">
-          <Calendar className="w-4 h-4 text-slate-500" />
-          <span className={selected.from ? 'text-slate-200' : 'text-slate-500'}>
+          <Calendar className="w-4 h-4 text-zinc-500" />
+          <span className={selected.from ? 'text-zinc-200' : 'text-zinc-500'}>
             {displayValue()}
           </span>
         </div>
         {selected.from && (
           <X
-            className="w-4 h-4 text-slate-500 hover:text-slate-300"
+            className="w-4 h-4 text-zinc-500 hover:text-zinc-300"
             onClick={clearSelection}
           />
         )}
       </button>
 
       {isOpen && (
-        <div className="absolute z-50 mt-1 bg-slate-800 border border-slate-700 shadow-lg p-3">
+        <div className="absolute z-50 mt-1 bg-zinc-800 border border-zinc-700 shadow-lg p-3">
           <style>{`
             .rdp-root {
               --rdp-accent-color: #475569;

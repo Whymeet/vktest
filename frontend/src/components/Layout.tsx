@@ -69,7 +69,7 @@ export function Layout() {
   return (
     <div className="flex min-h-screen">
       {/* Mobile Header */}
-      <header className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-slate-800 border-b border-slate-700 px-4 py-3 flex items-center justify-between">
+      <header className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-zinc-800 border-b border-zinc-700 px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
             <StatsIcon className="w-5 h-5 text-white" />
@@ -78,7 +78,7 @@ export function Layout() {
         </div>
         <button
           onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="p-2 text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg transition-colors"
+          className="p-2 text-zinc-300 hover:text-white hover:bg-zinc-700 rounded-lg transition-colors"
           aria-label="Toggle menu"
         >
           {sidebarOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
@@ -95,13 +95,13 @@ export function Layout() {
 
       {/* Sidebar */}
       <aside className={`
-        w-64 bg-slate-800 border-r border-slate-700 flex flex-col fixed h-screen z-50
+        w-64 bg-zinc-800 border-r border-zinc-700 flex flex-col fixed h-screen z-50
         transition-transform duration-300 ease-in-out
         lg:translate-x-0
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
         {/* Logo - hidden on mobile (shown in header) */}
-        <div className="p-6 border-b border-slate-700 hidden lg:block">
+        <div className="p-6 border-b border-zinc-700 hidden lg:block">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
               <StatsIcon className="w-6 h-6 text-white" />
@@ -138,7 +138,7 @@ export function Layout() {
         <SchedulerStatusIndicator />
 
         {/* User Info & Logout */}
-        <div className="p-4 border-t border-slate-700">
+        <div className="p-4 border-t border-zinc-700">
           {user && (
             <div className="space-y-2">
               {/* User Info - clickable link to profile */}
@@ -148,7 +148,7 @@ export function Layout() {
                   `flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
                     isActive
                       ? 'bg-blue-600'
-                      : 'bg-slate-700 hover:bg-slate-600'
+                      : 'bg-zinc-700 hover:bg-zinc-600'
                   }`
                 }
               >
@@ -159,7 +159,7 @@ export function Layout() {
                   <p className="text-sm font-medium text-white truncate">
                     {user.username}
                   </p>
-                  <p className="text-xs text-slate-300 truncate">
+                  <p className="text-xs text-zinc-300 truncate">
                     {user.email || 'Личный кабинет'}
                   </p>
                 </div>
@@ -168,7 +168,7 @@ export function Layout() {
               {/* Logout Button */}
               <button
                 onClick={logout}
-                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg transition-colors"
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-zinc-300 hover:text-white hover:bg-zinc-700 rounded-lg transition-colors"
               >
                 <LogOut className="w-4 h-4" />
                 <span>Выйти</span>

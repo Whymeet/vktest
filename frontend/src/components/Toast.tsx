@@ -74,7 +74,7 @@ function ToastItem({ toast, onRemove }: { toast: Toast; onRemove: () => void }) 
   return (
     <div
       className={`
-        flex items-start gap-3 p-4 bg-slate-800 rounded-lg border ${borderColors[toast.type]}
+        flex items-start gap-3 p-4 bg-zinc-800 rounded-lg border ${borderColors[toast.type]}
         shadow-lg backdrop-blur-sm transition-all duration-300 max-w-sm
         ${isLeaving ? 'opacity-0 translate-x-full' : 'opacity-100 translate-x-0'}
       `}
@@ -83,12 +83,12 @@ function ToastItem({ toast, onRemove }: { toast: Toast; onRemove: () => void }) 
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium text-white">{toast.title}</p>
         {toast.message && (
-          <p className="text-xs text-slate-400 mt-1 break-words">{toast.message}</p>
+          <p className="text-xs text-zinc-400 mt-1 break-words">{toast.message}</p>
         )}
       </div>
       <button
         onClick={handleClose}
-        className="flex-shrink-0 p-1 text-slate-400 hover:text-white transition-colors rounded"
+        className="flex-shrink-0 p-1 text-zinc-400 hover:text-white transition-colors rounded"
       >
         <X className="w-4 h-4" />
       </button>

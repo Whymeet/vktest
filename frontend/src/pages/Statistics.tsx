@@ -139,7 +139,7 @@ export function Statistics() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-xl lg:text-2xl font-bold text-white">Статистика отключённых</h1>
-          <p className="text-slate-400 text-sm mt-1 hidden sm:block">История отключённых объявлений из всех кабинетов</p>
+          <p className="text-zinc-400 text-sm mt-1 hidden sm:block">История отключённых объявлений из всех кабинетов</p>
         </div>
         <div className="flex items-center gap-3">
           <button onClick={handleRefresh} className="btn btn-secondary text-sm">
@@ -151,73 +151,73 @@ export function Statistics() {
 
       {/* Summary Cards - 2 columns on mobile, 3 on tablet, 6 on desktop */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-4">
-        <div className="bg-slate-800/50 rounded-lg p-3 sm:p-4 border border-slate-700">
+        <div className="bg-zinc-800/50 rounded-lg p-3 sm:p-4 border border-zinc-700">
           <div className="flex items-center gap-2 sm:gap-3">
             <div className="p-1.5 sm:p-2 bg-red-900/30 rounded-lg">
               <TrendingDown className="w-4 h-4 sm:w-5 sm:h-5 text-red-400" />
             </div>
             <div className="min-w-0">
-              <p className="text-xs sm:text-sm text-slate-400 truncate">Отключено</p>
+              <p className="text-xs sm:text-sm text-zinc-400 truncate">Отключено</p>
               <p className="text-base sm:text-xl font-bold text-white">{summary.count}</p>
             </div>
           </div>
         </div>
 
-        <div className="bg-slate-800/50 rounded-lg p-3 sm:p-4 border border-slate-700">
+        <div className="bg-zinc-800/50 rounded-lg p-3 sm:p-4 border border-zinc-700">
           <div className="flex items-center gap-2 sm:gap-3">
             <div className="p-1.5 sm:p-2 bg-orange-900/30 rounded-lg">
               <DollarSign className="w-4 h-4 sm:w-5 sm:h-5 text-orange-400" />
             </div>
             <div className="min-w-0">
-              <p className="text-xs sm:text-sm text-slate-400 truncate">Потрачено</p>
+              <p className="text-xs sm:text-sm text-zinc-400 truncate">Потрачено</p>
               <p className="text-base sm:text-xl font-bold text-white truncate">{formatMoney(summary.totalSpend)}</p>
             </div>
           </div>
         </div>
 
-        <div className="bg-slate-800/50 rounded-lg p-3 sm:p-4 border border-slate-700">
+        <div className="bg-zinc-800/50 rounded-lg p-3 sm:p-4 border border-zinc-700">
           <div className="flex items-center gap-2 sm:gap-3">
             <div className="p-1.5 sm:p-2 bg-blue-900/30 rounded-lg">
               <MousePointerClick className="w-4 h-4 sm:w-5 sm:h-5 text-blue-400" />
             </div>
             <div className="min-w-0">
-              <p className="text-xs sm:text-sm text-slate-400 truncate">Клики</p>
+              <p className="text-xs sm:text-sm text-zinc-400 truncate">Клики</p>
               <p className="text-base sm:text-xl font-bold text-white">{summary.totalClicks.toLocaleString()}</p>
             </div>
           </div>
         </div>
 
-        <div className="bg-slate-800/50 rounded-lg p-3 sm:p-4 border border-slate-700">
+        <div className="bg-zinc-800/50 rounded-lg p-3 sm:p-4 border border-zinc-700">
           <div className="flex items-center gap-2 sm:gap-3">
             <div className="p-1.5 sm:p-2 bg-purple-900/30 rounded-lg">
               <Eye className="w-4 h-4 sm:w-5 sm:h-5 text-purple-400" />
             </div>
             <div className="min-w-0">
-              <p className="text-xs sm:text-sm text-slate-400 truncate">Показы</p>
+              <p className="text-xs sm:text-sm text-zinc-400 truncate">Показы</p>
               <p className="text-base sm:text-xl font-bold text-white">{summary.totalShows.toLocaleString()}</p>
             </div>
           </div>
         </div>
 
-        <div className="bg-slate-800/50 rounded-lg p-3 sm:p-4 border border-slate-700">
+        <div className="bg-zinc-800/50 rounded-lg p-3 sm:p-4 border border-zinc-700">
           <div className="flex items-center gap-2 sm:gap-3">
             <div className="p-1.5 sm:p-2 bg-green-900/30 rounded-lg">
               <Percent className="w-4 h-4 sm:w-5 sm:h-5 text-green-400" />
             </div>
             <div className="min-w-0">
-              <p className="text-xs sm:text-sm text-slate-400 truncate">Средний CTR</p>
+              <p className="text-xs sm:text-sm text-zinc-400 truncate">Средний CTR</p>
               <p className="text-base sm:text-xl font-bold text-white">{summary.avgCtr.toFixed(2)}%</p>
             </div>
           </div>
         </div>
 
-        <div className="bg-slate-800/50 rounded-lg p-3 sm:p-4 border border-slate-700">
+        <div className="bg-zinc-800/50 rounded-lg p-3 sm:p-4 border border-zinc-700">
           <div className="flex items-center gap-2 sm:gap-3">
             <div className="p-1.5 sm:p-2 bg-yellow-900/30 rounded-lg">
               <TrendingDown className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-400" />
             </div>
             <div className="min-w-0">
-              <p className="text-xs sm:text-sm text-slate-400 truncate">Конверсии</p>
+              <p className="text-xs sm:text-sm text-zinc-400 truncate">Конверсии</p>
               <p className="text-base sm:text-xl font-bold text-white">{summary.totalConversions}</p>
             </div>
           </div>
@@ -229,7 +229,7 @@ export function Statistics() {
         <div className="flex flex-wrap gap-4">
           {/* Account Filter */}
           <div className="min-w-[200px]">
-            <label className="block text-sm text-slate-400 mb-1">Кабинет</label>
+            <label className="block text-sm text-zinc-400 mb-1">Кабинет</label>
             <select
               value={selectedAccount}
               onChange={(e) => handleAccountChange(e.target.value)}
@@ -247,12 +247,12 @@ export function Statistics() {
       {/* Disabled Banners Table */}
       <Card title="Отключённые объявления" icon={TrendingDown}>
         {isLoading ? (
-          <div className="text-center py-8 text-slate-400">
+          <div className="text-center py-8 text-zinc-400">
             <RefreshCw className="w-12 h-12 mx-auto mb-3 animate-spin opacity-50" />
             <p>Загрузка данных...</p>
           </div>
         ) : !disabledData || sortedBanners.length === 0 ? (
-          <div className="text-center py-8 text-slate-400">
+          <div className="text-center py-8 text-zinc-400">
             <AlertCircle className="w-12 h-12 mx-auto mb-3 opacity-50" />
             <p>Нет данных об отключённых объявлениях.</p>
           </div>
@@ -265,7 +265,7 @@ export function Statistics() {
                 <button
                   onClick={() => handleSort('created_at')}
                   className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition-colors ${
-                    sortField === 'created_at' ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                    sortField === 'created_at' ? 'bg-blue-600 text-white' : 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600'
                   }`}
                 >
                   Дата <SortIcon field="created_at" />
@@ -273,7 +273,7 @@ export function Statistics() {
                 <button
                   onClick={() => handleSort('spend')}
                   className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition-colors ${
-                    sortField === 'spend' ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                    sortField === 'spend' ? 'bg-blue-600 text-white' : 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600'
                   }`}
                 >
                   Траты <SortIcon field="spend" />
@@ -281,7 +281,7 @@ export function Statistics() {
                 <button
                   onClick={() => handleSort('clicks')}
                   className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition-colors ${
-                    sortField === 'clicks' ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                    sortField === 'clicks' ? 'bg-blue-600 text-white' : 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600'
                   }`}
                 >
                   Клики <SortIcon field="clicks" />
@@ -292,11 +292,11 @@ export function Statistics() {
               {sortedBanners.map((banner: any) => (
                 <div
                   key={banner.id}
-                  className="bg-slate-700/30 rounded-lg p-3 border border-slate-700/50 space-y-2"
+                  className="bg-zinc-700/30 rounded-lg p-3 border border-zinc-700/50 space-y-2"
                 >
                   {/* Top row: Date and Spend */}
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-slate-400">{formatDate(banner.created_at)}</span>
+                    <span className="text-xs text-zinc-400">{formatDate(banner.created_at)}</span>
                     <span className="text-orange-400 font-semibold">{formatMoney(banner.spend)}</span>
                   </div>
 
@@ -305,7 +305,7 @@ export function Statistics() {
                     <div className="min-w-0">
                       <span className="text-white font-mono text-sm">ID: {banner.banner_id}</span>
                     </div>
-                    <span className="text-xs text-slate-300 truncate max-w-[120px]">{banner.account_name || '-'}</span>
+                    <span className="text-xs text-zinc-300 truncate max-w-[120px]">{banner.account_name || '-'}</span>
                   </div>
 
                   {/* Stats row */}
@@ -325,7 +325,7 @@ export function Statistics() {
 
                   {/* Reason (if exists) */}
                   {banner.reason && (
-                    <p className="text-xs text-slate-400 line-clamp-1" title={banner.reason}>
+                    <p className="text-xs text-zinc-400 line-clamp-1" title={banner.reason}>
                       {banner.reason}
                     </p>
                   )}
@@ -337,7 +337,7 @@ export function Statistics() {
             <div className="hidden lg:block overflow-x-auto">
               <table className="w-full">
                 <thead>
-                  <tr className="text-left text-sm text-slate-400 border-b border-slate-700">
+                  <tr className="text-left text-sm text-zinc-400 border-b border-zinc-700">
                     <th className="pb-3 pr-4">
                       <button
                         onClick={() => handleSort('created_at')}
@@ -410,22 +410,22 @@ export function Statistics() {
                   {sortedBanners.map((banner: any) => (
                     <tr
                       key={banner.id}
-                      className="border-b border-slate-700/50 hover:bg-slate-700/30 transition-colors"
+                      className="border-b border-zinc-700/50 hover:bg-zinc-700/30 transition-colors"
                     >
                       <td className="py-3 pr-4 whitespace-nowrap">
-                        <span className="text-sm text-slate-300">{formatDate(banner.created_at)}</span>
+                        <span className="text-sm text-zinc-300">{formatDate(banner.created_at)}</span>
                       </td>
                       <td className="py-3 pr-4 whitespace-nowrap">
                         <span className="text-white font-mono">{banner.banner_id}</span>
                       </td>
                       <td className="py-3 pr-4">
-                        <span className="text-sm text-slate-300">{banner.banner_name || 'Unknown'}</span>
+                        <span className="text-sm text-zinc-300">{banner.banner_name || 'Unknown'}</span>
                       </td>
                       <td className="py-3 pr-4 whitespace-nowrap">
-                        <span className="text-sm text-slate-300">{banner.account_name || '-'}</span>
+                        <span className="text-sm text-zinc-300">{banner.account_name || '-'}</span>
                       </td>
                       <td className="py-3 pr-4 max-w-xs">
-                        <span className="text-xs text-slate-400 line-clamp-2" title={banner.reason || 'Не указано'}>
+                        <span className="text-xs text-zinc-400 line-clamp-2" title={banner.reason || 'Не указано'}>
                           {banner.reason || '-'}
                         </span>
                       </td>
@@ -444,7 +444,7 @@ export function Statistics() {
                         </span>
                       </td>
                       <td className="py-3 text-right whitespace-nowrap">
-                        <span className={banner.conversions > 0 ? 'text-green-400' : 'text-slate-400'}>
+                        <span className={banner.conversions > 0 ? 'text-green-400' : 'text-zinc-400'}>
                           {banner.conversions}
                         </span>
                       </td>
@@ -458,7 +458,7 @@ export function Statistics() {
         
         {/* Pagination */}
         {disabledData && disabledData.total_pages > 1 && (
-          <div className="mt-4 pt-4 border-t border-slate-700">
+          <div className="mt-4 pt-4 border-t border-zinc-700">
             <Pagination
               currentPage={currentPage}
               totalPages={disabledData.total_pages}

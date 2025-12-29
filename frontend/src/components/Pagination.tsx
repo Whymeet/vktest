@@ -52,7 +52,7 @@ export function Pagination({ currentPage, totalPages, totalItems, pageSize, onPa
 
   if (totalPages <= 1) {
     return (
-      <div className="text-sm text-slate-400">
+      <div className="text-sm text-zinc-400">
         Всего: {totalItems} записей
       </div>
     );
@@ -60,7 +60,7 @@ export function Pagination({ currentPage, totalPages, totalItems, pageSize, onPa
 
   return (
     <div className="flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-4">
-      <div className="text-xs sm:text-sm text-slate-400">
+      <div className="text-xs sm:text-sm text-zinc-400">
         Показано {startItem}–{endItem} из {totalItems}
       </div>
 
@@ -69,7 +69,7 @@ export function Pagination({ currentPage, totalPages, totalItems, pageSize, onPa
         <button
           onClick={() => onPageChange(1)}
           disabled={currentPage === 1}
-          className="p-1.5 sm:p-1.5 rounded hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-slate-400 hover:text-white"
+          className="p-1.5 sm:p-1.5 rounded hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed text-zinc-400 hover:text-white"
           title="Первая страница"
         >
           <ChevronsLeft className="w-5 h-5 sm:w-4 sm:h-4" />
@@ -79,7 +79,7 @@ export function Pagination({ currentPage, totalPages, totalItems, pageSize, onPa
         <button
           onClick={() => onPageChange(currentPage - 1)}
           disabled={currentPage === 1}
-          className="p-1.5 sm:p-1.5 rounded hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-slate-400 hover:text-white"
+          className="p-1.5 sm:p-1.5 rounded hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed text-zinc-400 hover:text-white"
           title="Предыдущая страница"
         >
           <ChevronLeft className="w-5 h-5 sm:w-4 sm:h-4" />
@@ -100,13 +100,13 @@ export function Pagination({ currentPage, totalPages, totalItems, pageSize, onPa
                 className={`min-w-[32px] h-8 px-2 rounded text-sm font-medium transition-colors ${
                   page === currentPage
                     ? 'bg-blue-600 text-white'
-                    : 'hover:bg-slate-700 text-slate-400 hover:text-white'
+                    : 'hover:bg-zinc-700 text-zinc-400 hover:text-white'
                 }`}
               >
                 {page}
               </button>
             ) : (
-              <span key={index} className="px-1 text-slate-500">...</span>
+              <span key={index} className="px-1 text-zinc-500">...</span>
             )
           ))}
         </div>
@@ -115,7 +115,7 @@ export function Pagination({ currentPage, totalPages, totalItems, pageSize, onPa
         <button
           onClick={() => onPageChange(currentPage + 1)}
           disabled={currentPage === totalPages}
-          className="p-1.5 sm:p-1.5 rounded hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-slate-400 hover:text-white"
+          className="p-1.5 sm:p-1.5 rounded hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed text-zinc-400 hover:text-white"
           title="Следующая страница"
         >
           <ChevronRight className="w-5 h-5 sm:w-4 sm:h-4" />
@@ -125,7 +125,7 @@ export function Pagination({ currentPage, totalPages, totalItems, pageSize, onPa
         <button
           onClick={() => onPageChange(totalPages)}
           disabled={currentPage === totalPages}
-          className="p-1.5 sm:p-1.5 rounded hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-slate-400 hover:text-white"
+          className="p-1.5 sm:p-1.5 rounded hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed text-zinc-400 hover:text-white"
           title="Последняя страница"
         >
           <ChevronsRight className="w-5 h-5 sm:w-4 sm:h-4" />

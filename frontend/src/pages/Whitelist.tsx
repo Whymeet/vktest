@@ -115,7 +115,7 @@ export function Whitelist() {
       <div className="flex flex-col gap-3">
         <div>
           <h1 className="text-xl lg:text-2xl font-bold text-white">Whitelist</h1>
-          <p className="text-slate-400 text-sm mt-1 hidden sm:block">
+          <p className="text-zinc-400 text-sm mt-1 hidden sm:block">
             Объявления, защищённые от автоматического отключения
           </p>
         </div>
@@ -145,9 +145,9 @@ export function Whitelist() {
       <Card>
         <div className="flex items-start gap-2 sm:gap-3">
           <Shield className="w-4 h-4 sm:w-5 sm:h-5 text-blue-400 flex-shrink-0 mt-0.5" />
-          <div className="text-xs sm:text-sm text-slate-300">
+          <div className="text-xs sm:text-sm text-zinc-300">
             <p className="font-medium text-blue-400 mb-1">Что такое Whitelist?</p>
-            <p className="text-slate-400">
+            <p className="text-zinc-400">
               Объявления в белом списке никогда не будут отключены автоматически,
               даже если они превысят лимит расходов без конверсий.
               Используйте для важных объявлений, которые нужно сохранить.
@@ -159,8 +159,8 @@ export function Whitelist() {
       {/* Stats & Search */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2 sm:gap-4">
-          <div className="px-3 sm:px-4 py-2 bg-slate-800 rounded-lg border border-slate-700">
-            <span className="text-slate-400 text-xs sm:text-sm">Всего в whitelist:</span>
+          <div className="px-3 sm:px-4 py-2 bg-zinc-800 rounded-lg border border-zinc-700">
+            <span className="text-zinc-400 text-xs sm:text-sm">Всего в whitelist:</span>
             <span className="text-white font-semibold ml-2">{bannerIds.length}</span>
           </div>
           <button onClick={handleCopyAll} className="btn btn-secondary text-sm flex-1 sm:flex-none" disabled={bannerIds.length === 0}>
@@ -178,7 +178,7 @@ export function Whitelist() {
           </button>
         </div>
         <div className="relative w-full sm:flex-1 sm:max-w-xs">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
           <input
             type="text"
             value={searchTerm}
@@ -196,12 +196,12 @@ export function Whitelist() {
             {filteredIds.map((id: number) => (
               <div
                 key={id}
-                className="flex items-center justify-between px-2 sm:px-3 py-2 bg-slate-700/50 rounded-lg group hover:bg-slate-700"
+                className="flex items-center justify-between px-2 sm:px-3 py-2 bg-zinc-700/50 rounded-lg group hover:bg-zinc-700"
               >
-                <code className="text-slate-300 text-xs sm:text-sm">{id}</code>
+                <code className="text-zinc-300 text-xs sm:text-sm">{id}</code>
                 <button
                   onClick={() => setDeleteConfirm(id)}
-                  className="opacity-100 sm:opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-900/50 text-slate-400 hover:text-red-400 transition-all"
+                  className="opacity-100 sm:opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-900/50 text-zinc-400 hover:text-red-400 transition-all"
                   title="Удалить"
                 >
                   <Trash2 className="w-3 h-3 sm:w-4 sm:h-4" />
@@ -210,7 +210,7 @@ export function Whitelist() {
             ))}
           </div>
         ) : bannerIds.length === 0 ? (
-          <div className="text-center py-12 text-slate-400">
+          <div className="text-center py-12 text-zinc-400">
             <Shield className="w-10 h-10 sm:w-12 sm:h-12 mx-auto mb-4 opacity-50" />
             <p className="text-sm sm:text-base">Whitelist пуст</p>
             <button onClick={() => setIsAddModalOpen(true)} className="btn btn-primary mt-4 text-sm">
@@ -219,7 +219,7 @@ export function Whitelist() {
             </button>
           </div>
         ) : (
-          <div className="text-center py-12 text-slate-400">
+          <div className="text-center py-12 text-zinc-400">
             <AlertCircle className="w-10 h-10 sm:w-12 sm:h-12 mx-auto mb-4 opacity-50" />
             <p className="text-sm sm:text-base">Ничего не найдено по запросу "{searchTerm}"</p>
           </div>
@@ -368,8 +368,8 @@ export function Whitelist() {
         onClose={() => setDeleteConfirm(null)}
         title="Удалить из Whitelist?"
       >
-        <p className="text-sm text-slate-300 mb-6">
-          Удалить баннер <code className="text-white bg-slate-700 px-2 py-1 rounded text-xs sm:text-sm">{deleteConfirm}</code> из whitelist?
+        <p className="text-sm text-zinc-300 mb-6">
+          Удалить баннер <code className="text-white bg-zinc-700 px-2 py-1 rounded text-xs sm:text-sm">{deleteConfirm}</code> из whitelist?
         </p>
         <div className="flex flex-col sm:flex-row gap-3">
           <button

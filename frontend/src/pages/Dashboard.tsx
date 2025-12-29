@@ -47,7 +47,7 @@ export function Dashboard() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">Dashboard</h1>
-          <p className="text-slate-400 mt-1">Обзор системы VK Ads Manager</p>
+          <p className="text-zinc-400 mt-1">Обзор системы VK Ads Manager</p>
         </div>
         <button onClick={() => refetch()} className="btn btn-secondary">
           <RefreshCw className="w-4 h-4" />
@@ -89,8 +89,8 @@ export function Dashboard() {
           <Activity className="w-5 h-5 text-blue-400" />
           <h3 className="text-lg font-semibold text-white">Статус планировщика</h3>
         </div>
-        <div className="flex items-center justify-between p-4 bg-slate-700/50 rounded-lg">
-          <span className="text-slate-300">Планировщик</span>
+        <div className="flex items-center justify-between p-4 bg-zinc-700/50 rounded-lg">
+          <span className="text-zinc-300">Планировщик</span>
           <StatusBadge running={status?.scheduler?.running || false} />
         </div>
       </div>
@@ -122,7 +122,7 @@ export function Dashboard() {
       {dashboard?.last_analysis && Object.keys(dashboard.last_analysis).length > 0 && (
         <div className="card">
           <h3 className="text-lg font-semibold text-white mb-4">Последний анализ</h3>
-          <pre className="bg-slate-900 p-4 rounded-lg text-sm text-slate-300 overflow-auto max-h-64">
+          <pre className="bg-zinc-900 p-4 rounded-lg text-sm text-zinc-300 overflow-auto max-h-64">
             {JSON.stringify(dashboard.last_analysis, null, 2)}
           </pre>
         </div>

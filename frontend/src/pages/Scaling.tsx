@@ -94,7 +94,7 @@ function ConditionEditor({
   return (
     <div className="space-y-3">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-        <label className="text-sm font-medium text-slate-300">
+        <label className="text-sm font-medium text-zinc-300">
           Условия (все должны выполняться - AND)
         </label>
         <button
@@ -108,7 +108,7 @@ function ConditionEditor({
       </div>
 
       {conditions.length === 0 ? (
-        <p className="text-xs text-slate-500 italic">
+        <p className="text-xs text-zinc-500 italic">
           Добавьте условие для автомасштабирования
         </p>
       ) : (
@@ -116,12 +116,12 @@ function ConditionEditor({
           {conditions.map((condition, index) => (
             <div
               key={index}
-              className="flex items-center gap-1.5 p-1.5 bg-slate-800 rounded border border-slate-700"
+              className="flex items-center gap-1.5 p-1.5 bg-zinc-800 rounded border border-zinc-700"
             >
               <select
                 value={condition.metric}
                 onChange={(e) => updateCondition(index, 'metric', e.target.value)}
-                className="flex-1 min-w-0 px-2 py-1 bg-slate-700 border border-slate-600 rounded text-white text-xs"
+                className="flex-1 min-w-0 px-2 py-1 bg-zinc-700 border border-zinc-600 rounded text-white text-xs"
               >
                 {metrics.map((m) => (
                   <option key={m.value} value={m.value}>
@@ -133,7 +133,7 @@ function ConditionEditor({
               <select
                 value={condition.operator}
                 onChange={(e) => updateCondition(index, 'operator', e.target.value)}
-                className="w-14 px-1 py-1 bg-slate-700 border border-slate-600 rounded text-white text-xs text-center"
+                className="w-14 px-1 py-1 bg-zinc-700 border border-zinc-600 rounded text-white text-xs text-center"
               >
                 {operators.map((op) => (
                   <option key={op.value} value={op.value}>
@@ -146,7 +146,7 @@ function ConditionEditor({
                 type="number"
                 value={condition.value}
                 onChange={(e) => updateCondition(index, 'value', parseFloat(e.target.value) || 0)}
-                className="w-20 px-2 py-1 bg-slate-700 border border-slate-600 rounded text-white text-xs"
+                className="w-20 px-2 py-1 bg-zinc-700 border border-zinc-600 rounded text-white text-xs"
                 step="any"
               />
 
@@ -163,7 +163,7 @@ function ConditionEditor({
       )}
 
       {conditions.length > 0 && (
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-zinc-500">
           Объявление считается позитивным если ВСЕ условия выполнены. Группа дублируется если есть хотя бы 1 позитивное объявление.
         </p>
       )}
@@ -291,18 +291,18 @@ function ConfigFormModal({
         {/* Название и время в одну строку */}
         <div className="grid grid-cols-3 gap-2">
           <div className="col-span-2">
-            <label className="block text-xs font-medium text-slate-400 mb-1">Название</label>
+            <label className="block text-xs font-medium text-zinc-400 mb-1">Название</label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full px-2 py-1.5 bg-slate-700 border border-slate-600 rounded text-white text-sm"
+              className="w-full px-2 py-1.5 bg-zinc-700 border border-zinc-600 rounded text-white text-sm"
               placeholder="Название конфигурации"
               required
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-400 mb-1">
+            <label className="block text-xs font-medium text-zinc-400 mb-1">
               <Clock className="w-3 h-3 inline mr-0.5" />
               Время
             </label>
@@ -310,7 +310,7 @@ function ConfigFormModal({
               type="time"
               value={scheduleTime}
               onChange={(e) => setScheduleTime(e.target.value)}
-              className="w-full px-2 py-1.5 bg-slate-700 border border-slate-600 rounded text-white text-sm"
+              className="w-full px-2 py-1.5 bg-zinc-700 border border-zinc-600 rounded text-white text-sm"
             />
           </div>
         </div>
@@ -318,35 +318,35 @@ function ConfigFormModal({
         {/* Период, бюджет, дубли в одну строку */}
         <div className="grid grid-cols-3 gap-2">
           <div>
-            <label className="block text-xs font-medium text-slate-400 mb-1">Период (дн)</label>
+            <label className="block text-xs font-medium text-zinc-400 mb-1">Период (дн)</label>
             <input
               type="number"
               value={lookbackDays}
               onChange={(e) => setLookbackDays(parseInt(e.target.value) || 7)}
-              className="w-full px-2 py-1.5 bg-slate-700 border border-slate-600 rounded text-white text-sm"
+              className="w-full px-2 py-1.5 bg-zinc-700 border border-zinc-600 rounded text-white text-sm"
               min="1"
               max="90"
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-400 mb-1">Бюджет (₽)</label>
+            <label className="block text-xs font-medium text-zinc-400 mb-1">Бюджет (₽)</label>
             <input
               type="number"
               value={newBudget}
               onChange={(e) => setNewBudget(e.target.value)}
-              className="w-full px-2 py-1.5 bg-slate-700 border border-slate-600 rounded text-white text-sm"
+              className="w-full px-2 py-1.5 bg-zinc-700 border border-zinc-600 rounded text-white text-sm"
               placeholder="—"
               min="0"
               step="0.01"
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-400 mb-1">Дублей</label>
+            <label className="block text-xs font-medium text-zinc-400 mb-1">Дублей</label>
             <input
               type="number"
               value={duplicatesCount}
               onChange={(e) => setDuplicatesCount(Math.max(1, Math.min(100, parseInt(e.target.value) || 1)))}
-              className="w-full px-2 py-1.5 bg-slate-700 border border-slate-600 rounded text-white text-sm"
+              className="w-full px-2 py-1.5 bg-zinc-700 border border-zinc-600 rounded text-white text-sm"
               min="1"
               max="100"
             />
@@ -356,43 +356,43 @@ function ConfigFormModal({
         {/* Кабинеты - компактный список */}
         <div>
           <div className="flex items-center justify-between mb-1">
-            <label className="text-xs font-medium text-slate-400">Кабинеты</label>
+            <label className="text-xs font-medium text-zinc-400">Кабинеты</label>
             <div className="flex gap-1.5 text-xs">
               <button type="button" onClick={selectAllAccounts} className="text-blue-400 hover:text-blue-300">Все</button>
-              <span className="text-slate-600">|</span>
-              <button type="button" onClick={clearAllAccounts} className="text-slate-400 hover:text-slate-300">Очистить</button>
+              <span className="text-zinc-600">|</span>
+              <button type="button" onClick={clearAllAccounts} className="text-zinc-400 hover:text-zinc-300">Очистить</button>
             </div>
           </div>
-          <div className="max-h-24 overflow-y-auto bg-slate-800 border border-slate-700 rounded p-1.5 space-y-0.5">
+          <div className="max-h-24 overflow-y-auto bg-zinc-800 border border-zinc-700 rounded p-1.5 space-y-0.5">
             {accounts.length === 0 ? (
-              <p className="text-xs text-slate-500 italic">Нет кабинетов</p>
+              <p className="text-xs text-zinc-500 italic">Нет кабинетов</p>
             ) : (
               accounts.map((acc) => (
-                <label key={acc.id} className="flex items-center gap-1.5 px-1.5 py-1 rounded hover:bg-slate-700 cursor-pointer">
+                <label key={acc.id} className="flex items-center gap-1.5 px-1.5 py-1 rounded hover:bg-zinc-700 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={accountIds.includes(acc.id!)}
                     onChange={() => toggleAccount(acc.id!)}
-                    className="w-3.5 h-3.5 rounded border-slate-600 bg-slate-700 text-blue-600"
+                    className="w-3.5 h-3.5 rounded border-zinc-600 bg-zinc-700 text-blue-600"
                   />
                   <span className="text-xs text-white truncate">{acc.name}</span>
                 </label>
               ))
             )}
           </div>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <p className="text-xs text-zinc-500 mt-0.5">
             {accountIds.length === 0 ? 'Ко всем' : `${accountIds.length}/${accounts.length}`}
           </p>
         </div>
 
         {/* Новое название - опционально */}
         <div>
-          <label className="block text-xs font-medium text-slate-400 mb-1">Новое название (опционально)</label>
+          <label className="block text-xs font-medium text-zinc-400 mb-1">Новое название (опционально)</label>
           <input
             type="text"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            className="w-full px-2 py-1.5 bg-slate-700 border border-slate-600 rounded text-white text-sm"
+            className="w-full px-2 py-1.5 bg-zinc-700 border border-zinc-600 rounded text-white text-sm"
             placeholder="Пусто = как в оригинале"
           />
         </div>
@@ -405,32 +405,32 @@ function ConfigFormModal({
         />
 
         {/* Banner-level Scaling Settings - компактно */}
-        <div className="p-2.5 bg-slate-800/50 rounded border border-slate-700 space-y-2">
-          <h4 className="text-xs font-medium text-slate-400">Настройки объявлений</h4>
+        <div className="p-2.5 bg-zinc-800/50 rounded border border-zinc-700 space-y-2">
+          <h4 className="text-xs font-medium text-zinc-400">Настройки объявлений</h4>
 
           <div className="flex items-center gap-2">
             <Toggle checked={activatePositiveBanners} onChange={setActivatePositiveBanners} />
-            <span className="text-xs text-slate-300">Активировать позитивные + группу</span>
+            <span className="text-xs text-zinc-300">Активировать позитивные + группу</span>
           </div>
 
           <div className="flex items-center gap-2">
             <Toggle checked={duplicateNegativeBanners} onChange={setDuplicateNegativeBanners} />
-            <span className="text-xs text-slate-300">Дублировать негативные</span>
+            <span className="text-xs text-zinc-300">Дублировать негативные</span>
           </div>
 
           {duplicateNegativeBanners && (
-            <div className="flex items-center gap-2 ml-5 pl-2 border-l border-slate-700">
+            <div className="flex items-center gap-2 ml-5 pl-2 border-l border-zinc-700">
               <Toggle checked={activateNegativeBanners} onChange={setActivateNegativeBanners} />
-              <span className="text-xs text-slate-300">Активировать негативные</span>
+              <span className="text-xs text-zinc-300">Активировать негативные</span>
             </div>
           )}
         </div>
 
-        <div className="flex justify-end gap-2 pt-3 border-t border-slate-700">
+        <div className="flex justify-end gap-2 pt-3 border-t border-zinc-700">
           <button
             type="button"
             onClick={onClose}
-            className="px-3 py-1.5 text-slate-400 hover:text-white transition-colors text-sm"
+            className="px-3 py-1.5 text-zinc-400 hover:text-white transition-colors text-sm"
           >
             Отмена
           </button>
@@ -524,14 +524,14 @@ function ManualDuplicateModal({
       <div className="space-y-4">
         {/* Account Selection */}
         <div>
-          <label className="block text-sm font-medium text-slate-300 mb-1">Выберите кабинет</label>
+          <label className="block text-sm font-medium text-zinc-300 mb-1">Выберите кабинет</label>
           <select
             value={selectedAccountId ?? ''}
             onChange={(e) => {
               setSelectedAccountId(e.target.value ? parseInt(e.target.value) : null);
               resetForm();
             }}
-            className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm sm:text-base"
+            className="w-full px-3 py-2 bg-zinc-700 border border-zinc-600 rounded text-white text-sm sm:text-base"
             disabled={duplicateMutation.isPending || taskStarted}
           >
             <option value="">-- Выберите кабинет --</option>
@@ -547,19 +547,19 @@ function ManualDuplicateModal({
           <>
             {/* Group IDs Input */}
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1">
+              <label className="block text-sm font-medium text-zinc-300 mb-1">
                 ID групп (через запятую или пробел)
               </label>
               <textarea
                 value={groupIdsInput}
                 onChange={(e) => setGroupIdsInput(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm resize-none"
+                className="w-full px-3 py-2 bg-zinc-700 border border-zinc-600 rounded text-white text-sm resize-none"
                 placeholder="12345, 67890, 11111"
                 rows={2}
                 disabled={duplicateMutation.isPending || taskStarted}
               />
               {groupIds.length > 0 && (
-                <p className="text-xs text-slate-400 mt-1">
+                <p className="text-xs text-zinc-400 mt-1">
                   Найдено: {groupIds.length} ID
                 </p>
               )}
@@ -568,14 +568,14 @@ function ManualDuplicateModal({
             {/* Duplicates Count & Budget */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1">
+                <label className="block text-sm font-medium text-zinc-300 mb-1">
                   Кол-во дублей
                 </label>
                 <input
                   type="number"
                   value={duplicatesCount}
                   onChange={(e) => setDuplicatesCount(Math.max(1, Math.min(100, parseInt(e.target.value) || 1)))}
-                  className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm sm:text-base"
+                  className="w-full px-3 py-2 bg-zinc-700 border border-zinc-600 rounded text-white text-sm sm:text-base"
                   min="1"
                   max="100"
                   disabled={duplicateMutation.isPending || taskStarted}
@@ -583,14 +583,14 @@ function ManualDuplicateModal({
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1">
+                <label className="block text-sm font-medium text-zinc-300 mb-1">
                   Бюджет (₽)
                 </label>
                 <input
                   type="number"
                   value={newBudget}
                   onChange={(e) => setNewBudget(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm sm:text-base"
+                  className="w-full px-3 py-2 bg-zinc-700 border border-zinc-600 rounded text-white text-sm sm:text-base"
                   placeholder="Как в оригинале"
                   min="0"
                   step="0.01"
@@ -600,14 +600,14 @@ function ManualDuplicateModal({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1">
+              <label className="block text-sm font-medium text-zinc-300 mb-1">
                 Новое название
               </label>
               <input
                 type="text"
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm sm:text-base"
+                className="w-full px-3 py-2 bg-zinc-700 border border-zinc-600 rounded text-white text-sm sm:text-base"
                 placeholder="Пусто = оригинальное"
                 disabled={duplicateMutation.isPending || taskStarted}
               />
@@ -615,16 +615,16 @@ function ManualDuplicateModal({
 
             <div className="flex items-center gap-2">
               <Toggle checked={autoActivate} onChange={setAutoActivate} disabled={duplicateMutation.isPending || taskStarted} />
-              <span className="text-sm text-slate-300">Авто-активация</span>
+              <span className="text-sm text-zinc-300">Авто-активация</span>
             </div>
 
             {/* Summary */}
             {groupIds.length > 0 && (
-              <div className="p-3 bg-slate-800 rounded-lg border border-slate-700 space-y-2">
-                <p className="text-sm text-slate-300">
+              <div className="p-3 bg-zinc-800 rounded-lg border border-zinc-700 space-y-2">
+                <p className="text-sm text-zinc-300">
                   Будет создано: <span className="text-white font-medium">{totalOperations}</span> копий
                   {groupIds.length > 1 && (
-                    <span className="text-slate-400 text-xs sm:text-sm"> ({groupIds.length} × {duplicatesCount})</span>
+                    <span className="text-zinc-400 text-xs sm:text-sm"> ({groupIds.length} × {duplicatesCount})</span>
                   )}
                 </p>
 
@@ -653,7 +653,7 @@ function ManualDuplicateModal({
               <CheckCircle className="w-5 h-5 text-green-400" />
               <span className="text-green-400 font-medium text-sm sm:text-base">Задача запущена!</span>
             </div>
-            <p className="text-xs sm:text-sm text-slate-300">
+            <p className="text-xs sm:text-sm text-zinc-300">
               Дублирование выполняется в фоне. Следите за прогрессом выше.
             </p>
           </div>
@@ -670,11 +670,11 @@ function ManualDuplicateModal({
         )}
 
         {/* Actions */}
-        <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 pt-4 border-t border-slate-700">
+        <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 pt-4 border-t border-zinc-700">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-slate-400 hover:text-white transition-colors text-sm sm:text-base"
+            className="px-4 py-2 text-zinc-400 hover:text-white transition-colors text-sm sm:text-base"
           >
             {taskStarted ? 'Закрыть' : 'Отмена'}
           </button>
@@ -682,7 +682,7 @@ function ManualDuplicateModal({
             <button
               onClick={handleDuplicate}
               disabled={!selectedAccountId || groupIds.length === 0 || duplicateMutation.isPending}
-              className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 disabled:text-slate-500 rounded text-white transition-colors text-sm sm:text-base"
+              className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-zinc-700 disabled:text-zinc-500 rounded text-white transition-colors text-sm sm:text-base"
             >
               {duplicateMutation.isPending ? (
                 <RefreshCw className="w-4 h-4 animate-spin" />
@@ -839,14 +839,14 @@ export function Scaling() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-white">Масштабирование</h1>
-          <p className="text-slate-400 text-sm sm:text-base mt-1">
+          <p className="text-zinc-400 text-sm sm:text-base mt-1">
             Автоматическое и ручное дублирование рекламных групп
           </p>
         </div>
         <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
           <button
             onClick={() => setDuplicateModalOpen(true)}
-            className="flex items-center justify-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded text-white transition-colors text-sm sm:text-base"
+            className="flex items-center justify-center gap-2 px-4 py-2 bg-zinc-700 hover:bg-zinc-600 rounded text-white transition-colors text-sm sm:text-base"
           >
             <Copy className="w-4 h-4" />
             <span className="sm:inline">Ручное дублирование</span>
@@ -880,9 +880,9 @@ export function Scaling() {
           </div>
         ) : configs.length === 0 ? (
           <div className="text-center py-8">
-            <Target className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-            <p className="text-slate-400">Нет конфигураций</p>
-            <p className="text-sm text-slate-500 mt-1">
+            <Target className="w-12 h-12 text-zinc-600 mx-auto mb-3" />
+            <p className="text-zinc-400">Нет конфигураций</p>
+            <p className="text-sm text-zinc-500 mt-1">
               Создайте первую конфигурацию для автоматического масштабирования
             </p>
           </div>
@@ -891,10 +891,10 @@ export function Scaling() {
             {configs.map((config: any) => (
               <div
                 key={config.id}
-                className="border border-slate-700 rounded-lg overflow-hidden"
+                className="border border-zinc-700 rounded-lg overflow-hidden"
               >
                 {/* Config Header */}
-                <div className="p-3 sm:p-4 bg-slate-800/50">
+                <div className="p-3 sm:p-4 bg-zinc-800/50">
                   {/* Mobile: Stack layout, Desktop: Flex row */}
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                     {/* Left side: Toggle + Info */}
@@ -909,7 +909,7 @@ export function Scaling() {
                       <div className="flex-1 min-w-0">
                         <h3 className="font-medium text-white text-sm sm:text-base truncate">{config.name}</h3>
                         {/* Mobile: Wrap, Desktop: Inline */}
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs sm:text-sm text-slate-400 mt-1">
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs sm:text-sm text-zinc-400 mt-1">
                           <span className="flex items-center gap-1">
                             <Clock className="w-3 h-3" />
                             {config.schedule_time}
@@ -930,7 +930,7 @@ export function Scaling() {
                         </div>
                         {/* Last run - показываем только на десктопе или отдельной строкой на мобильных */}
                         {config.last_run_at && (
-                          <p className="text-xs text-slate-500 mt-1 hidden sm:block">
+                          <p className="text-xs text-zinc-500 mt-1 hidden sm:block">
                             Последний запуск: {new Date(config.last_run_at).toLocaleString('ru')}
                           </p>
                         )}
@@ -956,7 +956,7 @@ export function Scaling() {
                           setEditingConfig(config);
                           setConfigModalOpen(true);
                         }}
-                        className="p-2 text-slate-400 hover:text-white hover:bg-slate-700 rounded transition-colors"
+                        className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-700 rounded transition-colors"
                         title="Редактировать"
                       >
                         <Settings className="w-4 h-4" />
@@ -972,7 +972,7 @@ export function Scaling() {
                         onClick={() =>
                           setExpandedConfigId(expandedConfigId === config.id ? null : config.id)
                         }
-                        className="p-2 text-slate-400 hover:text-white hover:bg-slate-700 rounded transition-colors"
+                        className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-700 rounded transition-colors"
                       >
                         {expandedConfigId === config.id ? (
                           <ChevronUp className="w-4 h-4" />
@@ -986,10 +986,10 @@ export function Scaling() {
 
                 {/* Expanded Details */}
                 {expandedConfigId === config.id && (
-                  <div className="p-4 border-t border-slate-700 bg-slate-900/50 space-y-4">
+                  <div className="p-4 border-t border-zinc-700 bg-zinc-900/50 space-y-4">
                     {/* Accounts */}
                     <div>
-                      <h4 className="text-sm font-medium text-slate-300 mb-2">Кабинеты:</h4>
+                      <h4 className="text-sm font-medium text-zinc-300 mb-2">Кабинеты:</h4>
                       {(!config.account_ids || config.account_ids.length === 0) ? (
                         <p className="text-sm text-blue-400">Все кабинеты</p>
                       ) : (
@@ -999,7 +999,7 @@ export function Scaling() {
                             return (
                               <span
                                 key={accId}
-                                className="px-3 py-1 bg-slate-800 rounded-full text-sm text-slate-300"
+                                className="px-3 py-1 bg-zinc-800 rounded-full text-sm text-zinc-300"
                               >
                                 {account?.name || `ID: ${accId}`}
                               </span>
@@ -1011,15 +1011,15 @@ export function Scaling() {
                     
                     {/* Conditions */}
                     <div>
-                      <h4 className="text-sm font-medium text-slate-300 mb-2">Условия:</h4>
+                      <h4 className="text-sm font-medium text-zinc-300 mb-2">Условия:</h4>
                       {config.conditions.length === 0 ? (
-                        <p className="text-sm text-slate-500 italic">Нет условий</p>
+                        <p className="text-sm text-zinc-500 italic">Нет условий</p>
                       ) : (
                         <div className="flex flex-wrap gap-2">
                           {config.conditions.map((condition: any, idx: number) => (
                             <span
                               key={idx}
-                              className="px-3 py-1 bg-slate-800 rounded-full text-sm text-slate-300"
+                              className="px-3 py-1 bg-zinc-800 rounded-full text-sm text-zinc-300"
                             >
                               {formatCondition(condition)}
                             </span>
@@ -1047,29 +1047,29 @@ export function Scaling() {
             <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-slate-700">
-                    <th className="px-4 py-3 text-left text-slate-400">Время</th>
-                    <th className="px-4 py-3 text-left text-slate-400">Конфигурация</th>
-                    <th className="px-4 py-3 text-left text-slate-400">Кабинет</th>
-                    <th className="px-4 py-3 text-left text-slate-400">Исходная группа</th>
-                    <th className="px-4 py-3 text-left text-slate-400">Новая группа</th>
-                    <th className="px-4 py-3 text-center text-slate-400">Объявления</th>
-                    <th className="px-4 py-3 text-center text-slate-400">Статус</th>
+                  <tr className="border-b border-zinc-700">
+                    <th className="px-4 py-3 text-left text-zinc-400">Время</th>
+                    <th className="px-4 py-3 text-left text-zinc-400">Конфигурация</th>
+                    <th className="px-4 py-3 text-left text-zinc-400">Кабинет</th>
+                    <th className="px-4 py-3 text-left text-zinc-400">Исходная группа</th>
+                    <th className="px-4 py-3 text-left text-zinc-400">Новая группа</th>
+                    <th className="px-4 py-3 text-center text-zinc-400">Объявления</th>
+                    <th className="px-4 py-3 text-center text-zinc-400">Статус</th>
                   </tr>
                 </thead>
                 <tbody>
                   {logsData.items.map((log: ScalingLog) => (
-                    <tr key={log.id} className="border-b border-slate-800 hover:bg-slate-800/50">
-                      <td className="px-4 py-3 text-slate-300">
+                    <tr key={log.id} className="border-b border-zinc-800 hover:bg-zinc-800/50">
+                      <td className="px-4 py-3 text-zinc-300">
                         {new Date(log.created_at).toLocaleString('ru')}
                       </td>
-                      <td className="px-4 py-3 text-slate-300">{log.config_name || '—'}</td>
-                      <td className="px-4 py-3 text-slate-300">{log.account_name || '—'}</td>
+                      <td className="px-4 py-3 text-zinc-300">{log.config_name || '—'}</td>
+                      <td className="px-4 py-3 text-zinc-300">{log.account_name || '—'}</td>
                       <td className="px-4 py-3">
                         <div>
                           <span className="text-white">{log.original_group_name || 'Без названия'}</span>
                           {log.original_group_id && (
-                            <span className="block text-xs text-slate-400 font-mono">ID: {log.original_group_id}</span>
+                            <span className="block text-xs text-zinc-400 font-mono">ID: {log.original_group_id}</span>
                           )}
                         </div>
                       </td>
@@ -1077,14 +1077,14 @@ export function Scaling() {
                         {log.new_group_id ? (
                           <div>
                             <span className="text-white">{log.new_group_name || 'Без названия'}</span>
-                            <span className="block text-xs text-slate-400 font-mono">ID: {log.new_group_id}</span>
+                            <span className="block text-xs text-zinc-400 font-mono">ID: {log.new_group_id}</span>
                           </div>
                         ) : (
-                          <span className="text-slate-500">—</span>
+                          <span className="text-zinc-500">—</span>
                         )}
                       </td>
                       <td className="px-4 py-3 text-center">
-                        <div className="text-slate-300">
+                        <div className="text-zinc-300">
                           {log.duplicated_banners} / {log.total_banners}
                         </div>
                       </td>
@@ -1106,13 +1106,13 @@ export function Scaling() {
             {/* Mobile Cards */}
             <div className="md:hidden space-y-3">
               {logsData.items.map((log: ScalingLog) => (
-                <div key={log.id} className="p-3 bg-slate-800/50 rounded-lg border border-slate-700">
+                <div key={log.id} className="p-3 bg-zinc-800/50 rounded-lg border border-zinc-700">
                   <div className="flex items-start justify-between gap-2 mb-2">
                     <div className="flex-1 min-w-0">
                       <p className="text-white text-sm font-medium truncate">
                         {log.original_group_name || 'Без названия'}
                       </p>
-                      <p className="text-xs text-slate-400">
+                      <p className="text-xs text-zinc-400">
                         {new Date(log.created_at).toLocaleString('ru')}
                       </p>
                     </div>
@@ -1124,21 +1124,21 @@ export function Scaling() {
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-xs">
                     <div>
-                      <span className="text-slate-500">Конфиг:</span>
-                      <span className="text-slate-300 ml-1">{log.config_name || '—'}</span>
+                      <span className="text-zinc-500">Конфиг:</span>
+                      <span className="text-zinc-300 ml-1">{log.config_name || '—'}</span>
                     </div>
                     <div>
-                      <span className="text-slate-500">Кабинет:</span>
-                      <span className="text-slate-300 ml-1">{log.account_name || '—'}</span>
+                      <span className="text-zinc-500">Кабинет:</span>
+                      <span className="text-zinc-300 ml-1">{log.account_name || '—'}</span>
                     </div>
                     <div>
-                      <span className="text-slate-500">Объявления:</span>
-                      <span className="text-slate-300 ml-1">{log.duplicated_banners}/{log.total_banners}</span>
+                      <span className="text-zinc-500">Объявления:</span>
+                      <span className="text-zinc-300 ml-1">{log.duplicated_banners}/{log.total_banners}</span>
                     </div>
                     {log.new_group_id && (
                       <div>
-                        <span className="text-slate-500">Новый ID:</span>
-                        <span className="text-slate-300 ml-1 font-mono">{log.new_group_id}</span>
+                        <span className="text-zinc-500">Новый ID:</span>
+                        <span className="text-zinc-300 ml-1 font-mono">{log.new_group_id}</span>
                       </div>
                     )}
                   </div>
@@ -1151,9 +1151,9 @@ export function Scaling() {
           </>
         ) : (
           <div className="text-center py-8">
-            <Copy className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-            <p className="text-slate-400">История пуста</p>
-            <p className="text-sm text-slate-500 mt-1">
+            <Copy className="w-12 h-12 text-zinc-600 mx-auto mb-3" />
+            <p className="text-zinc-400">История пуста</p>
+            <p className="text-sm text-zinc-500 mt-1">
               Здесь будет отображаться история дублирований
             </p>
           </div>
