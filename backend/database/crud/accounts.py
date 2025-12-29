@@ -67,7 +67,8 @@ def update_account(
     account_id: int,
     name: Optional[str] = None,
     api_token: Optional[str] = None,
-    client_id: Optional[int] = None
+    client_id: Optional[int] = None,
+    label: Optional[str] = None
 ) -> Optional[Account]:
     """Update account for a user"""
     account = get_account_by_id(db, user_id, account_id)
@@ -80,6 +81,49 @@ def update_account(
         account.api_token = api_token
     if client_id is not None:
         account.client_id = client_id
+    if label is not None:
+        account.label = label if label else None  # Empty string -> None
+
+    account.updated_at = get_moscow_time()
+    db.commit()
+    db.refresh(account)
+    return account
+
+
+def update_account_label(
+    db: Session,
+    user_id: int,
+    account_db_id: int,
+    label: Optional[str]
+) -> Optional[Account]:
+    """Update only the label field of an account by its database ID"""
+    account = get_account_by_db_id(db, user_id, account_db_id)
+    if not account:
+        return None
+
+    account.label = label if label else None  # Empty string -> None
+    account.updated_at = get_moscow_time()
+    db.commit()
+    db.refresh(account)
+    return account
+
+
+def update_account_leadstech(
+    db: Session,
+    user_id: int,
+    account_db_id: int,
+    label: Optional[str] = None,
+    enabled: Optional[bool] = None
+) -> Optional[Account]:
+    """Update LeadsTech settings for an account"""
+    account = get_account_by_db_id(db, user_id, account_db_id)
+    if not account:
+        return None
+
+    if label is not None:
+        account.label = label if label else None  # Empty string -> None
+    if enabled is not None:
+        account.leadstech_enabled = enabled
 
     account.updated_at = get_moscow_time()
     db.commit()

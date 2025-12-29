@@ -160,14 +160,15 @@ def run_auto_scaling_task(
 
         # Convert account tuples to Account-like objects
         class AccountWrapper:
-            def __init__(self, account_id, name, api_token):
+            def __init__(self, account_id, name, api_token, label=None):
                 self.id = account_id
                 self.name = name
                 self.api_token = api_token
+                self.label = label
 
         account_objects = [
-            AccountWrapper(acc_id, acc_name, acc_token)
-            for acc_id, acc_name, acc_token in accounts
+            AccountWrapper(acc[0], acc[1], acc[2], acc[3] if len(acc) > 3 else None)
+            for acc in accounts
         ]
 
         # Create and run the banner scaling engine

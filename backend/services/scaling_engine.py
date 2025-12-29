@@ -72,6 +72,7 @@ from utils.vk_api.ad_groups import get_ad_group_full
 from utils.vk_api.campaigns import toggle_campaign_status
 from services.banner_classifier import create_conditions_checker, get_classification_summary
 from leadstech.roi_enricher import get_banners_by_ad_group as get_banners_mapping, enrich_groups_with_roi
+from leadstech.roi_loader import BannerROIData, load_roi_data_for_accounts
 
 logger = get_logger(service="scaling_engine")
 
@@ -198,9 +199,20 @@ class BannerScalingEngine:
             logger.info(f"Analysis period: {date_from} to {date_to}")
             logger.info(f"Accounts to process: {len(accounts)}")
 
+            # Check if any condition uses ROI metric
+            has_roi_condition = any(c.get('metric') == 'roi' for c in self.conditions_list)
+
+            # Load ROI data if needed
+            roi_data_by_banner: Dict[int, BannerROIData] = {}
+            if has_roi_condition:
+                logger.info("ROI condition detected - loading LeadsTech data...")
+                self._update_task_progress("loading_roi", "Loading ROI data from LeadsTech...")
+                roi_data_by_banner = self._load_leadstech_roi_data(accounts, date_from, date_to)
+                logger.info(f"Loaded ROI data for {len(roi_data_by_banner)} banners")
+
             # Создаём функцию проверки условий из настроек конфига
             # Например: [{"metric": "goals", "operator": ">=", "value": 5}, {"metric": "cost_per_goal", "operator": "<", "value": 150}]
-            check_conditions = create_conditions_checker(self.conditions_list)
+            check_conditions = create_conditions_checker(self.conditions_list, roi_data=roi_data_by_banner)
 
             # Результаты классификации со всех аккаунтов
             all_positive_ids: Set[int] = set()      # ID баннеров, соответствующих условиям
@@ -716,6 +728,81 @@ class BannerScalingEngine:
             return task and task.status == 'cancelled'
         except:
             return False
+
+    def _load_leadstech_roi_data(
+        self,
+        accounts: List[Account],
+        date_from: str,
+        date_to: str
+    ) -> Dict[int, BannerROIData]:
+        """
+        Load ROI data from LeadsTech for all accounts with labels.
+
+        Args:
+            accounts: List of accounts to process
+            date_from: Start date (YYYY-MM-DD)
+            date_to: End date (YYYY-MM-DD)
+
+        Returns:
+            Dict mapping banner_id to BannerROIData
+        """
+        from leadstech.leadstech_client import LeadstechClient, LeadstechClientConfig
+        from leadstech.vk_client import VkAdsClient, VkAdsConfig
+
+        # Load LeadsTech config
+        lt_config = crud.get_leadstech_config(self.db, self.user_id)
+        if not lt_config:
+            logger.warning("No LeadsTech config found, ROI conditions will fail for all banners")
+            return {}
+
+        if not lt_config.login or not lt_config.password:
+            logger.warning("LeadsTech credentials not configured")
+            return {}
+
+        # Get banner sub fields from config or use default
+        banner_sub_fields = lt_config.banner_sub_fields or ["sub4"]
+        if isinstance(banner_sub_fields, str):
+            import json
+            try:
+                banner_sub_fields = json.loads(banner_sub_fields)
+            except (json.JSONDecodeError, TypeError):
+                banner_sub_fields = [banner_sub_fields]
+
+        logger.info(f"LeadsTech config loaded: base_url={lt_config.base_url}, sub_fields={banner_sub_fields}")
+
+        # Create LeadsTech client
+        lt_client = LeadstechClient(LeadstechClientConfig(
+            base_url=lt_config.base_url or "https://api.leads.tech",
+            login=lt_config.login,
+            password=lt_config.password,
+            banner_sub_fields=banner_sub_fields
+        ))
+
+        # Factory to create VK client for each account
+        def vk_client_factory(account: Account) -> VkAdsClient:
+            return VkAdsClient(VkAdsConfig(
+                base_url=VK_API_BASE_URL,
+                api_token=account.api_token
+            ))
+
+        # Progress callback
+        def progress_callback(message: str):
+            self._update_task_progress("loading_roi", message)
+
+        # Load ROI data
+        try:
+            return load_roi_data_for_accounts(
+                lt_client=lt_client,
+                vk_client_factory=vk_client_factory,
+                accounts=accounts,
+                date_from=date_from,
+                date_to=date_to,
+                banner_sub_fields=banner_sub_fields,
+                progress_callback=progress_callback
+            )
+        except Exception as e:
+            logger.error(f"Failed to load LeadsTech ROI data: {e}")
+            return {}
 
 
 def run_banner_scaling(

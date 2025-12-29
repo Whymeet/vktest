@@ -64,6 +64,7 @@ export interface Account {
   api: string;
   api_full?: string;
   trigger?: number | null;
+  label?: string | null;
 }
 
 export interface ProcessStatusItem {

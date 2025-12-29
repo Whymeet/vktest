@@ -10,6 +10,7 @@ class AccountModel(BaseModel):
     api: str
     trigger: Optional[int] = None
     spent_limit_rub: float = 100.0
+    label: Optional[str] = None
 
 
 class AccountCreate(BaseModel):
@@ -17,6 +18,7 @@ class AccountCreate(BaseModel):
     api: str
     trigger: Optional[int] = None
     spent_limit_rub: Optional[float] = 100.0
+    label: Optional[str] = None
 
 
 class AccountUpdate(BaseModel):
@@ -24,3 +26,4 @@ class AccountUpdate(BaseModel):
     api: Optional[str] = None
     trigger: Optional[int] = None
     spent_limit_rub: Optional[float] = None
+    label: Optional[str] = None

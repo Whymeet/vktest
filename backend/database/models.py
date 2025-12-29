@@ -146,6 +146,8 @@ class Account(Base):
     name = Column(String(255), nullable=False)
     api_token = Column(String(255), nullable=False)
     client_id = Column(Integer, nullable=False)
+    label = Column(String(255), nullable=True)  # Label для ROI из LeadsTech
+    leadstech_enabled = Column(Boolean, default=True, nullable=False)  # Включен ли для анализа LeadsTech
 
     # Unique constraint: account_id unique per user
     __table_args__ = (
