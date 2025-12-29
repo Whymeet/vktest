@@ -329,7 +329,7 @@ class BannerScalingEngine:
                 )
 
                 logger.info(f"")
-                logger.info(f"Duplicating group {group_id}: {len(group_positive)} positive, {len(group_negative)} negative")
+                logger.info(f"Duplicating group {group_id} [Account: {account.name}]: {len(group_positive)} positive, {len(group_negative)} negative")
 
                 # Activate campaign before duplicating (so ads can be shown)
                 if self.engine_config.activate_positive_banners:
@@ -365,13 +365,13 @@ class BannerScalingEngine:
                         else:
                             failed += 1
                             error_msg = result.get("error", "Unknown error")
-                            errors.append(f"Group {group_id}: {error_msg}")
-                            logger.error(f"  Copy {dup_num}: failed - {error_msg}")
+                            errors.append(f"[{account.name}] Group {group_id}: {error_msg}")
+                            logger.error(f"  Copy {dup_num} [Account: {account.name}]: failed - {error_msg}")
 
                     except Exception as e:
                         failed += 1
-                        errors.append(f"Group {group_id}: {str(e)}")
-                        logger.error(f"  Copy {dup_num}: exception - {e}")
+                        errors.append(f"[{account.name}] Group {group_id}: {str(e)}")
+                        logger.error(f"  Copy {dup_num} [Account: {account.name}]: exception - {e}")
 
                     completed += 1
                     self._update_task_progress_numbers(completed, successful, failed)
@@ -425,7 +425,8 @@ class BannerScalingEngine:
             new_name=self.engine_config.new_name,
             new_budget=self.engine_config.new_budget,
             auto_activate=False,  # We'll handle activation manually based on toggles
-            rate_limit_delay=0.03
+            rate_limit_delay=0.03,
+            account_name=account.name
         )
 
         if not result.get("success"):
