@@ -1,22 +1,28 @@
 """
-Basic health check tests.
+Health check tests - проверка что приложение запускается и отвечает.
 """
 import pytest
+from httpx import AsyncClient, ASGITransport
+from api.app import app
 
 
-def test_placeholder():
-    """Placeholder test to ensure test suite runs."""
-    assert True
+@pytest.mark.asyncio
+async def test_health_endpoint():
+    """Проверка что /api/health отвечает 200."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/api/health")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "healthy"
+        assert "version" in data
 
 
-# TODO: Add actual API tests when needed
-# Example:
-#
-# from httpx import AsyncClient
-# from main import app
-#
-# @pytest.mark.asyncio
-# async def test_health_endpoint():
-#     async with AsyncClient(app=app, base_url="http://test") as client:
-#         response = await client.get("/api/health")
-#         assert response.status_code == 200
+@pytest.mark.asyncio
+async def test_app_starts():
+    """Проверка что приложение стартует без ошибок."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # Любой запрос - главное что приложение не падает
+        response = await client.get("/api/health")
+        assert response.status_code in [200, 401, 403]
