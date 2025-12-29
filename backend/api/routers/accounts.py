@@ -28,7 +28,8 @@ async def get_accounts_endpoint(
             "name": acc.name,
             "api": acc.api_token,
             "trigger": acc.client_id,
-            "spent_limit_rub": 100.0
+            "spent_limit_rub": 100.0,
+            "label": acc.label
         }
 
     return {"accounts": accounts_dict}
@@ -51,7 +52,7 @@ async def create_account(
             raise HTTPException(status_code=400, detail="Account with this name already exists")
 
     # Create
-    crud.create_account(
+    new_account = crud.create_account(
         db,
         user_id=current_user.id,
         account_id=account_id,
@@ -59,6 +60,10 @@ async def create_account(
         api_token=account.api,
         client_id=account.trigger if account.trigger else account_id
     )
+
+    # Update label if provided
+    if account.label:
+        crud.update_account_label(db, current_user.id, new_account.id, account.label)
 
     return {"message": "Account created successfully"}
 
@@ -89,7 +94,8 @@ async def update_account_endpoint(
         account_id=target_account.account_id,
         name=account.name if account.name else target_account.name,
         api_token=account.api if account.api else target_account.api_token,
-        client_id=account.trigger if account.trigger else target_account.client_id
+        client_id=account.trigger if account.trigger else target_account.client_id,
+        label=account.label if account.label is not None else target_account.label
     )
 
     return {"message": "Account updated successfully"}

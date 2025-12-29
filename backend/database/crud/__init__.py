@@ -48,6 +48,8 @@ from database.crud.accounts import (
     get_account_by_name,
     create_account,
     update_account,
+    update_account_label,
+    update_account_leadstech,
     delete_account,
 )
 
@@ -230,6 +232,8 @@ __all__ = [
     "get_account_by_name",
     "create_account",
     "update_account",
+    "update_account_label",
+    "update_account_leadstech",
     "delete_account",
     # Settings
     "get_setting",

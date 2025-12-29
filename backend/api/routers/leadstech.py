@@ -20,7 +20,6 @@ from api.services.process_manager import (
 )
 from api.schemas.leadstech import (
     LeadsTechConfigCreate,
-    LeadsTechCabinetCreate,
     LeadsTechCabinetUpdate,
 )
 
@@ -129,72 +128,75 @@ async def get_leadstech_cabinets(
     current_user: User = Depends(require_feature("leadstech")),
     db: Session = Depends(get_db)
 ):
-    """Get all LeadsTech cabinets with their linked accounts"""
-    cabinets = crud.get_leadstech_cabinets(db, user_id=current_user.id, enabled_only=enabled_only)
+    """Get all accounts with their labels for LeadsTech analysis.
+
+    Now returns accounts directly from accounts table with their label field.
+    """
+    accounts = crud.get_accounts(db, user_id=current_user.id)
 
     result = []
-    for cab in cabinets:
-        account = cab.account
+    for acc in accounts:
+        # If enabled_only, skip disabled accounts or accounts without label
+        if enabled_only and (not acc.label or not acc.leadstech_enabled):
+            continue
+
         result.append({
-            "id": cab.id,
-            "account_id": cab.account_id,
-            "account_name": account.name if account else None,
-            "account_api_token": account.api_token if account else None,
-            "leadstech_label": cab.leadstech_label,
-            "enabled": cab.enabled,
-            "created_at": cab.created_at.isoformat() if cab.created_at else None,
-            "updated_at": cab.updated_at.isoformat() if cab.updated_at else None
+            "id": acc.id,
+            "account_id": acc.id,
+            "account_name": acc.name,
+            "leadstech_label": acc.label,  # Can be None
+            "enabled": acc.leadstech_enabled,  # Separate enabled flag
+            "created_at": acc.created_at.isoformat() if acc.created_at else None,
+            "updated_at": acc.updated_at.isoformat() if acc.updated_at else None
         })
 
     return {"cabinets": result, "count": len(result)}
 
 
-@router.post("/cabinets")
-async def create_leadstech_cabinet(
-    cabinet: LeadsTechCabinetCreate,
-    current_user: User = Depends(require_feature("leadstech")),
-    db: Session = Depends(get_db)
-):
-    """Create or update LeadsTech cabinet mapping"""
-    result = crud.create_leadstech_cabinet(
-        db,
-        account_id=cabinet.account_id,
-        leadstech_label=cabinet.leadstech_label,
-        enabled=cabinet.enabled,
-        user_id=current_user.id
-    )
-    return {"message": "LeadsTech cabinet created/updated", "id": result.id}
-
-
-@router.put("/cabinets/{cabinet_id}")
+@router.put("/cabinets/{account_id}")
 async def update_leadstech_cabinet(
-    cabinet_id: int,
+    account_id: int,
     cabinet: LeadsTechCabinetUpdate,
     current_user: User = Depends(require_feature("leadstech")),
     db: Session = Depends(get_db)
 ):
-    """Update LeadsTech cabinet"""
-    result = crud.update_leadstech_cabinet(
+    """Update account's LeadsTech settings (label and enabled).
+
+    Now updates fields directly in the accounts table.
+    account_id is the database ID of the account.
+    """
+    result = crud.update_account_leadstech(
         db,
-        cabinet_id=cabinet_id,
-        leadstech_label=cabinet.leadstech_label,
+        user_id=current_user.id,
+        account_db_id=account_id,
+        label=cabinet.leadstech_label,
         enabled=cabinet.enabled
     )
     if not result:
-        raise HTTPException(status_code=404, detail="LeadsTech cabinet not found")
-    return {"message": "LeadsTech cabinet updated"}
+        raise HTTPException(status_code=404, detail="Account not found")
+    return {"message": "Account LeadsTech settings updated"}
 
 
-@router.delete("/cabinets/{cabinet_id}")
+@router.delete("/cabinets/{account_id}")
 async def delete_leadstech_cabinet(
-    cabinet_id: int,
+    account_id: int,
     current_user: User = Depends(require_feature("leadstech")),
     db: Session = Depends(get_db)
 ):
-    """Delete LeadsTech cabinet"""
-    if crud.delete_leadstech_cabinet(db, cabinet_id):
-        return {"message": "LeadsTech cabinet deleted"}
-    raise HTTPException(status_code=404, detail="LeadsTech cabinet not found")
+    """Remove LeadsTech label from account.
+
+    Now clears the label field in the accounts table.
+    account_id is the database ID of the account.
+    """
+    result = crud.update_account_label(
+        db,
+        user_id=current_user.id,
+        account_db_id=account_id,
+        label=None
+    )
+    if not result:
+        raise HTTPException(status_code=404, detail="Account not found")
+    return {"message": "Account label removed"}
 
 
 # === Analysis ===

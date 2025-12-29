@@ -10,8 +10,6 @@ import {
   Play,
   Square,
   Settings,
-  Plus,
-  Trash2,
   Edit2,
   Check,
   X,
@@ -32,16 +30,13 @@ import {
   getLeadsTechConfig,
   updateLeadsTechAnalysisSettings,
   getLeadsTechCabinets,
-  createLeadsTechCabinet,
   updateLeadsTechCabinet,
-  deleteLeadsTechCabinet,
   getLeadsTechAnalysisResults,
   getLeadsTechAnalysisCabinets,
   startLeadsTechAnalysis,
   stopLeadsTechAnalysis,
   getLeadsTechAnalysisStatus,
   getLeadsTechAnalysisLogs,
-  getAccounts,
   whitelistProfitableBanners,
   getWhitelistProfitableStatus,
   stopWhitelistProfitableWorker,
@@ -438,8 +433,6 @@ export function ProfitableAds() {
   });
 
   // Cabinet form state
-  const [newCabinetAccountId, setNewCabinetAccountId] = useState<number | ''>('');
-  const [newCabinetLabel, setNewCabinetLabel] = useState('');
   const [editingCabinetId, setEditingCabinetId] = useState<number | null>(null);
   const [editingLabel, setEditingLabel] = useState('');
 
@@ -497,12 +490,6 @@ export function ProfitableAds() {
     refetchInterval: 10000, // Auto-refresh every 10 seconds
   });
 
-  const { data: accountsData } = useQuery({
-    queryKey: ['accounts'],
-    queryFn: () => getAccounts().then(r => r.data),
-    refetchInterval: 10000, // Auto-refresh every 10 seconds
-  });
-
   // Convert filters to API format
   const apiFilters: LeadsTechFilters = useMemo(() => ({
     roiMin: filters.roiMin !== '' ? Number(filters.roiMin) : '',
@@ -555,28 +542,12 @@ export function ProfitableAds() {
     },
   });
 
-  const createCabinetMutation = useMutation({
-    mutationFn: createLeadsTechCabinet,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['leadstechCabinets'] });
-      setNewCabinetAccountId('');
-      setNewCabinetLabel('');
-    },
-  });
-
   const updateCabinetMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: { leadstech_label?: string; enabled?: boolean } }) =>
       updateLeadsTechCabinet(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leadstechCabinets'] });
       setEditingCabinetId(null);
-    },
-  });
-
-  const deleteCabinetMutation = useMutation({
-    mutationFn: deleteLeadsTechCabinet,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['leadstechCabinets'] });
     },
   });
 
@@ -692,15 +663,6 @@ export function ProfitableAds() {
   const handleSaveConfig = () => {
     if (!configData?.configured) return;
     updateConfigMutation.mutate(configForm);
-  };
-
-  const handleAddCabinet = () => {
-    if (!newCabinetAccountId || !newCabinetLabel) return;
-    createCabinetMutation.mutate({
-      account_id: newCabinetAccountId,
-      leadstech_label: newCabinetLabel,
-      enabled: true,
-    });
   };
 
   const handleWhitelistProfitable = () => {
@@ -1286,46 +1248,9 @@ export function ProfitableAds() {
 
           {/* Cabinets Configuration */}
           <Card title="Кабинеты для анализа" icon={Building2}>
-            {/* Add new cabinet */}
-            <div className="mb-4 p-3 sm:p-4 bg-slate-700/30 rounded-lg">
-              <h4 className="text-xs sm:text-sm text-slate-400 mb-3">Добавить кабинет</h4>
-              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-                <select
-                  value={newCabinetAccountId}
-                  onChange={(e) => setNewCabinetAccountId(e.target.value ? parseInt(e.target.value) : '')}
-                  className="input sm:flex-1 text-sm"
-                >
-                  <option value="">Выберите кабинет VK</option>
-                  {accountsData?.accounts && Object.entries(accountsData.accounts).map(([name, acc]: [string, any]) => {
-                    const hasLabel = cabinetsData?.cabinets.some((c: any) => c.account_name === name);
-                    if (hasLabel) return null;
-                    return (
-                      <option key={name} value={(acc as any).id || 0}>{name}</option>
-                    );
-                  })}
-                </select>
-                <input
-                  type="text"
-                  value={newCabinetLabel}
-                  onChange={(e) => setNewCabinetLabel(e.target.value)}
-                  placeholder="LeadsTech label"
-                  className="input sm:flex-1 text-sm"
-                />
-                <button
-                  onClick={handleAddCabinet}
-                  disabled={!newCabinetAccountId || !newCabinetLabel || createCabinetMutation.isPending}
-                  className="btn bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 text-sm"
-                >
-                  {createCabinetMutation.isPending ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Plus className="w-4 h-4" />
-                  )}
-                  <span className="sm:hidden">Добавить</span>
-                  <span className="hidden sm:inline">Добавить</span>
-                </button>
-              </div>
-            </div>
+            <p className="text-xs text-slate-400 mb-3">
+              Label для ROI задается в настройках кабинета (раздел "Кабинеты VK Ads"). Здесь можно изменить label или посмотреть статус.
+            </p>
 
             {/* Cabinets list */}
             <div className="space-y-2">
@@ -1335,13 +1260,13 @@ export function ProfitableAds() {
                 </div>
               ) : cabinetsData?.cabinets.length === 0 ? (
                 <div className="text-center py-4 text-slate-400 text-sm">
-                  Нет настроенных кабинетов
+                  Нет кабинетов
                 </div>
               ) : (
                 cabinetsData?.cabinets.map((cabinet: any) => (
                   <div
                     key={cabinet.id}
-                    className="flex items-center justify-between p-3 bg-slate-700/30 rounded-lg gap-2"
+                    className={`flex items-center justify-between p-3 rounded-lg gap-2 ${cabinet.enabled && cabinet.leadstech_label ? 'bg-slate-700/30' : 'bg-slate-800/30'}`}
                   >
                     <div className="flex items-center gap-2 sm:gap-4 min-w-0">
                       <input
@@ -1351,7 +1276,9 @@ export function ProfitableAds() {
                           id: cabinet.id,
                           data: { enabled: e.target.checked }
                         })}
-                        className="w-4 h-4 rounded border-slate-500 bg-slate-700 text-blue-600 focus:ring-blue-500 flex-shrink-0"
+                        disabled={!cabinet.leadstech_label}
+                        className="w-4 h-4 rounded border-slate-500 bg-slate-700 text-blue-600 focus:ring-blue-500 flex-shrink-0 disabled:opacity-50"
+                        title={cabinet.leadstech_label ? 'Включить/выключить для анализа' : 'Сначала задайте label'}
                       />
                       <div className="min-w-0">
                         <p className="text-white font-medium text-sm truncate">{cabinet.account_name || 'Unknown'}</p>
@@ -1361,10 +1288,13 @@ export function ProfitableAds() {
                             value={editingLabel}
                             onChange={(e) => setEditingLabel(e.target.value)}
                             className="input text-xs py-1 mt-1 w-full"
+                            placeholder="Введите label"
                             autoFocus
                           />
                         ) : (
-                          <p className="text-xs text-slate-400 truncate">Label: {cabinet.leadstech_label}</p>
+                          <p className="text-xs text-slate-400 truncate">
+                            {cabinet.leadstech_label ? `Label: ${cabinet.leadstech_label}` : 'Label не задан'}
+                          </p>
                         )}
                       </div>
                     </div>
@@ -1390,23 +1320,15 @@ export function ProfitableAds() {
                           </button>
                         </>
                       ) : (
-                        <>
-                          <button
-                            onClick={() => {
-                              setEditingCabinetId(cabinet.id);
-                              setEditingLabel(cabinet.leadstech_label);
-                            }}
-                            className="p-1.5 sm:p-2 text-slate-400 hover:bg-slate-600 rounded"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => deleteCabinetMutation.mutate(cabinet.id)}
-                            className="p-1.5 sm:p-2 text-red-400 hover:bg-slate-600 rounded"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </>
+                        <button
+                          onClick={() => {
+                            setEditingCabinetId(cabinet.id);
+                            setEditingLabel(cabinet.leadstech_label || '');
+                          }}
+                          className="p-1.5 sm:p-2 text-slate-400 hover:bg-slate-600 rounded"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
                       )}
                     </div>
                   </div>

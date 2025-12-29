@@ -101,30 +101,32 @@ def parse_banner_sub_fields(raw_value: Optional[str | List[str]]) -> List[str]:
 
 def load_cabinets(db: Session, user_id: int) -> List[CabinetConfig]:
     """
-    Load enabled LeadsTech cabinets from database.
+    Load accounts with label configured from database.
+
+    Now uses accounts.label directly instead of separate LeadsTechCabinet table.
 
     Args:
         db: Database session
         user_id: User ID
 
     Returns:
-        List of cabinet configurations
+        List of cabinet configurations (only enabled accounts with label set)
     """
-    cabinets = crud.get_leadstech_cabinets(db, user_id=user_id, enabled_only=True)
+    accounts = crud.get_accounts(db, user_id=user_id)
     result: List[CabinetConfig] = []
 
-    for cab in cabinets:
-        if not cab.account:
-            logger.warning(f"Cabinet {cab.id} has no linked account, skipping")
+    for acc in accounts:
+        # Skip accounts without label or disabled for LeadsTech
+        if not acc.label or not acc.leadstech_enabled:
             continue
 
         result.append(CabinetConfig(
-            id=cab.id,
-            account_id=cab.account_id,
-            account_name=cab.account.name,
-            api_token=cab.account.api_token,
-            leadstech_label=cab.leadstech_label,
-            enabled=cab.enabled,
+            id=acc.id,
+            account_id=acc.id,
+            account_name=acc.name,
+            api_token=acc.api_token,
+            leadstech_label=acc.label,
+            enabled=acc.leadstech_enabled,
         ))
 
     return result

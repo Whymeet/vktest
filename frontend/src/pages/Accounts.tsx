@@ -16,6 +16,7 @@ function AccountForm({ account, onSubmit, onCancel }: AccountFormProps) {
   const [name, setName] = useState(account?.name || '');
   const [api, setApi] = useState(account?.api_full || account?.api || '');
   const [trigger, setTrigger] = useState(account?.trigger?.toString() || '');
+  const [label, setLabel] = useState(account?.label || '');
   const [showApi, setShowApi] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -24,6 +25,7 @@ function AccountForm({ account, onSubmit, onCancel }: AccountFormProps) {
       name,
       api,
       trigger: trigger ? parseInt(trigger) : undefined,
+      label: label || undefined,
     } as Account);
   };
 
@@ -69,8 +71,18 @@ function AccountForm({ account, onSubmit, onCancel }: AccountFormProps) {
           className="input"
           placeholder="123456789"
         />
+      </div>
+      <div>
+        <label className="label">Label для ROI (опционально)</label>
+        <input
+          type="text"
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          className="input"
+          placeholder="label_name"
+        />
         <p className="text-xs text-slate-500 mt-1">
-          💡 Правила отключения объявлений настраиваются отдельно в разделе "Правила отключения"
+          Label из LeadsTech для расчета ROI
         </p>
       </div>
       <div className="flex gap-3 pt-4">
