@@ -406,8 +406,8 @@ def _process_banner_batch(
         # Calculate derived metrics
         stats = calculate_derived_metrics(raw_stats)
 
-        # Check conditions
-        if check_conditions_fn(stats):
+        # Check conditions - pass banner_id for ROI lookup
+        if check_conditions_fn(stats, banner_id):
             positive_ids.add(banner_id)
         else:
             negative_ids.add(banner_id)
