@@ -91,12 +91,20 @@ def run_duplication_task(
                         successful += 1
                     else:
                         failed += 1
+                        error_msg = result.get("error", "Unknown error")
                         crud.update_scaling_task_progress(
                             db, task_id,
-                            last_error=result.get("error", "Unknown error")
+                            last_error=error_msg,
+                            add_error={
+                                "message": error_msg,
+                                "account": account_name,
+                                "group_id": group_id,
+                                "group_name": result.get("original_group_name")
+                            }
                         )
 
                 except Exception as e:
+                    error_msg = str(e)
                     crud.create_scaling_log(
                         db,
                         user_id=user_id,
@@ -106,12 +114,18 @@ def run_duplication_task(
                         original_group_id=group_id,
                         original_group_name=None,
                         success=False,
-                        error_message=str(e)
+                        error_message=error_msg
                     )
                     failed += 1
                     crud.update_scaling_task_progress(
                         db, task_id,
-                        last_error=str(e)
+                        last_error=error_msg,
+                        add_error={
+                            "message": error_msg,
+                            "account": account_name,
+                            "group_id": group_id,
+                            "group_name": None
+                        }
                     )
 
                 completed += 1

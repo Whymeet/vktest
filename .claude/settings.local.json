@@ -35,7 +35,14 @@
       "Bash(python:*)",
       "Bash(grep:*)",
       "Bash(docker-compose restart:*)",
-      "Bash(openssl rand:*)"
+      "Bash(openssl rand:*)",
+      "Bash(gzip:*)",
+      "Bash(wc:*)",
+      "Bash(xargs:*)",
+      "Bash(cut:*)",
+      "Bash(done)",
+      "Bash(comm:*)",
+      "Bash(docker builder prune:*)"
     ],
     "deny": [],
     "ask": []

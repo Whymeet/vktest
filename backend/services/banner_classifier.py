@@ -3,14 +3,11 @@ Banner Classifier Service
 Classifies banners as positive/negative based on scaling conditions.
 Uses the same condition logic as check_group_conditions in crud/scaling.py
 """
-from typing import List, Dict, Set, Tuple, Optional, Callable, Any
+from typing import List, Dict, Set, Tuple, Optional, Callable
 from dataclasses import dataclass
 from utils.logging_setup import get_logger
 
 logger = get_logger(service="banner_classifier")
-
-# Type alias for ROI data dict
-ROIDataDict = Optional[Dict[int, Any]]  # banner_id -> BannerROIData
 
 
 @dataclass
@@ -130,26 +127,21 @@ def check_banner_conditions(stats: dict, conditions: List[dict], verbose: bool =
 
 
 def create_conditions_checker(
-    conditions: List[dict],
-    roi_data: ROIDataDict = None
+    conditions: List[dict]
 ) -> Callable[[dict, Optional[int]], bool]:
     """
     Create a conditions checker function for use with streaming classification.
 
+    Note: ROI conditions are handled separately by pre-filtering banners before
+    calling this function. This function only checks non-ROI conditions.
+
     Args:
-        conditions: List of condition dicts
-        roi_data: Optional dict mapping banner_id to BannerROIData
+        conditions: List of condition dicts (should not include ROI conditions)
 
     Returns:
         Function that takes (stats_dict, banner_id) and returns True if positive
     """
     def checker(stats: dict, banner_id: Optional[int] = None) -> bool:
-        # If ROI data available and banner_id provided, inject ROI into stats
-        if roi_data and banner_id is not None and banner_id in roi_data:
-            roi_obj = roi_data[banner_id]
-            # Get roi_percent from BannerROIData object
-            roi_value = getattr(roi_obj, 'roi_percent', None)
-            stats = {**stats, 'roi': roi_value}
         return check_banner_conditions(stats, conditions, verbose=False)
 
     return checker

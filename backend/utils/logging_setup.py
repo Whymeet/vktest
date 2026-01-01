@@ -35,7 +35,7 @@ _current_function: ContextVar[str | None] = ContextVar("current_function", defau
 
 # Путь к логам
 LOG_DIR = Path(__file__).parent.parent / "logs"
-LOG_DIR.mkdir(exist_ok=True)
+LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 # Флаг инициализации
 _initialized = False
@@ -103,6 +103,9 @@ def setup_logging():
     if _initialized:
         return logger
 
+    # Убеждаемся что директория для логов существует
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+
     # Удаляем стандартный handler
     logger.remove()
 
@@ -138,7 +141,7 @@ def setup_logging():
     )
 
     # Файлы по сервисам
-    services = ["vk_api", "database", "telegram", "scheduler", "leadstech"]
+    services = ["vk_api", "database", "telegram", "scheduler", "leadstech", "scaling_engine", "roi_loader"]
     for service in services:
         logger.add(
             LOG_DIR / f"service_{service}.log",
@@ -247,6 +250,9 @@ def add_user_log_file(user_id: int, function: str = "scaling"):
     Returns:
         ID хендлера (для последующего удаления если нужно)
     """
+    # Убеждаемся что директория существует
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+
     timestamp = get_moscow_time().strftime("%Y%m%d_%H%M%S")
     log_file = LOG_DIR / f"user_{user_id}_{function}_{timestamp}.log"
 

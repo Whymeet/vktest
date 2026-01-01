@@ -716,6 +716,7 @@ class ScalingTask(Base):
 
     # Error info
     last_error = Column(Text, nullable=True)
+    errors = Column(JSON, nullable=True, default=list)  # List of error objects: [{message, timestamp, account, group_id}]
 
     # Timestamps
     created_at = Column(DateTime, default=get_moscow_time, nullable=False)

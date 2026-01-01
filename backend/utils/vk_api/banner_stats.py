@@ -297,7 +297,8 @@ def classify_banners_streaming(
     include_blocked: bool = True,
     batch_size: int = BANNER_LIST_BATCH_SIZE,  # Max 250 per VK API
     progress_callback=None,
-    cancel_check_fn=None
+    cancel_check_fn=None,
+    only_banner_ids: Optional[Set[int]] = None
 ) -> Tuple[Set[int], Set[int], Dict[int, int]]:
     """
     Streaming banner classification - memory efficient.
@@ -308,11 +309,12 @@ def classify_banners_streaming(
         base_url: VK Ads API base URL
         date_from: Start date for statistics
         date_to: End date for statistics
-        check_conditions_fn: Function(stats_dict) -> bool to check if banner is positive
+        check_conditions_fn: Function(stats_dict, banner_id) -> bool to check if banner is positive
         include_blocked: Include blocked banners
         batch_size: Batch size for loading
         progress_callback: Optional callback(processed, total) for progress updates
         cancel_check_fn: Optional function() -> bool to check if task was cancelled
+        only_banner_ids: Optional set of banner IDs to process (skip others for efficiency)
 
     Returns:
         Tuple of (positive_ids, negative_ids, banner_to_group)
@@ -327,7 +329,10 @@ def classify_banners_streaming(
     total_processed = 0
     batch_buffer: List[dict] = []
 
-    logger.info(f"[INFO] Starting streaming banner classification for period {date_from} - {date_to}")
+    if only_banner_ids is not None:
+        logger.info(f"[INFO] Starting streaming banner classification for period {date_from} - {date_to} (pre-filtered to {len(only_banner_ids)} banners)")
+    else:
+        logger.info(f"[INFO] Starting streaming banner classification for period {date_from} - {date_to}")
 
     cancelled = False
 
@@ -344,8 +349,12 @@ def classify_banners_streaming(
             banner_id = banner.get("id")
             group_id = banner.get("ad_group_id")
             if banner_id and group_id:
-                batch_buffer.append(banner)
+                # Always track banner_to_group mapping
                 banner_to_group[banner_id] = group_id
+                # If only_banner_ids is set, skip banners not in the set
+                if only_banner_ids is not None and banner_id not in only_banner_ids:
+                    continue
+                batch_buffer.append(banner)
 
         # When buffer is full, get stats and classify
         if len(batch_buffer) >= batch_size:
