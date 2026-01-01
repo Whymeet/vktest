@@ -199,20 +199,47 @@ class BannerScalingEngine:
             logger.info(f"Analysis period: {date_from} to {date_to}")
             logger.info(f"Accounts to process: {len(accounts)}")
 
-            # Check if any condition uses ROI metric
-            has_roi_condition = any(c.get('metric') == 'roi' for c in self.conditions_list)
+            # Separate ROI conditions from other conditions
+            roi_conditions = [c for c in self.conditions_list if c.get('metric') == 'roi']
+            other_conditions = [c for c in self.conditions_list if c.get('metric') != 'roi']
 
-            # Load ROI data if needed
+            logger.info(f"Conditions: {len(roi_conditions)} ROI, {len(other_conditions)} other")
+
+            # Pre-filter banners by ROI if ROI conditions exist
+            roi_filtered_banner_ids: Optional[Set[int]] = None
             roi_data_by_banner: Dict[int, BannerROIData] = {}
-            if has_roi_condition:
-                logger.info("ROI condition detected - loading LeadsTech data...")
+
+            if roi_conditions:
+                logger.info("ROI conditions detected - loading LeadsTech data first...")
                 self._update_task_progress("loading_roi", "Loading ROI data from LeadsTech...")
                 roi_data_by_banner = self._load_leadstech_roi_data(accounts, date_from, date_to)
                 logger.info(f"Loaded ROI data for {len(roi_data_by_banner)} banners")
 
-            # Создаём функцию проверки условий из настроек конфига
-            # Например: [{"metric": "goals", "operator": ">=", "value": 5}, {"metric": "cost_per_goal", "operator": "<", "value": 150}]
-            check_conditions = create_conditions_checker(self.conditions_list, roi_data=roi_data_by_banner)
+                # Filter banners by ROI conditions
+                roi_filtered_banner_ids = self._filter_banners_by_roi(roi_data_by_banner, roi_conditions)
+                logger.info(f"Banners passing ROI conditions: {len(roi_filtered_banner_ids)}")
+
+                if not roi_filtered_banner_ids:
+                    logger.info("No banners pass ROI conditions - nothing to scale")
+                    return ScalingResult(
+                        success=True,
+                        total_banners_analyzed=len(roi_data_by_banner),
+                        positive_banners=0,
+                        negative_banners=len(roi_data_by_banner),
+                        groups_found=0,
+                        groups_duplicated=0,
+                        successful_duplications=0,
+                        failed_duplications=0,
+                        errors=[]
+                    )
+
+            # Create conditions checker for other (non-ROI) conditions
+            # If no other conditions, all ROI-filtered banners are positive
+            if other_conditions:
+                check_conditions = create_conditions_checker(other_conditions)
+            else:
+                # All banners that passed ROI filter are positive
+                check_conditions = lambda stats, banner_id: True
 
             # Результаты классификации со всех аккаунтов
             all_positive_ids: Set[int] = set()      # ID баннеров, соответствующих условиям
@@ -235,6 +262,7 @@ class BannerScalingEngine:
                     # 1. GET /banners.json?status=active - загружаем список баннеров
                     # 2. GET /statistics/banners/day.json?id=... - загружаем статистику батчами по 200
                     # 3. Для каждого баннера проверяем условия -> positive или negative
+                    # If ROI pre-filter exists, only process those banners (huge optimization for 20k+ banners)
                     positive_ids, negative_ids, banner_to_group = classify_banners_streaming(
                         token=account.api_token,
                         base_url=VK_API_BASE_URL,
@@ -247,7 +275,8 @@ class BannerScalingEngine:
                             "classifying",
                             f"Account {account.name}: {p} banners processed"
                         ),
-                        cancel_check_fn=self._is_task_cancelled
+                        cancel_check_fn=self._is_task_cancelled,
+                        only_banner_ids=roi_filtered_banner_ids  # Pre-filtered by ROI (or None for all)
                     )
 
                     # Track which account owns which groups
@@ -803,6 +832,40 @@ class BannerScalingEngine:
         except Exception as e:
             logger.error(f"Failed to load LeadsTech ROI data: {e}")
             return {}
+
+    def _filter_banners_by_roi(
+        self,
+        roi_data: Dict[int, BannerROIData],
+        roi_conditions: List[dict]
+    ) -> Set[int]:
+        """
+        Filter banners by ROI conditions.
+
+        Args:
+            roi_data: Dict mapping banner_id to BannerROIData
+            roi_conditions: List of ROI conditions [{"metric": "roi", "operator": ">=", "value": 50}]
+
+        Returns:
+            Set of banner IDs that pass ALL ROI conditions
+        """
+        from services.banner_classifier import check_banner_conditions
+
+        passed_ids: Set[int] = set()
+
+        for banner_id, roi_obj in roi_data.items():
+            if roi_obj.roi_percent is None:
+                # No ROI data (spent = 0), skip this banner
+                continue
+
+            # Create stats dict with roi value for condition checking
+            stats = {"roi": roi_obj.roi_percent}
+
+            # Check all ROI conditions
+            if check_banner_conditions(stats, roi_conditions, verbose=False):
+                passed_ids.add(banner_id)
+
+        logger.info(f"ROI filter: {len(passed_ids)}/{len(roi_data)} banners passed ROI conditions")
+        return passed_ids
 
 
 def run_banner_scaling(
