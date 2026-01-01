@@ -61,7 +61,7 @@ from dataclasses import dataclass
 
 from database import SessionLocal, crud
 from database.models import ScalingConfig, Account
-from utils.logging_setup import get_logger
+from utils.logging_setup import get_logger, set_context, clear_context
 from utils.vk_api.banner_stats import (
     classify_banners_streaming,
     get_groups_with_positive_banners,
@@ -74,7 +74,8 @@ from services.banner_classifier import create_conditions_checker, get_classifica
 from leadstech.roi_enricher import get_banners_by_ad_group as get_banners_mapping, enrich_groups_with_roi
 from leadstech.roi_loader import BannerROIData, load_roi_data_for_accounts
 
-logger = get_logger(service="scaling_engine")
+# Module-level logger (fallback, without user context)
+logger = get_logger(service="scaling_engine", function="scaling")
 
 VK_API_BASE_URL = "https://ads.vk.com/api/v2"
 
@@ -130,6 +131,9 @@ class BannerScalingEngine:
         self.db = db_session or SessionLocal()
         self._own_db = db_session is None
 
+        # Create logger with user context
+        self.logger = get_logger(service="scaling_engine", function="scaling", user_id=user_id)
+
         self._load_config()
 
     def _load_config(self):
@@ -172,6 +176,9 @@ class BannerScalingEngine:
         Returns:
             ScalingResult with statistics
         """
+        # Set logging context for this scaling run
+        set_context(user_id=self.user_id, service="scaling_engine", function="scaling")
+
         try:
             logger.info(f"")
             logger.info(f"{'='*80}")
@@ -439,6 +446,7 @@ class BannerScalingEngine:
             )
 
         finally:
+            clear_context()  # Clear logging context
             if self._own_db:
                 self.db.close()
 
@@ -827,7 +835,8 @@ class BannerScalingEngine:
                 date_from=date_from,
                 date_to=date_to,
                 banner_sub_fields=banner_sub_fields,
-                progress_callback=progress_callback
+                progress_callback=progress_callback,
+                cancel_check_fn=self._is_task_cancelled
             )
         except Exception as e:
             logger.error(f"Failed to load LeadsTech ROI data: {e}")
