@@ -647,9 +647,14 @@ def update_scaling_task_progress(
     failed: int = None,
     current_group_id: int = None,
     current_group_name: str = None,
-    last_error: str = None
+    last_error: str = None,
+    add_error: dict = None
 ) -> Optional[ScalingTask]:
-    """Update task progress"""
+    """Update task progress
+
+    Args:
+        add_error: Error dict to append to errors list: {message, account, group_id, group_name}
+    """
     task = get_scaling_task(db, task_id)
     if not task:
         return None
@@ -666,6 +671,16 @@ def update_scaling_task_progress(
         task.current_group_name = current_group_name
     if last_error is not None:
         task.last_error = last_error
+
+    # Append error to errors list
+    if add_error is not None:
+        current_errors = task.errors or []
+        add_error['timestamp'] = get_moscow_time().isoformat()
+        current_errors.append(add_error)
+        # Keep only last 100 errors to prevent memory issues
+        if len(current_errors) > 100:
+            current_errors = current_errors[-100:]
+        task.errors = current_errors
 
     db.commit()
     db.refresh(task)

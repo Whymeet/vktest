@@ -415,11 +415,16 @@ class BannerScalingEngine:
                             error_msg = result.get("error", "Unknown error")
                             errors.append(f"[{account.name}] Group {group_id}: {error_msg}")
                             logger.error(f"  Copy {dup_num} [Account: {account.name}]: failed - {error_msg}")
+                            # Add error to task errors list for frontend notifications
+                            self._add_task_error(error_msg, account.name, group_id, result.get("original_group_name"))
 
                     except Exception as e:
                         failed += 1
-                        errors.append(f"[{account.name}] Group {group_id}: {str(e)}")
+                        error_msg = str(e)
+                        errors.append(f"[{account.name}] Group {group_id}: {error_msg}")
                         logger.error(f"  Copy {dup_num} [Account: {account.name}]: exception - {e}")
+                        # Add error to task errors list for frontend notifications
+                        self._add_task_error(error_msg, account.name, group_id, None)
 
                     completed += 1
                     self._update_task_progress_numbers(completed, successful, failed)
@@ -757,6 +762,22 @@ class BannerScalingEngine:
             )
         except Exception as e:
             logger.debug(f"Failed to update task error: {e}")
+
+    def _add_task_error(self, error_msg: str, account_name: str, group_id: int, group_name: Optional[str]):
+        """Add error to task errors list for frontend notifications"""
+        try:
+            crud.update_scaling_task_progress(
+                self.db, self.task_id,
+                last_error=error_msg,
+                add_error={
+                    "message": error_msg,
+                    "account": account_name,
+                    "group_id": group_id,
+                    "group_name": group_name
+                }
+            )
+        except Exception as e:
+            logger.debug(f"Failed to add task error: {e}")
 
     def _is_task_cancelled(self) -> bool:
         """Check if task was cancelled by user"""

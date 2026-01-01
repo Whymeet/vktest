@@ -727,6 +727,14 @@ export const getLeadsTechStatus = () =>
   api.get<Record<number, LeadsTechAccountStatus>>('/scaling/leadstech-status');
 
 // Scaling Task types
+export interface ScalingTaskError {
+  message: string;
+  account: string | null;
+  group_id: number | null;
+  group_name: string | null;
+  timestamp: string;
+}
+
 export interface ScalingTask {
   id: number;
   task_type: 'manual' | 'auto';
@@ -741,6 +749,7 @@ export interface ScalingTask {
   current_group_id: number | null;
   current_group_name: string | null;
   last_error: string | null;
+  errors: ScalingTaskError[];  // List of errors for notifications
   created_at: string | null;
   started_at: string | null;
   completed_at: string | null;

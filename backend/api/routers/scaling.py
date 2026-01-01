@@ -278,6 +278,7 @@ async def get_scaling_tasks(
             "current_group_id": task.current_group_id,
             "current_group_name": task.current_group_name,
             "last_error": task.last_error,
+            "errors": task.errors or [],  # List of error objects for frontend notifications
             "created_at": task.created_at.isoformat() if task.created_at else None,
             "started_at": task.started_at.isoformat() if task.started_at else None,
             "completed_at": task.completed_at.isoformat() if task.completed_at else None,
@@ -314,6 +315,7 @@ async def get_scaling_task(
         "current_group_id": task.current_group_id,
         "current_group_name": task.current_group_name,
         "last_error": task.last_error,
+        "errors": task.errors or [],  # List of error objects for frontend notifications
         "created_at": task.created_at.isoformat() if task.created_at else None,
         "started_at": task.started_at.isoformat() if task.started_at else None,
         "completed_at": task.completed_at.isoformat() if task.completed_at else None,

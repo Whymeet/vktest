@@ -2,8 +2,11 @@ import { useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Copy, CircleDot, RefreshCw, X } from 'lucide-react';
 import { getScalingTasks, cancelScalingTask } from '../api/client';
-import type { ScalingTask } from '../api/client';
+import type { ScalingTask, ScalingTaskError } from '../api/client';
 import { useToast } from './Toast';
+
+// Duration for error notifications: 10 minutes (600000 ms)
+const ERROR_TOAST_DURATION = 600000;
 
 function TaskProgressBar({ task }: { task: ScalingTask }) {
   const progress = task.total_operations > 0
@@ -99,6 +102,8 @@ export function ScalingSchedulerStatusIndicator() {
   const notifiedTasksRef = useRef<Set<number>>(new Set());
   // Track running tasks to detect when they complete
   const runningTasksRef = useRef<Map<number, ScalingTask>>(new Map());
+  // Track which errors we've already shown notifications for (by timestamp)
+  const notifiedErrorsRef = useRef<Set<string>>(new Set());
 
   const { data: tasksData } = useQuery({
     queryKey: ['scalingTasks'],
@@ -116,7 +121,7 @@ export function ScalingSchedulerStatusIndicator() {
   const activeTasks = tasksData?.active || [];
   const recentTasks = tasksData?.recent || [];
 
-  // Show notifications when tasks complete
+  // Show notifications when tasks complete or when new errors appear
   useEffect(() => {
     // Update running tasks map
     const currentRunning = new Map<number, ScalingTask>();
@@ -130,7 +135,42 @@ export function ScalingSchedulerStatusIndicator() {
     const allTasks = [...activeTasks, ...recentTasks];
 
     for (const task of allTasks) {
-      // Skip if already notified
+      // Show notifications for NEW errors in active tasks (10 minute duration)
+      if (task.errors && task.errors.length > 0 && (task.status === 'running' || task.status === 'pending')) {
+        for (const error of task.errors) {
+          const errorKey = `${task.id}-${error.timestamp}`;
+          if (!notifiedErrorsRef.current.has(errorKey)) {
+            notifiedErrorsRef.current.add(errorKey);
+
+            // Format error message
+            const errorTitle = error.account
+              ? `Ошибка: ${error.account}`
+              : 'Ошибка дублирования';
+
+            // Simplify error message for display
+            let errorMessage = error.message;
+            if (errorMessage.includes('active_banners_limit')) {
+              errorMessage = 'Превышен лимит активных объявлений в кабинете';
+            } else if (errorMessage.includes('budget_limit_day')) {
+              errorMessage = 'Неверный дневной бюджет';
+            } else if (errorMessage.includes('validation_failed')) {
+              // Extract the actual error from JSON if possible
+              const match = errorMessage.match(/"message":"([^"]+)"/);
+              if (match) {
+                errorMessage = match[1];
+              }
+            }
+
+            toast.error(
+              errorTitle,
+              errorMessage,
+              ERROR_TOAST_DURATION  // 10 minutes
+            );
+          }
+        }
+      }
+
+      // Skip task completion notification if already notified
       if (notifiedTasksRef.current.has(task.id)) continue;
 
       // Check if this task was previously running
@@ -181,6 +221,10 @@ export function ScalingSchedulerStatusIndicator() {
     if (notifiedTasksRef.current.size > 100) {
       const arr = Array.from(notifiedTasksRef.current);
       notifiedTasksRef.current = new Set(arr.slice(-50));
+    }
+    if (notifiedErrorsRef.current.size > 200) {
+      const arr = Array.from(notifiedErrorsRef.current);
+      notifiedErrorsRef.current = new Set(arr.slice(-100));
     }
   }, [activeTasks, recentTasks, toast]);
 
