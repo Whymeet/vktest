@@ -183,3 +183,63 @@ class VkAdsClient:
             f"{non_zero_count} with non-zero spent"
         )
         return spent_by_id, valid_ids
+
+    def get_total_spent(self, date_from: date, date_to: date) -> float:
+        """
+        Get total spent for entire account (no banner filter).
+
+        Makes a request without banner ID filter to get total account spending.
+
+        Args:
+            date_from: Start date for statistics
+            date_to: End date for statistics
+
+        Returns:
+            Total spent amount for the account
+        """
+        url = self.cfg.base_url.rstrip("/") + "/statistics/banners/day.json"
+        params = {
+            "date_from": date_from.isoformat(),
+            "date_to": date_to.isoformat(),
+            "metrics": "base",
+        }
+        # No 'id' parameter - returns total statistics for entire account
+
+        logger.info(
+            f"VK Ads: requesting total spent for account "
+            f"(period {params['date_from']}..{params['date_to']})"
+        )
+
+        max_retries = 5
+        backoff = 2.0
+
+        for attempt in range(1, max_retries + 1):
+            resp = requests.get(
+                url,
+                headers=self._headers(),
+                params=params,
+                timeout=60,
+            )
+
+            if resp.status_code == 429:
+                wait_time = backoff + (attempt - 1)
+                logger.warning(
+                    f"VK Ads: 429 Too Many Requests, attempt {attempt}/{max_retries}, "
+                    f"waiting {wait_time:.1f} sec"
+                )
+                time.sleep(wait_time)
+                continue
+
+            try:
+                resp.raise_for_status()
+            except requests.HTTPError as exc:
+                logger.error(f"VK Ads: error requesting total spent: {exc}, body={resp.text}")
+                raise
+
+            payload = resp.json()
+            total_spent = float(payload.get("total", {}).get("base", {}).get("spent", 0) or 0)
+            logger.info(f"VK Ads: total spent for account = {total_spent}")
+            return total_spent
+
+        logger.error(f"VK Ads: failed to get total spent after {max_retries} attempts")
+        return 0.0

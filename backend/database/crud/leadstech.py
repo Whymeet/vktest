@@ -8,7 +8,7 @@ from sqlalchemy import func
 
 from utils.time_utils import get_moscow_time
 from utils.logging_setup import get_logger
-from database.models import LeadsTechConfig, LeadsTechCabinet, LeadsTechAnalysisResult
+from database.models import LeadsTechConfig, LeadsTechCabinet, LeadsTechAnalysisResult, LeadsTechCabinetTotal
 
 logger = get_logger(service="crud", function="leadstech")
 
@@ -410,10 +410,84 @@ def get_leadstech_analysis_stats(
 
     weighted_roi = (total_profit / total_spent * 100) if total_spent > 0 else 0
 
+    # Get total VK spent (filtered by cabinet if specified)
+    total_vk_spent = get_cabinet_total_spent(db, user_id, cabinet_name)
+    real_profit = total_revenue - total_vk_spent
+
     return {
         'total_count': result.total_count or 0,
         'total_spent': total_spent,
         'total_revenue': total_revenue,
         'total_profit': total_profit,
-        'avg_roi': weighted_roi
+        'avg_roi': weighted_roi,
+        'total_vk_spent': total_vk_spent,
+        'real_profit': real_profit
     }
+
+
+# ===== LeadsTech Cabinet Totals =====
+
+def save_leadstech_cabinet_totals(
+    db: Session,
+    user_id: int,
+    cabinet_totals: dict,
+    date_from: str,
+    date_to: str
+) -> int:
+    """
+    Save total VK spent for each cabinet.
+
+    Args:
+        db: Database session
+        user_id: User ID
+        cabinet_totals: Dict mapping cabinet_name to total_vk_spent
+        date_from: Analysis date range start
+        date_to: Analysis date range end
+
+    Returns:
+        Number of records saved
+    """
+    # Delete old totals for this user
+    db.query(LeadsTechCabinetTotal).filter(LeadsTechCabinetTotal.user_id == user_id).delete()
+
+    # Insert new totals
+    count = 0
+    for cabinet_name, total_spent in cabinet_totals.items():
+        db.add(LeadsTechCabinetTotal(
+            user_id=user_id,
+            cabinet_name=cabinet_name,
+            total_vk_spent=total_spent,
+            date_from=date_from,
+            date_to=date_to,
+        ))
+        count += 1
+
+    db.commit()
+    logger.info(f"Saved cabinet totals for {count} cabinets")
+    return count
+
+
+def get_cabinet_total_spent(
+    db: Session,
+    user_id: int,
+    cabinet_name: Optional[str] = None
+) -> float:
+    """
+    Get total VK spent - for specific cabinet or sum of all.
+
+    Args:
+        db: Database session
+        user_id: User ID
+        cabinet_name: Optional cabinet name to filter by
+
+    Returns:
+        Total VK spent (sum of all cabinets if cabinet_name is None)
+    """
+    query = db.query(func.sum(LeadsTechCabinetTotal.total_vk_spent)).filter(
+        LeadsTechCabinetTotal.user_id == user_id
+    )
+    if cabinet_name:
+        query = query.filter(LeadsTechCabinetTotal.cabinet_name == cabinet_name)
+
+    result = query.scalar()
+    return float(result or 0)

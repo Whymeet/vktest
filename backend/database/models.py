@@ -517,6 +517,26 @@ class LeadsTechAnalysisResult(Base):
         return f"<LeadsTechAnalysisResult(banner_id={self.banner_id}, roi={self.roi_percent}, profit={self.profit})>"
 
 
+class LeadsTechCabinetTotal(Base):
+    """Total VK spent per cabinet (updated during analysis)"""
+    __tablename__ = "leadstech_cabinet_totals"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    cabinet_name = Column(String(255), nullable=False, index=True)
+    total_vk_spent = Column(Float, default=0.0)
+    date_from = Column(String(10))
+    date_to = Column(String(10))
+    updated_at = Column(DateTime, default=get_moscow_time, onupdate=get_moscow_time)
+
+    __table_args__ = (
+        Index('ix_lt_cabinet_totals_user_cabinet', 'user_id', 'cabinet_name', unique=True),
+    )
+
+    def __repr__(self):
+        return f"<LeadsTechCabinetTotal(cabinet={self.cabinet_name}, spent={self.total_vk_spent})>"
+
+
 # ===== Auto-Scaling Models =====
 
 class ScalingConfigAccount(Base):

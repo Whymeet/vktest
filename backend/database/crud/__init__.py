@@ -124,6 +124,9 @@ from database.crud.leadstech import (
     get_leadstech_analysis_cabinet_names,
     get_leadstech_analysis_stats,
     get_leadstech_data_for_banners,
+    # Cabinet Totals
+    save_leadstech_cabinet_totals,
+    get_cabinet_total_spent,
 )
 
 # Scaling
@@ -287,6 +290,8 @@ __all__ = [
     "get_leadstech_analysis_cabinet_names",
     "get_leadstech_analysis_stats",
     "get_leadstech_data_for_banners",
+    "save_leadstech_cabinet_totals",
+    "get_cabinet_total_spent",
     # Scaling
     "get_scaling_configs",
     "get_scaling_config_by_id",

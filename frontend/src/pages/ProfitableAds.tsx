@@ -616,19 +616,26 @@ export function ProfitableAds() {
     const serverStats = analysisResults?.stats;
     if (serverStats) {
       return {
-        totalSpent: serverStats.total_spent,
+        totalSpent: serverStats.total_spent,           // Траты по баннерам из LeadsTech
+        totalVkSpent: serverStats.total_vk_spent ?? serverStats.total_spent,  // Общие траты VK
         totalRevenue: serverStats.total_revenue,
-        totalProfit: serverStats.total_profit,
+        totalProfit: serverStats.total_profit,         // Прибыль по баннерам LeadsTech
+        realProfit: serverStats.real_profit ?? serverStats.total_profit,      // Реальная прибыль
         count: serverStats.total_count,
         avgRoi: serverStats.avg_roi,
       };
     }
     // Fallback to client-side calculation if stats not available
     const data = sortedResults;
+    const totalSpent = data.reduce((sum: number, r: any) => sum + r.vk_spent, 0);
+    const totalRevenue = data.reduce((sum: number, r: any) => sum + r.lt_revenue, 0);
+    const totalProfit = data.reduce((sum: number, r: any) => sum + r.profit, 0);
     return {
-      totalSpent: data.reduce((sum: number, r: any) => sum + r.vk_spent, 0),
-      totalRevenue: data.reduce((sum: number, r: any) => sum + r.lt_revenue, 0),
-      totalProfit: data.reduce((sum: number, r: any) => sum + r.profit, 0),
+      totalSpent,
+      totalVkSpent: totalSpent,  // Fallback: same as totalSpent
+      totalRevenue,
+      totalProfit,
+      realProfit: totalProfit,   // Fallback: same as totalProfit
       count: analysisResults?.total || 0,
       avgRoi: data.filter((r: any) => r.roi_percent !== null).length > 0
         ? data.filter((r: any) => r.roi_percent !== null).reduce((sum: number, r: any) => sum + (r.roi_percent || 0), 0) / data.filter((r: any) => r.roi_percent !== null).length
@@ -839,7 +846,7 @@ export function ProfitableAds() {
                 </div>
                 <div className="min-w-0">
                   <p className="text-xs sm:text-sm text-zinc-400 truncate">Потрачено VK</p>
-                  <p className="text-base sm:text-xl font-bold text-white truncate">{formatMoney(summary.totalSpent)}</p>
+                  <p className="text-base sm:text-xl font-bold text-white truncate">{formatMoney(summary.totalVkSpent)}</p>
                 </div>
               </div>
             </div>
@@ -858,13 +865,13 @@ export function ProfitableAds() {
 
             <div className="bg-zinc-800/50 rounded-lg p-3 sm:p-4 border border-zinc-700">
               <div className="flex items-center gap-2 sm:gap-3">
-                <div className={`p-1.5 sm:p-2 rounded-lg ${summary.totalProfit >= 0 ? 'bg-green-900/30' : 'bg-red-900/30'}`}>
-                  <DollarSign className={`w-4 h-4 sm:w-5 sm:h-5 ${summary.totalProfit >= 0 ? 'text-green-400' : 'text-red-400'}`} />
+                <div className={`p-1.5 sm:p-2 rounded-lg ${summary.realProfit >= 0 ? 'bg-green-900/30' : 'bg-red-900/30'}`}>
+                  <DollarSign className={`w-4 h-4 sm:w-5 sm:h-5 ${summary.realProfit >= 0 ? 'text-green-400' : 'text-red-400'}`} />
                 </div>
                 <div className="min-w-0">
                   <p className="text-xs sm:text-sm text-zinc-400 truncate">Прибыль</p>
-                  <p className={`text-base sm:text-xl font-bold truncate ${summary.totalProfit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                    {formatMoney(summary.totalProfit)}
+                  <p className={`text-base sm:text-xl font-bold truncate ${summary.realProfit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    {formatMoney(summary.realProfit)}
                   </p>
                 </div>
               </div>

@@ -4,7 +4,7 @@ LeadsTech Integration Module
 Provides ROI analysis by combining LeadsTech revenue data with VK Ads spending.
 """
 
-from leadstech.analyzer import run_analysis, analyze_cabinet, save_results
+from leadstech.analyzer import run_analysis, analyze_all_cabinets, save_results
 from leadstech.leadstech_client import LeadstechClient, LeadstechClientConfig
 from leadstech.vk_client import VkAdsClient, VkAdsConfig
 from leadstech.aggregator import (
@@ -24,7 +24,7 @@ from leadstech.config_loader import (
 __all__ = [
     # Main entry point
     "run_analysis",
-    "analyze_cabinet",
+    "analyze_all_cabinets",
     "save_results",
     # LeadsTech client
     "LeadstechClient",
