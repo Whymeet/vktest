@@ -36,6 +36,7 @@ class LeadsTechAnalysisSettings(BaseModel):
 # === Config ===
 
 @router.get("/config")
+@cached(ttl=CacheTTL.LEADSTECH_CONFIG, endpoint_name="leadstech-config")
 async def get_leadstech_config(
     current_user: User = Depends(require_feature("leadstech")),
     db: Session = Depends(get_db)
@@ -83,6 +84,10 @@ async def update_leadstech_config(
         date_to=config.date_to,
         banner_sub_fields=config.banner_sub_fields
     )
+
+    # Invalidate cache after update
+    await CacheInvalidation.after_update(current_user.id, "leadstech_config")
+
     return {"message": "LeadsTech configuration updated", "id": result.id}
 
 
@@ -93,6 +98,8 @@ async def delete_leadstech_config(
 ):
     """Delete LeadsTech configuration"""
     if crud.delete_leadstech_config(db, user_id=current_user.id):
+        # Invalidate cache after delete
+        await CacheInvalidation.after_delete(current_user.id, "leadstech_config")
         return {"message": "LeadsTech configuration deleted"}
     raise HTTPException(status_code=404, detail="LeadsTech configuration not found")
 
@@ -118,6 +125,10 @@ async def update_leadstech_analysis_settings(
         date_to=settings.date_to,
         banner_sub_fields=settings.banner_sub_fields
     )
+
+    # Invalidate cache after update
+    await CacheInvalidation.after_update(current_user.id, "leadstech_config")
+
     return {"message": "LeadsTech analysis settings updated"}
 
 
@@ -212,6 +223,7 @@ async def delete_leadstech_cabinet(
 # === Analysis ===
 
 @router.get("/analysis/results")
+@cached(ttl=CacheTTL.LEADSTECH_RESULTS, endpoint_name="leadstech-results")
 async def get_leadstech_analysis_results(
     cabinet_name: Optional[str] = None,
     page: int = 1,
@@ -306,6 +318,7 @@ async def get_leadstech_analysis_results(
 
 
 @router.get("/analysis/cabinets")
+@cached(ttl=CacheTTL.LEADSTECH_ANALYSIS_CABINETS, endpoint_name="leadstech-analysis-cabinets")
 async def get_leadstech_analysis_cabinets(
     current_user: User = Depends(require_feature("leadstech")),
     db: Session = Depends(get_db)

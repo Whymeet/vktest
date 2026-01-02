@@ -16,6 +16,9 @@ export const STALE_TIMES = {
   ACCOUNTS: 4 * 60 * 1000,                // 4 min (server: 5 min)
   SETTINGS: 8 * 60 * 1000,                // 8 min (server: 10 min)
   LEADSTECH_CABINETS: 8 * 60 * 1000,      // 8 min (server: 10 min)
+  LEADSTECH_CONFIG: 8 * 60 * 1000,        // 8 min (server: 10 min)
+  LEADSTECH_RESULTS: 8 * 60 * 1000,       // 8 min (server: 10 min)
+  LEADSTECH_ANALYSIS_CABINETS: 8 * 60 * 1000, // 8 min (server: 10 min)
 
   // Medium priority (server TTL: 10-60 sec)
   DASHBOARD: 25 * 1000,                   // 25 sec (server: 30 sec)
@@ -26,7 +29,7 @@ export const STALE_TIMES = {
   // No cache - always fresh data
   STATISTICS: 0,                          // Never cache (uses refetchInterval)
   SCALING_TASKS: 0,                       // Active tasks - real-time
-  LEADSTECH_ANALYSIS: 0,                  // Analysis results
+  LEADSTECH_STATUS: 0,                    // Analysis status - real-time
 } as const;
 
 // Cache times (gcTime - how long to keep data in memory after becoming inactive)

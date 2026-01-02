@@ -88,6 +88,9 @@ class CacheTTL:
     ACCOUNTS = 300                # 5 min
     SETTINGS = 600                # 10 min
     LEADSTECH_CABINETS = 600      # 10 min
+    LEADSTECH_CONFIG = 600        # 10 min
+    LEADSTECH_RESULTS = 600       # 10 min (profitable ads page)
+    LEADSTECH_ANALYSIS_CABINETS = 600  # 10 min
 
     # Medium priority
     DASHBOARD = 30                # 30 sec
@@ -103,9 +106,7 @@ NO_CACHE_ENDPOINTS = {
     "stats",
     "scaling-tasks",
     "scaling-active-tasks",
-    "leadstech-analysis",
-    "leadstech-analysis-status",
-    "leadstech-analysis-results",
+    "leadstech-analysis-status",  # Status должен быть всегда свежим
 }
 
 
@@ -279,6 +280,7 @@ class CacheInvalidation:
         "settings": ["settings", "dashboard"],
         "leadstech_config": ["leadstech-config", "leadstech-cabinets"],
         "leadstech_cabinet": ["leadstech-cabinets"],
+        "leadstech_results": ["leadstech-results", "leadstech-analysis-cabinets"],
     }
 
     @classmethod

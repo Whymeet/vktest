@@ -44,6 +44,7 @@ import {
 } from '../api/client';
 import { Card } from '../components/Card';
 import { DateRangePicker } from '../components/DateRangePicker';
+import { STALE_TIMES, GC_TIMES } from '../api/queryConfig';
 
 type TabType = 'results' | 'settings';
 type SortField = 'roi_percent' | 'profit' | 'vk_spent' | 'lt_revenue' | 'banner_id';
@@ -469,7 +470,8 @@ export function ProfitableAds() {
   const { data: configData } = useQuery({
     queryKey: ['leadstechConfig'],
     queryFn: () => getLeadsTechConfig().then((r: any) => r.data),
-    refetchInterval: 10000, // Auto-refresh every 10 seconds
+    staleTime: STALE_TIMES.LEADSTECH_CONFIG,
+    gcTime: GC_TIMES.DEFAULT,
   });
 
   // Initialize config form when data loads
@@ -487,7 +489,8 @@ export function ProfitableAds() {
   const { data: cabinetsData, isLoading: isLoadingCabinets, refetch: refetchCabinets } = useQuery({
     queryKey: ['leadstechCabinets'],
     queryFn: () => getLeadsTechCabinets().then((r: any) => r.data),
-    refetchInterval: 10000, // Auto-refresh every 10 seconds
+    staleTime: STALE_TIMES.LEADSTECH_CABINETS,
+    gcTime: GC_TIMES.DEFAULT,
   });
 
   // Convert filters to API format
@@ -512,26 +515,30 @@ export function ProfitableAds() {
       sortOrder,
       apiFilters
     ).then((r: any) => r.data),
-    refetchInterval: 5000, // Auto-refresh every 5 seconds
+    staleTime: STALE_TIMES.LEADSTECH_RESULTS,
+    gcTime: GC_TIMES.DEFAULT,
   });
 
   // Get all unique cabinet names for filter dropdown (separate query)
   const { data: analysisCabinetsData } = useQuery({
     queryKey: ['leadstechAnalysisCabinets'],
     queryFn: () => getLeadsTechAnalysisCabinets().then((r: any) => r.data),
-    refetchInterval: 10000, // Auto-refresh every 10 seconds
+    staleTime: STALE_TIMES.LEADSTECH_ANALYSIS_CABINETS,
+    gcTime: GC_TIMES.DEFAULT,
   });
 
   const { data: analysisStatus, refetch: refetchStatus } = useQuery({
     queryKey: ['leadstechStatus'],
     queryFn: () => getLeadsTechAnalysisStatus().then((r: any) => r.data),
-    refetchInterval: 3000, // Auto-refresh every 3 seconds
+    staleTime: STALE_TIMES.LEADSTECH_STATUS,
+    refetchInterval: 3000, // Auto-refresh every 3 seconds (status needs to be real-time)
   });
 
   const { data: whitelistStatus, refetch: refetchWhitelistStatus } = useQuery({
     queryKey: ['whitelistStatus'],
     queryFn: () => getWhitelistProfitableStatus().then((r: any) => r.data),
-    refetchInterval: 3000,
+    staleTime: STALE_TIMES.LEADSTECH_STATUS,
+    refetchInterval: 3000, // Status needs to be real-time
   });
 
   // Mutations
