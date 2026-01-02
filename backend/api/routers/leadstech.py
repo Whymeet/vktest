@@ -22,6 +22,7 @@ from api.schemas.leadstech import (
     LeadsTechConfigCreate,
     LeadsTechCabinetUpdate,
 )
+from api.services.cache import cached, CacheTTL, CacheInvalidation
 
 router = APIRouter(prefix="/api/leadstech", tags=["LeadsTech"])
 
@@ -123,6 +124,7 @@ async def update_leadstech_analysis_settings(
 # === Cabinets ===
 
 @router.get("/cabinets")
+@cached(ttl=CacheTTL.LEADSTECH_CABINETS, endpoint_name="leadstech-cabinets")
 async def get_leadstech_cabinets(
     enabled_only: bool = False,
     current_user: User = Depends(require_feature("leadstech")),
@@ -174,6 +176,10 @@ async def update_leadstech_cabinet(
     )
     if not result:
         raise HTTPException(status_code=404, detail="Account not found")
+
+    # Invalidate cache after update
+    await CacheInvalidation.after_update(current_user.id, "leadstech_cabinet")
+
     return {"message": "Account LeadsTech settings updated"}
 
 
@@ -196,6 +202,10 @@ async def delete_leadstech_cabinet(
     )
     if not result:
         raise HTTPException(status_code=404, detail="Account not found")
+
+    # Invalidate cache after delete
+    await CacheInvalidation.after_delete(current_user.id, "leadstech_cabinet")
+
     return {"message": "Account label removed"}
 
 

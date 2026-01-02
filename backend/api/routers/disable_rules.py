@@ -8,6 +8,7 @@ from database import get_db, crud
 from database.models import User
 from auth.dependencies import require_feature
 from api.schemas.disable_rules import DisableRuleCreate, DisableRuleUpdate
+from api.services.cache import cached, CacheTTL, CacheInvalidation
 
 router = APIRouter(prefix="/api/disable-rules", tags=["Disable Rules"])
 
@@ -44,6 +45,7 @@ def _format_rule_response(rule, db) -> dict:
 
 
 @router.get("")
+@cached(ttl=CacheTTL.DISABLE_RULES, endpoint_name="disable-rules")
 async def get_disable_rules(
     enabled_only: bool = False,
     current_user: User = Depends(require_feature("auto_disable")),
@@ -86,6 +88,7 @@ async def get_disable_rules(
 
 
 @router.get("/metrics")
+@cached(ttl=CacheTTL.DISABLE_RULES_METRICS, endpoint_name="disable-rules-metrics")
 async def get_disable_rule_metrics(
     current_user: User = Depends(require_feature("auto_disable"))
 ):
@@ -185,6 +188,9 @@ async def create_disable_rule(
     if data.account_ids:
         crud.replace_rule_accounts(db, rule.id, data.account_ids, user_id=current_user.id)
 
+    # Invalidate cache after create
+    await CacheInvalidation.after_create(current_user.id, "disable_rule")
+
     return _format_rule_response(rule, db)
 
 
@@ -216,6 +222,9 @@ async def update_disable_rule(
     if data.account_ids is not None:
         crud.replace_rule_accounts(db, rule_id, data.account_ids, user_id=current_user.id)
 
+    # Invalidate cache after update
+    await CacheInvalidation.after_update(current_user.id, "disable_rule")
+
     rule = crud.get_disable_rule_by_id(db, rule_id)
     return _format_rule_response(rule, db)
 
@@ -229,5 +238,8 @@ async def delete_disable_rule(
     """Delete a disable rule"""
     if not crud.delete_disable_rule(db, rule_id):
         raise HTTPException(status_code=404, detail="Rule not found")
+
+    # Invalidate cache after delete
+    await CacheInvalidation.after_delete(current_user.id, "disable_rule")
 
     return {"message": "Rule deleted successfully"}

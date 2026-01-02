@@ -8,6 +8,7 @@ from database import get_db, crud
 from database.models import User
 from auth.dependencies import get_current_user
 from api.services.process_manager import is_process_running_by_db
+from api.services.cache import cached, CacheTTL, is_redis_available
 
 router = APIRouter(tags=["Dashboard"])
 
@@ -19,11 +20,17 @@ async def health_check():
         "status": "healthy",
         "version": "4.0.0-modular",
         "database": "postgresql",
-        "auth": "enabled"
+        "auth": "enabled",
+        "cache": {
+            "enabled": True,
+            "available": is_redis_available(),
+            "backend": "redis"
+        }
     }
 
 
 @router.get("/api/dashboard")
+@cached(ttl=CacheTTL.DASHBOARD, endpoint_name="dashboard")
 async def get_dashboard(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)

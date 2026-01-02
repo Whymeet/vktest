@@ -8,11 +8,13 @@ from database import get_db, crud
 from database.models import User
 from auth.dependencies import get_current_user
 from api.schemas.accounts import AccountCreate, AccountUpdate
+from api.services.cache import cached, CacheTTL, CacheInvalidation
 
 router = APIRouter(prefix="/api/accounts", tags=["Accounts"])
 
 
 @router.get("")
+@cached(ttl=CacheTTL.ACCOUNTS, endpoint_name="accounts")
 async def get_accounts_endpoint(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -65,6 +67,9 @@ async def create_account(
     if account.label:
         crud.update_account_label(db, current_user.id, new_account.id, account.label)
 
+    # Invalidate cache after create
+    await CacheInvalidation.after_create(current_user.id, "account")
+
     return {"message": "Account created successfully"}
 
 
@@ -98,6 +103,9 @@ async def update_account_endpoint(
         label=account.label if account.label is not None else target_account.label
     )
 
+    # Invalidate cache after update
+    await CacheInvalidation.after_update(current_user.id, "account")
+
     return {"message": "Account updated successfully"}
 
 
@@ -120,4 +128,8 @@ async def delete_account_endpoint(
         raise HTTPException(status_code=404, detail="Account not found")
 
     crud.delete_account(db, current_user.id, target_account.account_id)
+
+    # Invalidate cache after delete
+    await CacheInvalidation.after_delete(current_user.id, "account")
+
     return {"message": "Account deleted successfully"}

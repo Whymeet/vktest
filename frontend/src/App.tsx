@@ -17,14 +17,12 @@ import { Scaling } from './pages/Scaling';
 import { DisableRules } from './pages/DisableRules';
 import { Profile } from './pages/Profile';
 import { NotFound } from './pages/NotFound';
+import { DEFAULT_QUERY_OPTIONS } from './api/queryConfig';
 import './index.css';
 
 const queryClient = new QueryClient({
   defaultOptions: {
-    queries: {
-      retry: 1,
-      refetchOnWindowFocus: false,
-    },
+    queries: DEFAULT_QUERY_OPTIONS,
   },
 });
 

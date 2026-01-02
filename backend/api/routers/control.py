@@ -24,11 +24,13 @@ from api.services.process_manager import (
     is_process_running_by_db,
     kill_process_by_pid,
 )
+from api.services.cache import cached, CacheTTL
 
 router = APIRouter(prefix="/api/control", tags=["Process Control"])
 
 
 @router.get("/status")
+@cached(ttl=CacheTTL.CONTROL_STATUS, endpoint_name="control-status")
 async def get_control_status(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)

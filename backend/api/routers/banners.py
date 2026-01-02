@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from database import get_db, crud
 from database.models import User
 from auth.dependencies import get_current_user
+from api.services.cache import cached, CacheTTL
 
 router = APIRouter(prefix="/api/banners", tags=["Banners"])
 
@@ -78,6 +79,7 @@ async def get_active_banners(
 
 
 @router.get("/history")
+@cached(ttl=CacheTTL.BANNER_HISTORY, endpoint_name="banner-history")
 async def get_banner_history(
     banner_id: Optional[int] = None,
     account_id: Optional[int] = None,

@@ -15,6 +15,7 @@ import {
 import { getDisabledBanners, getDisabledBannersAccounts } from '../api/client';
 import { Card } from '../components/Card';
 import { Pagination } from '../components/Pagination';
+import { STALE_TIMES, GC_TIMES } from '../api/queryConfig';
 
 type SortField = 'created_at' | 'banner_id' | 'spend' | 'clicks' | 'shows' | 'ctr' | 'conversions';
 type SortOrder = 'asc' | 'desc';
@@ -47,22 +48,28 @@ export function Statistics() {
   const pageSize = 500;
 
   // Queries - load with pagination and sorting
+  // Statistics page - NO CACHING (always fresh data)
   const { data: disabledData, refetch: refetchDisabled, isLoading } = useQuery({
     queryKey: ['disabledBanners', currentPage, selectedAccount, sortField, sortOrder],
     queryFn: () => getDisabledBanners(
-      currentPage, 
-      pageSize, 
+      currentPage,
+      pageSize,
       selectedAccount || undefined,
       sortField,
       sortOrder
     ).then((r: any) => r.data),
+    staleTime: STALE_TIMES.STATISTICS, // 0 - always stale
+    gcTime: GC_TIMES.STATISTICS,
     refetchInterval: 5000, // Auto-refresh every 5 seconds
   });
 
   // Get all unique account names for filter dropdown (separate query)
+  // Also not cached - needs to be in sync with disabled banners
   const { data: accountsData } = useQuery({
     queryKey: ['disabledBannersAccountsList'],
     queryFn: () => getDisabledBannersAccounts().then((r: any) => r.data),
+    staleTime: STALE_TIMES.STATISTICS, // 0 - always stale
+    gcTime: GC_TIMES.STATISTICS,
     refetchInterval: 10000, // Auto-refresh every 10 seconds
   });
 

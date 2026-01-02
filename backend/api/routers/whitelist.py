@@ -7,11 +7,13 @@ from sqlalchemy.orm import Session
 from database import get_db, crud
 from database.models import User
 from auth.dependencies import require_feature
+from api.services.cache import cached, CacheTTL, CacheInvalidation
 
 router = APIRouter(prefix="/api/whitelist", tags=["Whitelist"])
 
 
 @router.get("")
+@cached(ttl=CacheTTL.WHITELIST, endpoint_name="whitelist")
 async def get_whitelist(
     current_user: User = Depends(require_feature("auto_disable")),
     db: Session = Depends(get_db)
@@ -30,6 +32,10 @@ async def update_whitelist(
     """Replace entire whitelist for current user"""
     banner_ids = data.get("banner_ids", [])
     crud.replace_whitelist(db, current_user.id, banner_ids)
+
+    # Invalidate cache after update
+    await CacheInvalidation.after_update(current_user.id, "whitelist")
+
     return {"message": "Whitelist updated", "count": len(banner_ids)}
 
 
@@ -45,6 +51,10 @@ async def bulk_add_to_whitelist(
         raise HTTPException(status_code=400, detail="banner_ids is required")
 
     result = crud.bulk_add_to_whitelist(db, current_user.id, banner_ids)
+
+    # Invalidate cache after update
+    await CacheInvalidation.after_update(current_user.id, "whitelist")
+
     return {
         "message": f"Added {result['added']} banners, skipped {result['skipped']} (already in list)",
         "added": result["added"],
@@ -65,6 +75,10 @@ async def bulk_remove_from_whitelist(
         raise HTTPException(status_code=400, detail="banner_ids is required")
 
     result = crud.bulk_remove_from_whitelist(db, current_user.id, banner_ids)
+
+    # Invalidate cache after update
+    await CacheInvalidation.after_update(current_user.id, "whitelist")
+
     return {
         "message": f"Removed {result['removed']} banners from {result['total']}",
         "removed": result["removed"],
@@ -80,6 +94,10 @@ async def add_to_whitelist(
 ):
     """Add banner to whitelist for current user"""
     crud.add_to_whitelist(db, current_user.id, banner_id)
+
+    # Invalidate cache after update
+    await CacheInvalidation.after_update(current_user.id, "whitelist")
+
     return {"message": "Banner added to whitelist"}
 
 
@@ -93,4 +111,8 @@ async def remove_from_whitelist(
     removed = crud.remove_from_whitelist(db, current_user.id, banner_id)
     if not removed:
         raise HTTPException(status_code=404, detail="Banner not in whitelist")
+
+    # Invalidate cache after delete
+    await CacheInvalidation.after_delete(current_user.id, "whitelist")
+
     return {"message": "Banner removed from whitelist"}

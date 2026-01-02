@@ -15,6 +15,7 @@ from api.schemas.settings import (
     FullConfig,
     LeadsTechCredentialsUpdate,
 )
+from api.services.cache import cached, CacheTTL, CacheInvalidation
 
 router = APIRouter(prefix="/api/settings", tags=["Settings"])
 
@@ -36,6 +37,7 @@ def _get_leadstech_for_settings(db: Session, user_id: int) -> dict:
 
 
 @router.get("")
+@cached(ttl=CacheTTL.SETTINGS, endpoint_name="settings")
 async def get_settings(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -85,6 +87,9 @@ async def update_settings(
     crud.set_user_setting(db, current_user.id, 'scheduler', settings.scheduler.model_dump())
     crud.set_user_setting(db, current_user.id, 'statistics_trigger', settings.statistics_trigger.model_dump())
 
+    # Invalidate cache after update
+    await CacheInvalidation.after_update(current_user.id, "settings")
+
     return {"message": "Settings updated"}
 
 
@@ -96,6 +101,7 @@ async def update_analysis_settings(
 ):
     """Update analysis settings for current user"""
     crud.set_user_setting(db, current_user.id, 'analysis_settings', settings.model_dump())
+    await CacheInvalidation.after_update(current_user.id, "settings")
     return {"message": "Analysis settings updated"}
 
 
@@ -107,6 +113,7 @@ async def update_telegram_settings(
 ):
     """Update Telegram settings for current user"""
     crud.set_user_setting(db, current_user.id, 'telegram', settings.model_dump())
+    await CacheInvalidation.after_update(current_user.id, "settings")
     return {"message": "Telegram settings updated"}
 
 
@@ -118,6 +125,7 @@ async def update_scheduler_settings(
 ):
     """Update scheduler settings for current user"""
     crud.set_user_setting(db, current_user.id, 'scheduler', settings.model_dump())
+    await CacheInvalidation.after_update(current_user.id, "settings")
     return {"message": "Scheduler settings updated"}
 
 
@@ -129,6 +137,7 @@ async def update_statistics_trigger(
 ):
     """Update statistics trigger settings for current user"""
     crud.set_user_setting(db, current_user.id, 'statistics_trigger', settings.model_dump())
+    await CacheInvalidation.after_update(current_user.id, "settings")
     return {"message": "Statistics trigger settings updated"}
 
 
@@ -156,4 +165,8 @@ async def update_leadstech_credentials(
         user_id=current_user.id,
         base_url=credentials.base_url or "https://api.leads.tech"
     )
+
+    # Invalidate cache after update
+    await CacheInvalidation.after_update(current_user.id, "leadstech_config")
+
     return {"message": "LeadsTech credentials updated"}

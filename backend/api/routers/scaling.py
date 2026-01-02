@@ -16,6 +16,7 @@ from api.schemas.scaling import (
     ManualDuplicateRequest,
 )
 from api.services.scaling_worker import run_duplication_task, run_auto_scaling_task
+from api.services.cache import cached, CacheTTL, CacheInvalidation
 
 router = APIRouter(prefix="/api/scaling", tags=["Scaling"])
 
@@ -23,6 +24,7 @@ router = APIRouter(prefix="/api/scaling", tags=["Scaling"])
 # === Scaling Configs ===
 
 @router.get("/configs")
+@cached(ttl=CacheTTL.SCALING_CONFIGS, endpoint_name="scaling-configs")
 async def get_scaling_configs_endpoint(
     current_user: User = Depends(require_feature("scaling")),
     db: Session = Depends(get_db)
@@ -146,6 +148,10 @@ async def create_scaling_config_endpoint(
             crud.set_scaling_conditions(db, config.id, conditions_data)
 
         db.refresh(config)
+
+        # Invalidate cache after create
+        await CacheInvalidation.after_create(current_user.id, "scaling_config")
+
         return {"id": int(config.id), "message": "Configuration created"}
     except Exception as e:
         db.rollback()
@@ -191,6 +197,10 @@ async def update_scaling_config_endpoint(
             crud.set_scaling_conditions(db, config_id, conditions_data)
 
         db.refresh(config)
+
+        # Invalidate cache after update
+        await CacheInvalidation.after_update(current_user.id, "scaling_config")
+
         return {"message": "Configuration updated"}
     except HTTPException:
         raise
@@ -208,10 +218,15 @@ async def delete_scaling_config_endpoint(
     """Delete scaling configuration"""
     if not crud.delete_scaling_config(db, config_id):
         raise HTTPException(status_code=404, detail="Configuration not found")
+
+    # Invalidate cache after delete
+    await CacheInvalidation.after_delete(current_user.id, "scaling_config")
+
     return {"message": "Configuration deleted"}
 
 
 @router.get("/logs")
+@cached(ttl=CacheTTL.SCALING_LOGS, endpoint_name="scaling-logs")
 async def get_scaling_logs_endpoint(
     config_id: Optional[int] = None,
     limit: int = 100,

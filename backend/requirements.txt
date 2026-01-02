@@ -32,6 +32,9 @@ loguru>=0.7.0
 # Rate Limiting
 slowapi>=0.1.9
 
+# Caching
+redis>=5.0.0
+
 # Testing (dev dependencies)
 pytest>=8.0.0
 pytest-asyncio>=0.23.0
