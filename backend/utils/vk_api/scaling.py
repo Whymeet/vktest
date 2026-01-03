@@ -544,9 +544,7 @@ def duplicate_ad_group_to_new_campaign(
 
         print(f"[OK] Loaded group: {original_group.get('name', 'Unknown')}")
 
-        time.sleep(rate_limit_delay)
-
-        # Load banners
+        # Load banners (no delay needed - VK API allows ~35 RPS for most endpoints)
         banners = get_banners_by_ad_group(token, base_url, ad_group_id, include_stopped=True)
         print(f"[OK] Found {len(banners)} banners for copying")
 

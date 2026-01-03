@@ -55,6 +55,7 @@ RATE LIMITS:
 ============================================================================
 """
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from typing import Dict, List, Set, Optional, Tuple
 from dataclasses import dataclass
@@ -167,6 +168,8 @@ class BannerScalingEngine:
 
         # Campaign cache for duplicate_to_new_campaign mode
         self._campaign_cache: Dict[tuple, int] = {}
+        # Campaign data cache (to avoid re-fetching original campaign info)
+        self._campaign_data_cache: Dict[int, dict] = {}
         # Counter for campaign numbering (e.g., "Копия 1", "Копия 2", ...)
         self._campaign_counter: int = 0
 
@@ -229,11 +232,18 @@ class BannerScalingEngine:
         """
         from utils.vk_api.campaigns import get_campaign_full, copy_campaign_settings
 
-        # Load original campaign
-        original_campaign = get_campaign_full(token, VK_API_BASE_URL, original_campaign_id)
-        if not original_campaign:
-            logger.error(f"    Could not load original campaign {original_campaign_id}")
-            return None
+        # Use cached campaign data if available
+        if original_campaign_id in self._campaign_data_cache:
+            original_campaign = self._campaign_data_cache[original_campaign_id]
+            logger.info(f"    Using cached campaign data for {original_campaign_id}")
+        else:
+            # Load original campaign
+            original_campaign = get_campaign_full(token, VK_API_BASE_URL, original_campaign_id)
+            if not original_campaign:
+                logger.error(f"    Could not load original campaign {original_campaign_id}")
+                return None
+            # Cache it
+            self._campaign_data_cache[original_campaign_id] = original_campaign
 
         # Prepare new campaign name with date and number
         date_suffix = datetime.now().strftime("%d-%m-%y")
@@ -446,22 +456,31 @@ class BannerScalingEngine:
             total_operations = len(groups_to_duplicate) * self.engine_config.duplicates_count
             self._update_task_total(total_operations)
 
-            # If duplicating to new campaign, collect group -> campaign mappings first
+            # If duplicating to new campaign, collect group -> campaign mappings first (parallel)
             group_to_campaign: Dict[int, int] = {}
             if self.engine_config.duplicate_to_new_campaign:
                 logger.info(f"")
-                logger.info(f"Mode: DUPLICATE TO NEW CAMPAIGN - collecting campaign info...")
-                for group_id in groups_to_duplicate:
+                logger.info(f"Mode: DUPLICATE TO NEW CAMPAIGN - collecting campaign info (parallel)...")
+
+                def fetch_group_campaign(group_id: int) -> Tuple[int, Optional[int]]:
                     account = account_by_group.get(group_id)
                     if not account:
-                        continue
-                    # Get group info to find campaign_id (ad_plan_id)
+                        return (group_id, None)
                     group_data = get_ad_group_full(account.api_token, VK_API_BASE_URL, group_id)
                     if group_data:
-                        campaign_id = group_data.get('ad_plan_id')
-                        if campaign_id:
-                            group_to_campaign[group_id] = campaign_id
-                            logger.info(f"  Group {group_id} -> Campaign {campaign_id}")
+                        return (group_id, group_data.get('ad_plan_id'))
+                    return (group_id, None)
+
+                with ThreadPoolExecutor(max_workers=5) as executor:
+                    futures = [executor.submit(fetch_group_campaign, gid) for gid in groups_to_duplicate]
+                    for future in as_completed(futures):
+                        try:
+                            gid, campaign_id = future.result()
+                            if campaign_id:
+                                group_to_campaign[gid] = campaign_id
+                                logger.info(f"  Group {gid} -> Campaign {campaign_id}")
+                        except Exception as e:
+                            logger.warning(f"  Error fetching group info: {e}")
                 logger.info(f"Mapped {len(group_to_campaign)} groups to campaigns")
 
             successful = 0
@@ -690,28 +709,43 @@ class BannerScalingEngine:
                     if self.engine_config.activate_negative_banners:
                         banners_to_activate.append(new_id)
 
-        # Delete negative banners
-        for banner_id in banners_to_delete:
-            try:
-                delete_banner(account.api_token, VK_API_BASE_URL, banner_id)
-                logger.info(f"      Deleted negative banner {banner_id}")
-            except Exception as e:
-                logger.warning(f"      Failed to delete banner {banner_id}: {e}")
+        # Delete negative banners (parallel)
+        if banners_to_delete:
+            logger.info(f"      Deleting {len(banners_to_delete)} negative banners (parallel)...")
+            with ThreadPoolExecutor(max_workers=5) as executor:
+                futures = {
+                    executor.submit(delete_banner, account.api_token, VK_API_BASE_URL, bid): bid
+                    for bid in banners_to_delete
+                }
+                for future in as_completed(futures):
+                    bid = futures[future]
+                    try:
+                        future.result()
+                    except Exception as e:
+                        logger.warning(f"      Failed to delete banner {bid}: {e}")
 
-        # Rename banners
-        for banner_id, new_name in banners_to_rename.items():
-            try:
-                update_banner(account.api_token, VK_API_BASE_URL, banner_id, {"name": new_name})
-            except Exception as e:
-                logger.warning(f"      Failed to rename banner {banner_id}: {e}")
+        # Update banners: combine rename + activate in one request per banner (parallel)
+        if banners_to_rename or banners_to_activate:
+            logger.info(f"      Updating {len(banners_to_rename)} banners (parallel, rename + activate)...")
+            activate_set = set(banners_to_activate)
 
-        # Activate banners
-        for banner_id in banners_to_activate:
-            try:
-                update_banner(account.api_token, VK_API_BASE_URL, banner_id, {"status": "active"})
-                logger.info(f"      Activated banner {banner_id}")
-            except Exception as e:
-                logger.warning(f"      Failed to activate banner {banner_id}: {e}")
+            def update_single_banner(banner_id: int, new_name: str):
+                update_data = {"name": new_name}
+                if banner_id in activate_set:
+                    update_data["status"] = "active"
+                update_banner(account.api_token, VK_API_BASE_URL, banner_id, update_data)
+
+            with ThreadPoolExecutor(max_workers=5) as executor:
+                futures = {
+                    executor.submit(update_single_banner, bid, name): bid
+                    for bid, name in banners_to_rename.items()
+                }
+                for future in as_completed(futures):
+                    bid = futures[future]
+                    try:
+                        future.result()
+                    except Exception as e:
+                        logger.warning(f"      Failed to update banner {bid}: {e}")
 
         # Activate group if there are any banners to activate
         # (either positive with activate_positive_banners=true, or negative with activate_negative_banners=true)
@@ -817,38 +851,50 @@ class BannerScalingEngine:
                 # Banner not in classification - might be new or missed
                 logger.warning(f"      Banner {orig_id} -> {new_id}: NOT CLASSIFIED (not in positive or negative set)")
 
-        # Delete negative banners if needed
+        # Delete negative banners if needed (parallel)
         if banners_to_delete:
-            logger.info(f"    Deleting {len(banners_to_delete)} negative banners")
-            for banner_id in banners_to_delete:
-                try:
-                    self._delete_banner(account.api_token, banner_id)
-                except Exception as e:
-                    logger.warning(f"    Failed to delete banner {banner_id}: {e}")
+            logger.info(f"    Deleting {len(banners_to_delete)} negative banners (parallel)")
+            with ThreadPoolExecutor(max_workers=5) as executor:
+                futures = {
+                    executor.submit(self._delete_banner, account.api_token, bid): bid
+                    for bid in banners_to_delete
+                }
+                for future in as_completed(futures):
+                    bid = futures[future]
+                    try:
+                        future.result()
+                    except Exception as e:
+                        logger.warning(f"    Failed to delete banner {bid}: {e}")
 
-        # Rename banners with prefix (Позитив/Негатив)
+        # Update banners: combine rename + activate in one request per banner (parallel optimization)
         if banners_to_rename:
-            logger.info(f"    Renaming {len(banners_to_rename)} banners with classification prefix")
-            renamed_count = 0
-            for banner_id, new_name in banners_to_rename.items():
-                try:
-                    self._rename_banner(account.api_token, banner_id, new_name)
-                    renamed_count += 1
-                    logger.info(f"      ✓ Banner {banner_id} renamed to: '{new_name}'")
-                except Exception as e:
-                    logger.warning(f"      ✗ Failed to rename banner {banner_id} to '{new_name}': {e}")
-            logger.info(f"    Renamed {renamed_count}/{len(banners_to_rename)} banners")
+            logger.info(f"    Updating {len(banners_to_rename)} banners (parallel, rename + activate)")
+            activate_set = set(banners_to_activate)
+            updated_count = 0
+            failed_count = 0
+
+            def update_single_banner(banner_id: int, new_name: str):
+                update_data = {"name": new_name}
+                if banner_id in activate_set:
+                    update_data["status"] = "active"
+                self._update_banner(account.api_token, banner_id, update_data)
+
+            with ThreadPoolExecutor(max_workers=5) as executor:
+                futures = {
+                    executor.submit(update_single_banner, bid, name): bid
+                    for bid, name in banners_to_rename.items()
+                }
+                for future in as_completed(futures):
+                    bid = futures[future]
+                    try:
+                        future.result()
+                        updated_count += 1
+                    except Exception as e:
+                        failed_count += 1
+                        logger.warning(f"      Failed to update banner {bid}: {e}")
+            logger.info(f"    Updated {updated_count}/{len(banners_to_rename)} banners (failed: {failed_count})")
         else:
             logger.warning(f"    No banners to rename! Check classification logic.")
-
-        # Activate banners if needed
-        if banners_to_activate:
-            logger.info(f"    Activating {len(banners_to_activate)} banners")
-            for banner_id in banners_to_activate:
-                try:
-                    self._activate_banner(account.api_token, banner_id)
-                except Exception as e:
-                    logger.warning(f"    Failed to activate banner {banner_id}: {e}")
 
         # Activate group if any banners should be active
         should_activate_group = len(banners_to_activate) > 0
@@ -870,30 +916,21 @@ class BannerScalingEngine:
 
         return result
 
-    def _activate_banner(self, token: str, banner_id: int):
-        """Activate a banner"""
+    def _update_banner(self, token: str, banner_id: int, data: dict):
+        """Update banner with given data (name, status, etc.)"""
         import requests
         from utils.vk_api.core import _headers
         url = f"{VK_API_BASE_URL}/banners/{banner_id}.json"
-        response = requests.post(url, headers=_headers(token), json={"status": "active"}, timeout=20)
+        response = requests.post(url, headers=_headers(token), json=data, timeout=10)
         if response.status_code not in (200, 204):
-            raise RuntimeError(f"Failed to activate banner: {response.text[:200]}")
-
-    def _rename_banner(self, token: str, banner_id: int, new_name: str):
-        """Rename a banner"""
-        import requests
-        from utils.vk_api.core import _headers
-        url = f"{VK_API_BASE_URL}/banners/{banner_id}.json"
-        response = requests.post(url, headers=_headers(token), json={"name": new_name}, timeout=20)
-        if response.status_code not in (200, 204):
-            raise RuntimeError(f"Failed to rename banner: {response.text[:200]}")
+            raise RuntimeError(f"Failed to update banner: {response.text[:200]}")
 
     def _delete_banner(self, token: str, banner_id: int):
         """Delete a banner"""
         import requests
         from utils.vk_api.core import _headers
         url = f"{VK_API_BASE_URL}/banners/{banner_id}.json"
-        response = requests.delete(url, headers=_headers(token), timeout=20)
+        response = requests.delete(url, headers=_headers(token), timeout=10)
         if response.status_code not in (200, 204):
             raise RuntimeError(f"Failed to delete banner: {response.text[:200]}")
 

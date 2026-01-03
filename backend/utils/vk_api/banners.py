@@ -178,7 +178,7 @@ def update_banner(token: str, base_url: str, banner_id: int, data: dict):
     url = f"{base_url}/banners/{banner_id}.json"
 
     try:
-        response = requests.post(url, headers=_headers(token), json=data, timeout=20)
+        response = requests.post(url, headers=_headers(token), json=data, timeout=10)
 
         if response.status_code in (200, 204):
             try:
@@ -214,7 +214,7 @@ def delete_banner(token: str, base_url: str, banner_id: int):
 
     try:
         logger.info(f"[ACTION] Deleting banner {banner_id}")
-        response = requests.post(url, headers=_headers(token), json=data, timeout=20)
+        response = requests.post(url, headers=_headers(token), json=data, timeout=10)
 
         if response.status_code in (200, 204):
             logger.info(f"[OK] Banner {banner_id} deleted")
