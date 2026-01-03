@@ -60,6 +60,18 @@ class ReenableSettings:
 
 
 @dataclass
+class RoiReenableSettings:
+    """Settings for ROI-based auto-enabling of disabled banners"""
+    enabled: bool = False
+    interval_minutes: int = 60  # Run every hour by default
+    lookback_days: int = 7  # Analyze ROI for last 7 days
+    roi_threshold: float = 50.0  # Enable banners with ROI >= 50%
+    account_ids: List[int] = field(default_factory=list)  # Specific accounts to analyze
+    dry_run: bool = True
+    delay_after_analysis_seconds: int = 30
+
+
+@dataclass
 class SchedulerSettings:
     """Main scheduler settings loaded from database"""
     enabled: bool = True
@@ -71,12 +83,14 @@ class SchedulerSettings:
     max_retries: int = 3
     quiet_hours: QuietHoursSettings = field(default_factory=QuietHoursSettings)
     reenable: ReenableSettings = field(default_factory=ReenableSettings)
+    roi_reenable: RoiReenableSettings = field(default_factory=RoiReenableSettings)
 
     @classmethod
     def from_dict(cls, data: Dict) -> 'SchedulerSettings':
         """Create settings from dictionary (DB format)"""
         quiet_hours_data = data.get("quiet_hours", {})
         reenable_data = data.get("reenable", {})
+        roi_reenable_data = data.get("roi_reenable", {})
 
         return cls(
             enabled=data.get("enabled", True),
@@ -97,6 +111,15 @@ class SchedulerSettings:
                 lookback_hours=reenable_data.get("lookback_hours", 24),
                 delay_after_analysis_seconds=reenable_data.get("delay_after_analysis_seconds", 30),
                 dry_run=reenable_data.get("dry_run", True),
+            ),
+            roi_reenable=RoiReenableSettings(
+                enabled=roi_reenable_data.get("enabled", False),
+                interval_minutes=roi_reenable_data.get("interval_minutes", 60),
+                lookback_days=roi_reenable_data.get("lookback_days", 7),
+                roi_threshold=roi_reenable_data.get("roi_threshold", 50.0),
+                account_ids=roi_reenable_data.get("account_ids", []),
+                dry_run=roi_reenable_data.get("dry_run", True),
+                delay_after_analysis_seconds=roi_reenable_data.get("delay_after_analysis_seconds", 30),
             ),
         )
 
@@ -121,6 +144,15 @@ class SchedulerSettings:
                 "lookback_hours": self.reenable.lookback_hours,
                 "delay_after_analysis_seconds": self.reenable.delay_after_analysis_seconds,
                 "dry_run": self.reenable.dry_run,
+            },
+            "roi_reenable": {
+                "enabled": self.roi_reenable.enabled,
+                "interval_minutes": self.roi_reenable.interval_minutes,
+                "lookback_days": self.roi_reenable.lookback_days,
+                "roi_threshold": self.roi_reenable.roi_threshold,
+                "account_ids": self.roi_reenable.account_ids,
+                "dry_run": self.roi_reenable.dry_run,
+                "delay_after_analysis_seconds": self.roi_reenable.delay_after_analysis_seconds,
             },
         }
 

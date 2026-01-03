@@ -56,11 +56,25 @@ export function Settings() {
         delay_after_analysis_seconds: 30,
         dry_run: true,
       };
+      // Добавляем дефолтные значения для roi_reenable если их нет
+      const defaultRoiReenable = {
+        enabled: false,
+        interval_minutes: 60,
+        lookback_days: 7,
+        roi_threshold: 50,
+        account_ids: [] as number[],
+        dry_run: true,
+        delay_after_analysis_seconds: 30,
+      };
       const schedulerWithDefaults = {
         ...settings.scheduler,
         reenable: {
           ...defaultReenable,
           ...(settings.scheduler?.reenable || {})
+        },
+        roi_reenable: {
+          ...defaultRoiReenable,
+          ...(settings.scheduler?.roi_reenable || {})
         }
       };
       setSchedulerForm(schedulerWithDefaults);
@@ -542,6 +556,147 @@ export function Settings() {
                   ...schedulerForm,
                   reenable: { ...schedulerForm.reenable, dry_run: checked },
                 })}
+              />
+            </div>
+          </div>
+
+          {/* ROI Auto-Enable Settings */}
+          <div className="mt-6 pt-6 border-t border-zinc-600">
+            <h4 className="text-lg font-medium text-white mb-4">📈 ROI Автовключение</h4>
+            <p className="text-sm text-zinc-400 mb-4">
+              Автоматически включает ВЫКЛЮЧЕННЫЕ баннеры, у которых ROI превышает заданный порог.
+              Использует данные LeadsTech для анализа прибыльности.
+            </p>
+
+            <div className="flex items-center justify-between p-4 bg-zinc-700/50 rounded-lg mb-4">
+              <div>
+                <p className="text-white font-medium">Включить ROI автовключение</p>
+                <p className="text-sm text-zinc-400">Работает независимо от обычного автовключения</p>
+              </div>
+              <Toggle
+                checked={schedulerForm.roi_reenable?.enabled || false}
+                onChange={(checked) => {
+                  const current = schedulerForm.roi_reenable || {
+                    enabled: false, interval_minutes: 60, lookback_days: 7,
+                    roi_threshold: 50, account_ids: [], dry_run: true, delay_after_analysis_seconds: 30
+                  };
+                  setSchedulerForm({
+                    ...schedulerForm,
+                    roi_reenable: { ...current, enabled: checked },
+                  });
+                }}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+              <div>
+                <label className="label">Интервал (минут)</label>
+                <input
+                  type="number"
+                  value={schedulerForm.roi_reenable?.interval_minutes || 60}
+                  onChange={(e) => {
+                    const current = schedulerForm.roi_reenable || {
+                      enabled: false, interval_minutes: 60, lookback_days: 7,
+                      roi_threshold: 50, account_ids: [], dry_run: true, delay_after_analysis_seconds: 30
+                    };
+                    setSchedulerForm({
+                      ...schedulerForm,
+                      roi_reenable: { ...current, interval_minutes: parseInt(e.target.value) || 60 },
+                    });
+                  }}
+                  className="input"
+                  min="1"
+                />
+                <p className="text-xs text-zinc-500 mt-1">Как часто проверять</p>
+              </div>
+              <div>
+                <label className="label">Период анализа ROI (дней)</label>
+                <input
+                  type="number"
+                  value={schedulerForm.roi_reenable?.lookback_days || 7}
+                  onChange={(e) => {
+                    const current = schedulerForm.roi_reenable || {
+                      enabled: false, interval_minutes: 60, lookback_days: 7,
+                      roi_threshold: 50, account_ids: [], dry_run: true, delay_after_analysis_seconds: 30
+                    };
+                    setSchedulerForm({
+                      ...schedulerForm,
+                      roi_reenable: { ...current, lookback_days: parseInt(e.target.value) || 7 },
+                    });
+                  }}
+                  className="input"
+                  min="1"
+                />
+                <p className="text-xs text-zinc-500 mt-1">Данные LeadsTech за N дней</p>
+              </div>
+              <div>
+                <label className="label">Порог ROI (%)</label>
+                <input
+                  type="number"
+                  value={schedulerForm.roi_reenable?.roi_threshold || 50}
+                  onChange={(e) => {
+                    const current = schedulerForm.roi_reenable || {
+                      enabled: false, interval_minutes: 60, lookback_days: 7,
+                      roi_threshold: 50, account_ids: [], dry_run: true, delay_after_analysis_seconds: 30
+                    };
+                    setSchedulerForm({
+                      ...schedulerForm,
+                      roi_reenable: { ...current, roi_threshold: parseFloat(e.target.value) || 50 },
+                    });
+                  }}
+                  className="input"
+                  step="0.1"
+                />
+                <p className="text-xs text-zinc-500 mt-1">Включать если ROI &gt;= порога</p>
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <label className="label">ID кабинетов для анализа (через запятую)</label>
+              <input
+                type="text"
+                value={(schedulerForm.roi_reenable?.account_ids || []).join(', ')}
+                onChange={(e) => {
+                  const ids = e.target.value
+                    .split(',')
+                    .map(s => s.trim())
+                    .filter(s => s !== '')
+                    .map(s => parseInt(s))
+                    .filter(n => !isNaN(n));
+                  const current = schedulerForm.roi_reenable || {
+                    enabled: false, interval_minutes: 60, lookback_days: 7,
+                    roi_threshold: 50, account_ids: [], dry_run: true, delay_after_analysis_seconds: 30
+                  };
+                  setSchedulerForm({
+                    ...schedulerForm,
+                    roi_reenable: { ...current, account_ids: ids },
+                  });
+                }}
+                className="input"
+                placeholder="1, 2, 3"
+              />
+              <p className="text-xs text-zinc-500 mt-1">
+                Укажите ID кабинетов с настроенной интеграцией LeadsTech (из таблицы Кабинеты)
+              </p>
+            </div>
+
+            <div className="flex items-center justify-between p-4 bg-yellow-900/20 border border-yellow-700/30 rounded-lg">
+              <div>
+                <p className="text-white font-medium">Тестовый режим (Dry Run)</p>
+                <p className="text-sm text-zinc-400">Не включает баннеры реально, только логирует</p>
+              </div>
+              <Toggle
+                checked={schedulerForm.roi_reenable?.dry_run ?? true}
+                onChange={(checked) => {
+                  const current = schedulerForm.roi_reenable || {
+                    enabled: false, interval_minutes: 60, lookback_days: 7,
+                    roi_threshold: 50, account_ids: [], dry_run: true, delay_after_analysis_seconds: 30
+                  };
+                  setSchedulerForm({
+                    ...schedulerForm,
+                    roi_reenable: { ...current, dry_run: checked },
+                  });
+                }}
               />
             </div>
           </div>
