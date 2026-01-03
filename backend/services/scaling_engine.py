@@ -67,7 +67,7 @@ from utils.vk_api.banner_stats import (
     get_groups_with_positive_banners,
     get_group_banner_classification
 )
-from utils.vk_api.scaling import duplicate_ad_group_full, get_banners_by_ad_group
+from utils.vk_api.scaling import duplicate_ad_group_full, get_banners_by_ad_group, duplicate_ad_group_to_new_campaign
 from utils.vk_api.ad_groups import get_ad_group_full
 from utils.vk_api.campaigns import toggle_campaign_status
 from services.banner_classifier import create_conditions_checker, get_classification_summary
@@ -91,6 +91,9 @@ class ScalingEngineConfig:
     duplicates_count: int = 1
     lookback_days: int = 7
     use_leadstech_roi: bool = False
+    # Campaign duplication options
+    duplicate_to_new_campaign: bool = False
+    new_campaign_name: Optional[str] = None
 
 
 @dataclass
@@ -157,14 +160,104 @@ class BannerScalingEngine:
             new_budget=getattr(self.config, 'new_budget', None),
             duplicates_count=getattr(self.config, 'duplicates_count', 1) or 1,
             lookback_days=getattr(self.config, 'lookback_days', 7) or 7,
-            use_leadstech_roi=getattr(self.config, 'use_leadstech_roi', False)
+            use_leadstech_roi=getattr(self.config, 'use_leadstech_roi', False),
+            duplicate_to_new_campaign=getattr(self.config, 'duplicate_to_new_campaign', False),
+            new_campaign_name=getattr(self.config, 'new_campaign_name', None)
         )
+
+        # Campaign cache for duplicate_to_new_campaign mode
+        self._campaign_cache: Dict[tuple, int] = {}
+        # Counter for campaign numbering (e.g., "Копия 1", "Копия 2", ...)
+        self._campaign_counter: int = 0
 
         logger.info(f"Loaded config: {self.config.name}")
         logger.info(f"  Conditions: {len(self.conditions_list)}")
         logger.info(f"  Toggle settings: activate_positive={self.engine_config.activate_positive_banners}, "
                     f"duplicate_negative={self.engine_config.duplicate_negative_banners}, "
                     f"activate_negative={self.engine_config.activate_negative_banners}")
+        if self.engine_config.duplicate_to_new_campaign:
+            logger.info(f"  Duplicate to new campaign: ENABLED (name: {self.engine_config.new_campaign_name or 'original + date'})")
+
+    def _get_cached_campaign(
+        self,
+        account_name: str,
+        original_campaign_id: int
+    ) -> Optional[int]:
+        """
+        Get cached campaign ID if it was already created.
+
+        Args:
+            account_name: Account name
+            original_campaign_id: Original campaign ID
+
+        Returns:
+            Cached campaign ID or None if not yet created
+        """
+        cache_key = (account_name, original_campaign_id)
+        return self._campaign_cache.get(cache_key)
+
+    def _cache_campaign(
+        self,
+        account_name: str,
+        original_campaign_id: int,
+        new_campaign_id: int
+    ):
+        """Cache newly created campaign ID."""
+        cache_key = (account_name, original_campaign_id)
+        self._campaign_cache[cache_key] = new_campaign_id
+        logger.info(f"    Cached campaign {new_campaign_id} for key {cache_key}")
+
+    def _get_next_campaign_number(self) -> int:
+        """Get next campaign number and increment counter."""
+        self._campaign_counter += 1
+        return self._campaign_counter
+
+    def _prepare_campaign_data(
+        self,
+        token: str,
+        original_campaign_id: int
+    ) -> Optional[dict]:
+        """
+        Prepare campaign data for creation (without ad_groups).
+
+        Args:
+            token: VK API token
+            original_campaign_id: Original campaign ID
+
+        Returns:
+            Campaign data dict or None on error
+        """
+        from utils.vk_api.campaigns import get_campaign_full, copy_campaign_settings
+
+        # Load original campaign
+        original_campaign = get_campaign_full(token, VK_API_BASE_URL, original_campaign_id)
+        if not original_campaign:
+            logger.error(f"    Could not load original campaign {original_campaign_id}")
+            return None
+
+        # Prepare new campaign name with date and number
+        date_suffix = datetime.now().strftime("%d-%m-%y")
+        campaign_number = self._get_next_campaign_number()
+
+        if self.engine_config.new_campaign_name:
+            # Format: "UserName 1 03-01-26", "UserName 2 03-01-26", ...
+            new_name = f"{self.engine_config.new_campaign_name} {campaign_number} {date_suffix}"
+        else:
+            # Format: "OriginalName 1 03-01-26", "OriginalName 2 03-01-26", ...
+            original_name = original_campaign.get('name', 'Campaign')
+            new_name = f"{original_name} {campaign_number} {date_suffix}"
+
+        # Copy settings from original campaign
+        campaign_data = copy_campaign_settings(original_campaign)
+        campaign_data['name'] = new_name
+        campaign_data['status'] = 'active'  # Create as active
+
+        # Ensure objective is set (required field)
+        if 'objective' not in campaign_data:
+            logger.error(f"    Original campaign {original_campaign_id} has no objective!")
+            return None
+
+        return campaign_data
 
     def run(self, accounts: List[Account]) -> ScalingResult:
         """
@@ -353,6 +446,24 @@ class BannerScalingEngine:
             total_operations = len(groups_to_duplicate) * self.engine_config.duplicates_count
             self._update_task_total(total_operations)
 
+            # If duplicating to new campaign, collect group -> campaign mappings first
+            group_to_campaign: Dict[int, int] = {}
+            if self.engine_config.duplicate_to_new_campaign:
+                logger.info(f"")
+                logger.info(f"Mode: DUPLICATE TO NEW CAMPAIGN - collecting campaign info...")
+                for group_id in groups_to_duplicate:
+                    account = account_by_group.get(group_id)
+                    if not account:
+                        continue
+                    # Get group info to find campaign_id (ad_plan_id)
+                    group_data = get_ad_group_full(account.api_token, VK_API_BASE_URL, group_id)
+                    if group_data:
+                        campaign_id = group_data.get('ad_plan_id')
+                        if campaign_id:
+                            group_to_campaign[group_id] = campaign_id
+                            logger.info(f"  Group {group_id} -> Campaign {campaign_id}")
+                logger.info(f"Mapped {len(group_to_campaign)} groups to campaigns")
+
             successful = 0
             failed = 0
             errors = []
@@ -384,6 +495,9 @@ class BannerScalingEngine:
                     logger.info(f"  Checking campaign status before duplication...")
                     self._activate_campaign_for_group(account.api_token, group_id)
 
+                # Handle duplication - either to new campaign or to same campaign
+                original_campaign_id = group_to_campaign.get(group_id) if self.engine_config.duplicate_to_new_campaign else None
+
                 for dup_num in range(1, self.engine_config.duplicates_count + 1):
                     if self._is_task_cancelled():
                         break
@@ -391,12 +505,72 @@ class BannerScalingEngine:
                     try:
                         self._update_task_current(group_id, f"Group {group_id} (copy {dup_num}/{self.engine_config.duplicates_count})")
 
-                        result = self._duplicate_group_with_classification(
-                            account=account,
-                            group_id=group_id,
-                            positive_banner_ids=set(group_positive),
-                            negative_banner_ids=set(group_negative)
-                        )
+                        # Check if we need to duplicate to new campaign
+                        if self.engine_config.duplicate_to_new_campaign and original_campaign_id:
+                            # Check if campaign already exists in cache
+                            cached_campaign_id = self._get_cached_campaign(account.name, original_campaign_id)
+
+                            if cached_campaign_id:
+                                # Campaign already created - duplicate to it
+                                logger.info(f"  Using existing new campaign {cached_campaign_id}")
+                                result = self._duplicate_group_with_classification(
+                                    account=account,
+                                    group_id=group_id,
+                                    positive_banner_ids=set(group_positive),
+                                    negative_banner_ids=set(group_negative),
+                                    target_campaign_id=cached_campaign_id
+                                )
+                            else:
+                                # First group for this campaign - create campaign with group
+                                logger.info(f"  Creating NEW campaign with group (first group for campaign {original_campaign_id})")
+
+                                # Prepare campaign data
+                                campaign_data = self._prepare_campaign_data(account.api_token, original_campaign_id)
+                                if not campaign_data:
+                                    failed += 1
+                                    error_msg = f"Failed to prepare campaign data for group {group_id}"
+                                    errors.append(f"[{account.name}] {error_msg}")
+                                    logger.error(f"  {error_msg}")
+                                    self._add_task_error(error_msg, account.name, group_id, None)
+                                    completed += 1
+                                    self._update_task_progress_numbers(completed, successful, failed)
+                                    continue
+
+                                # Create campaign with group
+                                result = duplicate_ad_group_to_new_campaign(
+                                    token=account.api_token,
+                                    base_url=VK_API_BASE_URL,
+                                    ad_group_id=group_id,
+                                    campaign_data=campaign_data,
+                                    new_name=self.engine_config.new_name,
+                                    new_budget=self.engine_config.new_budget,
+                                    auto_activate=False,
+                                    rate_limit_delay=0.03,
+                                    account_name=account.name
+                                )
+
+                                if result.get("success"):
+                                    # Cache the new campaign ID for subsequent groups
+                                    new_campaign_id = result.get("new_campaign_id")
+                                    if new_campaign_id:
+                                        self._cache_campaign(account.name, original_campaign_id, new_campaign_id)
+
+                                    # Now apply banner classification (activate/block/delete based on toggles)
+                                    result = self._apply_banner_classification_to_result(
+                                        account=account,
+                                        result=result,
+                                        positive_banner_ids=set(group_positive),
+                                        negative_banner_ids=set(group_negative)
+                                    )
+                        else:
+                            # Normal duplication to same campaign
+                            result = self._duplicate_group_with_classification(
+                                account=account,
+                                group_id=group_id,
+                                positive_banner_ids=set(group_positive),
+                                negative_banner_ids=set(group_negative),
+                                target_campaign_id=None
+                            )
 
                         if result.get("success"):
                             successful += 1
@@ -455,12 +629,109 @@ class BannerScalingEngine:
             if self._own_db:
                 self.db.close()
 
+    def _apply_banner_classification_to_result(
+        self,
+        account: Account,
+        result: dict,
+        positive_banner_ids: Set[int],
+        negative_banner_ids: Set[int]
+    ) -> dict:
+        """
+        Apply banner classification (activate/block/delete/rename) to already created group.
+        Used after duplicate_ad_group_to_new_campaign which creates group without classification.
+
+        Args:
+            account: Account object
+            result: Result from duplicate_ad_group_to_new_campaign
+            positive_banner_ids: Set of positive banner IDs
+            negative_banner_ids: Set of negative banner IDs
+
+        Returns:
+            Updated result dict
+        """
+        from utils.vk_api.banners import update_banner, delete_banner
+
+        new_group_id = result.get("new_group_id")
+        duplicated_banners = result.get("duplicated_banners", [])
+
+        if not new_group_id or not duplicated_banners:
+            return result
+
+        # Build mapping: original_id -> (new_id, original_name)
+        original_to_new: Dict[int, Tuple[int, str]] = {}
+        for banner_info in duplicated_banners:
+            orig_id = banner_info.get("original_id")
+            new_id = banner_info.get("new_id")
+            orig_name = banner_info.get("name") or ""
+            if orig_id and new_id:
+                original_to_new[orig_id] = (new_id, orig_name)
+
+        # Determine banner actions
+        banners_to_activate: List[int] = []
+        banners_to_delete: List[int] = []
+        banners_to_rename: Dict[int, str] = {}
+
+        logger.info(f"    Applying classification to {len(original_to_new)} banners in new campaign group")
+
+        for orig_id, (new_id, orig_name) in original_to_new.items():
+            display_name = orig_name if orig_name else f"Banner_{orig_id}"
+
+            if orig_id in positive_banner_ids:
+                new_name = f"Позитив {display_name}"
+                banners_to_rename[new_id] = new_name
+                if self.engine_config.activate_positive_banners:
+                    banners_to_activate.append(new_id)
+            elif orig_id in negative_banner_ids:
+                if not self.engine_config.duplicate_negative_banners:
+                    banners_to_delete.append(new_id)
+                else:
+                    new_name = f"Негатив {display_name}"
+                    banners_to_rename[new_id] = new_name
+                    if self.engine_config.activate_negative_banners:
+                        banners_to_activate.append(new_id)
+
+        # Delete negative banners
+        for banner_id in banners_to_delete:
+            try:
+                delete_banner(account.api_token, VK_API_BASE_URL, banner_id)
+                logger.info(f"      Deleted negative banner {banner_id}")
+            except Exception as e:
+                logger.warning(f"      Failed to delete banner {banner_id}: {e}")
+
+        # Rename banners
+        for banner_id, new_name in banners_to_rename.items():
+            try:
+                update_banner(account.api_token, VK_API_BASE_URL, banner_id, {"name": new_name})
+            except Exception as e:
+                logger.warning(f"      Failed to rename banner {banner_id}: {e}")
+
+        # Activate banners
+        for banner_id in banners_to_activate:
+            try:
+                update_banner(account.api_token, VK_API_BASE_URL, banner_id, {"status": "active"})
+                logger.info(f"      Activated banner {banner_id}")
+            except Exception as e:
+                logger.warning(f"      Failed to activate banner {banner_id}: {e}")
+
+        # Activate group if there are any banners to activate
+        # (either positive with activate_positive_banners=true, or negative with activate_negative_banners=true)
+        if banners_to_activate:
+            from utils.vk_api.ad_groups import update_ad_group
+            try:
+                update_ad_group(account.api_token, VK_API_BASE_URL, new_group_id, {"status": "active"})
+                logger.info(f"    Activated group {new_group_id}")
+            except Exception as e:
+                logger.warning(f"    Failed to activate group {new_group_id}: {e}")
+
+        return result
+
     def _duplicate_group_with_classification(
         self,
         account: Account,
         group_id: int,
         positive_banner_ids: Set[int],
-        negative_banner_ids: Set[int]
+        negative_banner_ids: Set[int],
+        target_campaign_id: Optional[int] = None
     ) -> dict:
         """
         Duplicate a group with banner status control based on classification.
@@ -469,6 +740,9 @@ class BannerScalingEngine:
         - Positive banners: active if activate_positive_banners else blocked
         - Negative banners: skipped if not duplicate_negative_banners,
                           otherwise active if activate_negative_banners else blocked
+
+        Args:
+            target_campaign_id: If set, duplicate to this campaign instead of original
         """
         # First, duplicate the group with all banners using existing function
         # This creates the group in blocked status
@@ -480,7 +754,8 @@ class BannerScalingEngine:
             new_budget=self.engine_config.new_budget,
             auto_activate=False,  # We'll handle activation manually based on toggles
             rate_limit_delay=0.03,
-            account_name=account.name
+            account_name=account.name,
+            target_campaign_id=target_campaign_id
         )
 
         if not result.get("success"):

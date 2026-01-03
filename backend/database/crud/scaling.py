@@ -111,7 +111,10 @@ def create_scaling_config(
     # New banner-level scaling options
     activate_positive_banners: bool = True,
     duplicate_negative_banners: bool = True,
-    activate_negative_banners: bool = False
+    activate_negative_banners: bool = False,
+    # Campaign duplication options
+    duplicate_to_new_campaign: bool = False,
+    new_campaign_name: Optional[str] = None
 ) -> ScalingConfig:
     """Create new scaling configuration
 
@@ -123,6 +126,8 @@ def create_scaling_config(
         activate_positive_banners: Activate positive banners (status=active)
         duplicate_negative_banners: Duplicate negative banners in group
         activate_negative_banners: Activate negative banners (status=active)
+        duplicate_to_new_campaign: Copy groups to new campaign
+        new_campaign_name: Name for new campaign (date auto-appended)
     """
     config = ScalingConfig(
         user_id=user_id,
@@ -139,7 +144,9 @@ def create_scaling_config(
         use_leadstech_roi=use_leadstech_roi,
         activate_positive_banners=activate_positive_banners,
         duplicate_negative_banners=duplicate_negative_banners,
-        activate_negative_banners=activate_negative_banners
+        activate_negative_banners=activate_negative_banners,
+        duplicate_to_new_campaign=duplicate_to_new_campaign,
+        new_campaign_name=new_campaign_name if new_campaign_name and new_campaign_name.strip() else None
     )
     db.add(config)
     db.commit()
@@ -175,7 +182,10 @@ def update_scaling_config(
     # New banner-level scaling options
     activate_positive_banners: Optional[bool] = None,
     duplicate_negative_banners: Optional[bool] = None,
-    activate_negative_banners: Optional[bool] = None
+    activate_negative_banners: Optional[bool] = None,
+    # Campaign duplication options
+    duplicate_to_new_campaign: Optional[bool] = None,
+    new_campaign_name: Optional[str] = None
 ) -> Optional[ScalingConfig]:
     """Update scaling configuration
 
@@ -187,6 +197,8 @@ def update_scaling_config(
         activate_positive_banners: Activate positive banners (status=active)
         duplicate_negative_banners: Duplicate negative banners in group
         activate_negative_banners: Activate negative banners (status=active)
+        duplicate_to_new_campaign: Copy groups to new campaign
+        new_campaign_name: Name for new campaign (date auto-appended)
     """
     config = get_scaling_config_by_id(db, config_id)
     if not config:
@@ -221,6 +233,10 @@ def update_scaling_config(
         config.duplicate_negative_banners = duplicate_negative_banners
     if activate_negative_banners is not None:
         config.activate_negative_banners = activate_negative_banners
+    if duplicate_to_new_campaign is not None:
+        config.duplicate_to_new_campaign = duplicate_to_new_campaign
+    if new_campaign_name is not None:
+        config.new_campaign_name = new_campaign_name.strip() if new_campaign_name.strip() else None
 
     config.updated_at = get_moscow_time()
     db.commit()

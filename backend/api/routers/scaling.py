@@ -54,6 +54,9 @@ async def get_scaling_configs_endpoint(
             "activate_positive_banners": getattr(config, 'activate_positive_banners', True),
             "duplicate_negative_banners": getattr(config, 'duplicate_negative_banners', True),
             "activate_negative_banners": getattr(config, 'activate_negative_banners', False),
+            # Campaign duplication options
+            "duplicate_to_new_campaign": getattr(config, 'duplicate_to_new_campaign', False),
+            "new_campaign_name": getattr(config, 'new_campaign_name', None),
             "last_run_at": config.last_run_at.isoformat() if config.last_run_at else None,
             "created_at": config.created_at.isoformat(),
             "conditions": [
@@ -102,6 +105,9 @@ async def get_scaling_config_endpoint(
         "activate_positive_banners": getattr(config, 'activate_positive_banners', True),
         "duplicate_negative_banners": getattr(config, 'duplicate_negative_banners', True),
         "activate_negative_banners": getattr(config, 'activate_negative_banners', False),
+        # Campaign duplication options
+        "duplicate_to_new_campaign": getattr(config, 'duplicate_to_new_campaign', False),
+        "new_campaign_name": getattr(config, 'new_campaign_name', None),
         "last_run_at": config.last_run_at.isoformat() if config.last_run_at else None,
         "created_at": config.created_at.isoformat(),
         "conditions": [
@@ -138,7 +144,10 @@ async def create_scaling_config_endpoint(
             # Banner-level scaling toggles
             activate_positive_banners=data.activate_positive_banners,
             duplicate_negative_banners=data.duplicate_negative_banners,
-            activate_negative_banners=data.activate_negative_banners
+            activate_negative_banners=data.activate_negative_banners,
+            # Campaign duplication options
+            duplicate_to_new_campaign=data.duplicate_to_new_campaign,
+            new_campaign_name=data.new_campaign_name
         )
 
         if data.conditions:
@@ -180,7 +189,10 @@ async def update_scaling_config_endpoint(
             # Banner-level scaling toggles
             activate_positive_banners=data.activate_positive_banners,
             duplicate_negative_banners=data.duplicate_negative_banners,
-            activate_negative_banners=data.activate_negative_banners
+            activate_negative_banners=data.activate_negative_banners,
+            # Campaign duplication options
+            duplicate_to_new_campaign=data.duplicate_to_new_campaign,
+            new_campaign_name=data.new_campaign_name
         )
 
         if not config:

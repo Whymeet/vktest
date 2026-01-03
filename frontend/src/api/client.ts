@@ -592,6 +592,9 @@ export interface ScalingConfig {
   activate_positive_banners: boolean;  // Activate positive banners (default: true)
   duplicate_negative_banners: boolean;  // Include negative banners in duplication (default: true)
   activate_negative_banners: boolean;  // Activate negative banners (default: false)
+  // Campaign duplication options
+  duplicate_to_new_campaign: boolean;  // Copy groups to new campaign
+  new_campaign_name: string | null;  // Name for new campaign (date auto-appended)
   last_run_at: string | null;
   created_at: string;
   conditions: ScalingCondition[];
@@ -616,6 +619,9 @@ export interface ScalingConfigCreate {
   activate_positive_banners?: boolean;
   duplicate_negative_banners?: boolean;
   activate_negative_banners?: boolean;
+  // Campaign duplication options
+  duplicate_to_new_campaign?: boolean;
+  new_campaign_name?: string | null;
 }
 
 // LeadsTech status for accounts (for ROI checkbox availability)

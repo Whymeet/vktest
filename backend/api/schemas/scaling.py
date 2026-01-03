@@ -30,6 +30,9 @@ class ScalingConfigCreate(BaseModel):
     activate_positive_banners: bool = True  # Activate positive banners (status=active)
     duplicate_negative_banners: bool = True  # Duplicate negative banners in group
     activate_negative_banners: bool = False  # Activate negative banners (status=active)
+    # Campaign duplication options
+    duplicate_to_new_campaign: bool = False  # Copy groups to new campaign
+    new_campaign_name: Optional[str] = None  # Name for new campaign (date auto-appended)
 
 
 class ScalingConfigUpdate(BaseModel):
@@ -51,6 +54,9 @@ class ScalingConfigUpdate(BaseModel):
     activate_positive_banners: Optional[bool] = None  # Activate positive banners (status=active)
     duplicate_negative_banners: Optional[bool] = None  # Duplicate negative banners in group
     activate_negative_banners: Optional[bool] = None  # Activate negative banners (status=active)
+    # Campaign duplication options
+    duplicate_to_new_campaign: Optional[bool] = None  # Copy groups to new campaign
+    new_campaign_name: Optional[str] = None  # Name for new campaign (date auto-appended)
 
 
 class ManualDuplicateRequest(BaseModel):
