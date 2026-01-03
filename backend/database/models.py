@@ -584,6 +584,10 @@ class ScalingConfig(Base):
     duplicate_negative_banners = Column(Boolean, default=True)  # Duplicate negative banners in group
     activate_negative_banners = Column(Boolean, default=False)  # Activate negative banners (status=active)
 
+    # Campaign duplication options
+    duplicate_to_new_campaign = Column(Boolean, default=False)  # Copy groups to new campaign
+    new_campaign_name = Column(String(500), nullable=True)  # Name for new campaign (optional, date auto-appended)
+
     # Timestamps
     created_at = Column(DateTime, default=get_moscow_time, nullable=False)
     updated_at = Column(DateTime, default=get_moscow_time, onupdate=get_moscow_time, nullable=False)

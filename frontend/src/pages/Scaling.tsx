@@ -204,6 +204,9 @@ function ConfigFormModal({
   const [activatePositiveBanners, setActivatePositiveBanners] = useState(true);
   const [duplicateNegativeBanners, setDuplicateNegativeBanners] = useState(true);
   const [activateNegativeBanners, setActivateNegativeBanners] = useState(false);
+  // Campaign duplication options
+  const [duplicateToNewCampaign, setDuplicateToNewCampaign] = useState(false);
+  const [newCampaignName, setNewCampaignName] = useState('');
 
   useEffect(() => {
     if (config) {
@@ -220,6 +223,9 @@ function ConfigFormModal({
       setActivatePositiveBanners(config.activate_positive_banners ?? true);
       setDuplicateNegativeBanners(config.duplicate_negative_banners ?? true);
       setActivateNegativeBanners(config.activate_negative_banners ?? false);
+      // Campaign duplication options
+      setDuplicateToNewCampaign(config.duplicate_to_new_campaign ?? false);
+      setNewCampaignName(config.new_campaign_name || '');
     } else {
       setName('');
       setScheduleTime('08:00');
@@ -234,6 +240,9 @@ function ConfigFormModal({
       setActivatePositiveBanners(true);
       setDuplicateNegativeBanners(true);
       setActivateNegativeBanners(false);
+      // Campaign duplication defaults
+      setDuplicateToNewCampaign(false);
+      setNewCampaignName('');
     }
   }, [config, isOpen]);
 
@@ -256,6 +265,9 @@ function ConfigFormModal({
       activate_positive_banners: activatePositiveBanners,
       duplicate_negative_banners: duplicateNegativeBanners,
       activate_negative_banners: activateNegativeBanners,
+      // Campaign duplication options
+      duplicate_to_new_campaign: duplicateToNewCampaign,
+      new_campaign_name: newCampaignName.trim() || null,
     });
   };
 
@@ -422,6 +434,34 @@ function ConfigFormModal({
             <div className="flex items-center gap-2 ml-5 pl-2 border-l border-zinc-700">
               <Toggle checked={activateNegativeBanners} onChange={setActivateNegativeBanners} />
               <span className="text-xs text-zinc-300">Активировать негативные</span>
+            </div>
+          )}
+        </div>
+
+        {/* Campaign Duplication Settings */}
+        <div className="p-2.5 bg-zinc-800/50 rounded border border-zinc-700 space-y-2">
+          <h4 className="text-xs font-medium text-zinc-400">Режим дублирования</h4>
+
+          <div className="flex items-center gap-2">
+            <Toggle checked={duplicateToNewCampaign} onChange={setDuplicateToNewCampaign} />
+            <span className="text-xs text-zinc-300">Копировать в НОВУЮ кампанию</span>
+          </div>
+
+          {duplicateToNewCampaign && (
+            <div className="ml-5 pl-2 border-l border-zinc-700 space-y-1">
+              <label className="block text-xs font-medium text-zinc-400">
+                Название кампании (опционально)
+              </label>
+              <input
+                type="text"
+                value={newCampaignName}
+                onChange={(e) => setNewCampaignName(e.target.value)}
+                className="w-full px-2 py-1.5 bg-zinc-700 border border-zinc-600 rounded text-white text-sm"
+                placeholder="Пусто = оригинальное название"
+              />
+              <p className="text-xs text-zinc-500">
+                К названию автоматически добавляется дата (DD-MM-YY)
+              </p>
             </div>
           )}
         </div>

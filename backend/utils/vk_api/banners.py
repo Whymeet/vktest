@@ -160,3 +160,75 @@ def toggle_banner_status(token: str, base_url: str, banner_id: int, status: str)
         error_msg = f"Network error: {str(e)}"
         logger.error(f"[ERROR] Error changing banner {banner_id} status: {error_msg}")
         return {"success": False, "error": error_msg}
+
+
+def update_banner(token: str, base_url: str, banner_id: int, data: dict):
+    """
+    Update banner with specified data
+
+    Args:
+        token: VK Ads API token
+        base_url: VK Ads API base URL
+        banner_id: Banner ID
+        data: Data to update (e.g. {"name": "new name", "status": "active"})
+
+    Returns:
+        dict: {"success": bool, "response": dict or "error": str}
+    """
+    url = f"{base_url}/banners/{banner_id}.json"
+
+    try:
+        response = requests.post(url, headers=_headers(token), json=data, timeout=10)
+
+        if response.status_code in (200, 204):
+            try:
+                resp_json = response.json()
+            except Exception:
+                resp_json = None
+            return {"success": True, "response": resp_json}
+        else:
+            error_msg = f"HTTP {response.status_code}: {response.text}"
+            logger.error(f"[ERROR] Error updating banner {banner_id}: {error_msg}")
+            return {"success": False, "error": error_msg}
+
+    except requests.RequestException as e:
+        error_msg = f"Network error: {str(e)}"
+        logger.error(f"[ERROR] Error updating banner {banner_id}: {error_msg}")
+        return {"success": False, "error": error_msg}
+
+
+def delete_banner(token: str, base_url: str, banner_id: int):
+    """
+    Delete banner (set status to 'deleted')
+
+    Args:
+        token: VK Ads API token
+        base_url: VK Ads API base URL
+        banner_id: Banner ID
+
+    Returns:
+        dict: {"success": bool, "response": dict or "error": str}
+    """
+    url = f"{base_url}/banners/{banner_id}.json"
+    data = {"status": "deleted"}
+
+    try:
+        logger.info(f"[ACTION] Deleting banner {banner_id}")
+        response = requests.post(url, headers=_headers(token), json=data, timeout=10)
+
+        if response.status_code in (200, 204):
+            logger.info(f"[OK] Banner {banner_id} deleted")
+            try:
+                resp_json = response.json()
+            except Exception:
+                resp_json = None
+            return {"success": True, "response": resp_json}
+        else:
+            error_msg = f"HTTP {response.status_code}: {response.text}"
+            logger.error(f"[ERROR] Error deleting banner {banner_id}: {error_msg}")
+            return {"success": False, "error": error_msg}
+
+    except requests.RequestException as e:
+        error_msg = f"Network error: {str(e)}"
+        logger.error(f"[ERROR] Error deleting banner {banner_id}: {error_msg}")
+        return {"success": False, "error": error_msg}

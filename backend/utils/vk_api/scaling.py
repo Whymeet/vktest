@@ -158,7 +158,8 @@ def duplicate_ad_group_full(
     new_budget: float = None,
     auto_activate: bool = False,
     rate_limit_delay: float = 0.03,
-    account_name: str = None  # For logging
+    account_name: str = None,  # For logging
+    target_campaign_id: int = None  # If set, duplicate to this campaign instead of original
 ):
     """
     Full duplication of ad group with all non-deleted banners.
@@ -313,6 +314,11 @@ def duplicate_ad_group_full(
         # If auto-activation needed - activate after creation
         new_group_data['status'] = 'blocked'
 
+        # Override campaign if target_campaign_id is specified
+        if target_campaign_id:
+            new_group_data['ad_plan_id'] = target_campaign_id
+            print(f"[INFO] Using target campaign: {target_campaign_id}")
+
         # ===== STEP 2: Prepare banners for creation with group =====
         banners_for_create = []
         original_banner_info = []  # For tracking original IDs
@@ -427,6 +433,241 @@ def duplicate_ad_group_full(
             "success": True,
             "original_group_id": ad_group_id,
             "original_group_name": original_group.get('name'),
+            "new_group_id": new_group_id,
+            "new_group_name": new_group_data['name'],
+            "total_banners": len(banners),
+            "duplicated_banners": duplicated_banners,
+            "skipped_banners": [],
+            "errors": []
+        }
+
+    except Exception as e:
+        error_msg = f"Unexpected error: {str(e)}"
+        logger.error(f"[ERROR] {error_msg}")
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "error": error_msg}
+
+
+def duplicate_ad_group_to_new_campaign(
+    token: str,
+    base_url: str,
+    ad_group_id: int,
+    campaign_data: dict,
+    new_name: str = None,
+    new_budget: float = None,
+    auto_activate: bool = False,
+    rate_limit_delay: float = 0.03,
+    account_name: str = None
+) -> dict:
+    """
+    Duplicate ad group and create a NEW campaign with it.
+    VK API requires campaign to have at least one ad group, so we create them together.
+
+    Args:
+        token: VK Ads API token
+        base_url: VK Ads API base URL
+        ad_group_id: ID of group to duplicate
+        campaign_data: Campaign data (name, objective, status, etc.) - without ad_groups
+        new_name: New group name (optional)
+        new_budget: New group budget (optional)
+        auto_activate: Auto-activate after creation
+        rate_limit_delay: Delay between API calls
+        account_name: Account name for logging
+
+    Returns:
+        dict: {
+            "success": bool,
+            "new_campaign_id": int,
+            "new_group_id": int,
+            "duplicated_banners": [...],
+            "errors": [...]
+        }
+    """
+    from utils.vk_api.campaigns import create_campaign_with_group
+
+    # Same excluded fields as duplicate_ad_group_full
+    EXCLUDED_GROUP_FIELDS = {
+        'id', 'created', 'updated', 'created_at', 'updated_at', 'deleted',
+        'statistics', 'clicks', 'shows', 'spent', 'ctr',
+        'conversions', 'cost_per_conversion', 'impressions',
+        'banner_count', 'banners', 'delivery', 'issues', 'read_only',
+        'interface_read_only', 'user_id', 'stats_info', 'learning_progress',
+        'efficiency_status', 'vkads_status', 'or_status', 'or_migrated',
+        'budget_limit_day', 'budget_limit', 'budget_limit_per_day',
+        'ad_plan_id',  # Don't copy campaign ID - we're creating new campaign
+        'priced_goal'  # Can contain invalid/empty values that VK API rejects
+    }
+
+    EXCLUDED_BANNER_FIELDS = {
+        'id', 'ad_group_id', 'created', 'updated', 'created_at', 'updated_at',
+        'moderation_status', 'moderation_reasons', 'delivery', 'deleted',
+        'issues', 'ord_marker', 'user_id', 'read_only', 'interface_read_only',
+        'clicks', 'shows', 'spent', 'ctr', 'conversions',
+        'cost_per_conversion', 'impressions',
+        'stats_info', 'preview_url', 'audit_pixels',
+        'status'
+    }
+
+    def clean_content(content_data):
+        if not content_data:
+            return None
+        cleaned = {}
+        for key, value in content_data.items():
+            if isinstance(value, dict) and 'id' in value:
+                cleaned[key] = {'id': value['id']}
+        return cleaned if cleaned else None
+
+    def clean_urls(urls_data):
+        if not urls_data:
+            return None
+        cleaned = {}
+        for key, value in urls_data.items():
+            if isinstance(value, dict) and 'id' in value:
+                cleaned[key] = {'id': value['id']}
+        return cleaned if cleaned else None
+
+    log_prefix = f"[{account_name}]" if account_name else ""
+
+    try:
+        print(f"")
+        print(f"{'='*80}")
+        print(f"{log_prefix} [NEW CAMPAIGN] DUPLICATING GROUP {ad_group_id} TO NEW CAMPAIGN")
+        print(f"{'='*80}")
+
+        # Step 1: Load original group
+        print(f"[INFO] Step 1/2: Loading group data and banners...")
+        original_group = get_ad_group_full(token, base_url, ad_group_id)
+
+        if not original_group:
+            return {"success": False, "error": "Failed to load group"}
+
+        print(f"[OK] Loaded group: {original_group.get('name', 'Unknown')}")
+
+        # Load banners (no delay needed - VK API allows ~35 RPS for most endpoints)
+        banners = get_banners_by_ad_group(token, base_url, ad_group_id, include_stopped=True)
+        print(f"[OK] Found {len(banners)} banners for copying")
+
+        # Prepare group data
+        new_group_data = {}
+        for key, value in original_group.items():
+            if key not in EXCLUDED_GROUP_FIELDS and value is not None:
+                new_group_data[key] = value
+
+        # Get objective from campaign if missing
+        if 'objective' not in new_group_data or not new_group_data.get('objective'):
+            # Use campaign objective
+            new_group_data['objective'] = campaign_data.get('objective')
+            print(f"[INFO] Using campaign objective: {campaign_data.get('objective')}")
+
+        # Set name
+        if new_name and new_name.strip():
+            new_group_data['name'] = new_name.strip()
+        else:
+            new_group_data['name'] = original_group.get('name', 'Copy')
+
+        # Set budget
+        budget_to_set = None
+        if new_budget is not None and new_budget > 0:
+            if new_budget >= VK_MIN_DAILY_BUDGET:
+                budget_to_set = int(new_budget)
+        else:
+            original_budget = original_group.get('budget_limit_day')
+            if original_budget:
+                try:
+                    budget_int = int(float(original_budget))
+                    if budget_int >= VK_MIN_DAILY_BUDGET:
+                        budget_to_set = budget_int
+                    else:
+                        budget_to_set = VK_MIN_DAILY_BUDGET
+                except (ValueError, TypeError):
+                    pass
+
+        if budget_to_set is None:
+            budget_to_set = VK_MIN_DAILY_BUDGET
+
+        new_group_data['budget_limit_day'] = budget_to_set
+        new_group_data['status'] = 'blocked'  # Create blocked, activate later
+
+        # Prepare banners
+        banners_for_create = []
+        original_banner_info = []
+
+        for banner in banners:
+            banner_id = banner.get('id')
+            banner_name = banner.get('name', 'Unknown')
+
+            new_banner_data = {}
+            for key, value in banner.items():
+                if key not in EXCLUDED_BANNER_FIELDS and value is not None:
+                    new_banner_data[key] = value
+
+            if 'content' in new_banner_data:
+                cleaned_content = clean_content(new_banner_data['content'])
+                if cleaned_content:
+                    new_banner_data['content'] = cleaned_content
+                else:
+                    del new_banner_data['content']
+
+            if 'urls' in new_banner_data:
+                cleaned_urls = clean_urls(new_banner_data['urls'])
+                if cleaned_urls:
+                    new_banner_data['urls'] = cleaned_urls
+                else:
+                    del new_banner_data['urls']
+
+            banners_for_create.append(new_banner_data)
+            original_banner_info.append({
+                "original_id": banner_id,
+                "name": banner_name
+            })
+
+        # Add banners to group
+        if banners_for_create:
+            new_group_data['banners'] = banners_for_create
+            print(f"[INFO] Prepared {len(banners_for_create)} banners")
+
+        # Step 2: Create campaign with group
+        print(f"[ACTION] Step 2/2: Creating campaign '{campaign_data.get('name')}' with group...")
+
+        result = create_campaign_with_group(token, base_url, campaign_data, new_group_data)
+
+        if not result.get('success'):
+            return {"success": False, "error": result.get('error', 'Failed to create campaign')}
+
+        new_campaign_id = result.get('campaign_id')
+        new_group_id = result.get('ad_group_id')
+
+        # Get banners from response
+        created_banners = result.get('data', {}).get('ad_groups', [{}])[0].get('banners', [])
+
+        print(f"[OK] Campaign created: {new_campaign_id}")
+        print(f"[OK] Group created: {new_group_id}")
+        print(f"[OK] Banners: {len(created_banners)}")
+
+        # Build result
+        duplicated_banners = []
+        for i, created_banner in enumerate(created_banners):
+            new_banner_id = created_banner.get("id")
+            if i < len(original_banner_info):
+                orig_info = original_banner_info[i]
+                duplicated_banners.append({
+                    "original_id": orig_info["original_id"],
+                    "new_id": new_banner_id,
+                    "name": orig_info["name"],
+                    "status": "blocked"
+                })
+
+        print(f"")
+        print(f"{'='*80}")
+        print(f"[OK] NEW CAMPAIGN DUPLICATION COMPLETED")
+        print(f"{'='*80}")
+
+        return {
+            "success": True,
+            "original_group_id": ad_group_id,
+            "original_group_name": original_group.get('name'),
+            "new_campaign_id": new_campaign_id,
             "new_group_id": new_group_id,
             "new_group_name": new_group_data['name'],
             "total_banners": len(banners),
