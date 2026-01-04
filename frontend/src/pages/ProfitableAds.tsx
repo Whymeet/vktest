@@ -25,6 +25,9 @@ import {
   FileText,
   Filter,
   RotateCcw,
+  Power,
+  Save,
+  Zap,
 } from 'lucide-react';
 import {
   getLeadsTechConfig,
@@ -40,10 +43,15 @@ import {
   whitelistProfitableBanners,
   getWhitelistProfitableStatus,
   stopWhitelistProfitableWorker,
+  getSettings,
+  updateSchedulerSettings,
   type LeadsTechFilters,
+  type RoiReenableSettings,
+  type SchedulerSettings,
 } from '../api/client';
 import { Card } from '../components/Card';
 import { DateRangePicker } from '../components/DateRangePicker';
+import { Toggle } from '../components/Toggle';
 
 type TabType = 'results' | 'settings';
 type SortField = 'roi_percent' | 'profit' | 'vk_spent' | 'lt_revenue' | 'banner_id';
@@ -440,6 +448,18 @@ export function ProfitableAds() {
   const [roiThreshold, setRoiThreshold] = useState<number>(10);
   const [enableBanners, setEnableBanners] = useState<boolean>(true);
 
+  // ROI reenable settings state
+  const defaultRoiReenable: RoiReenableSettings = {
+    enabled: false,
+    interval_minutes: 60,
+    lookback_days: 7,
+    roi_threshold: 50,
+    dry_run: true,
+    delay_after_analysis_seconds: 30,
+  };
+  const [roiReenableForm, setRoiReenableForm] = useState<RoiReenableSettings>(defaultRoiReenable);
+  const [schedulerSettings, setSchedulerSettings] = useState<SchedulerSettings | null>(null);
+
   // Statistics filters state
   const [filters, setFilters] = useState({
     roiMin: '' as string | number,
@@ -489,6 +509,25 @@ export function ProfitableAds() {
     queryFn: () => getLeadsTechCabinets().then((r: any) => r.data),
     refetchInterval: 10000, // Auto-refresh every 10 seconds
   });
+
+  // Query for scheduler settings (for ROI reenable)
+  const { data: settingsData } = useQuery({
+    queryKey: ['settings'],
+    queryFn: () => getSettings().then((r: any) => r.data),
+  });
+
+  // Initialize ROI reenable form when settings load
+  useEffect(() => {
+    if (settingsData?.scheduler) {
+      setSchedulerSettings(settingsData.scheduler);
+      if (settingsData.scheduler.roi_reenable) {
+        setRoiReenableForm({
+          ...defaultRoiReenable,
+          ...settingsData.scheduler.roi_reenable,
+        });
+      }
+    }
+  }, [settingsData]);
 
   // Convert filters to API format
   const apiFilters: LeadsTechFilters = useMemo(() => ({
@@ -602,6 +641,32 @@ export function ProfitableAds() {
     mutationFn: stopWhitelistProfitableWorker,
     onSuccess: () => {
       refetchWhitelistStatus();
+    },
+  });
+
+  // Mutation for ROI reenable settings
+  const updateRoiReenableMutation = useMutation({
+    mutationFn: (settings: RoiReenableSettings) => {
+      if (!schedulerSettings) return Promise.reject('Scheduler settings not loaded');
+      return updateSchedulerSettings({
+        ...schedulerSettings,
+        roi_reenable: settings,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings'] });
+      setModalConfig({
+        isOpen: true,
+        title: 'Сохранено',
+        content: <p className="text-green-400">Настройки ROI автовключения сохранены</p>,
+      });
+    },
+    onError: (error: any) => {
+      setModalConfig({
+        isOpen: true,
+        title: 'Ошибка',
+        content: <p className="text-red-400">{error.response?.data?.detail || error.message}</p>,
+      });
     },
   });
 
@@ -1341,6 +1406,89 @@ export function ProfitableAds() {
                   </div>
                 ))
               )}
+            </div>
+          </Card>
+
+          {/* ROI Auto-Enable Settings */}
+          <Card title="ROI Автовключение" icon={Zap}>
+            <div className="bg-blue-900/10 border border-blue-700/30 rounded-lg p-3 sm:p-4 mb-4">
+              <p className="text-xs sm:text-sm text-blue-300">
+                Автоматически включает ВЫКЛЮЧЕННЫЕ баннеры, у которых ROI превышает заданный порог.
+                Использует включённые кабинеты из списка выше. После каждого обхода обновляет таблицу результатов.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-between p-4 bg-zinc-700/50 rounded-lg mb-4">
+              <div>
+                <p className="text-white font-medium">Включить ROI автовключение</p>
+                <p className="text-sm text-zinc-400">Работает по расписанию планировщика</p>
+              </div>
+              <Toggle
+                checked={roiReenableForm.enabled}
+                onChange={(checked) => setRoiReenableForm({ ...roiReenableForm, enabled: checked })}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+              <div>
+                <label className="block text-xs sm:text-sm text-zinc-400 mb-1">Интервал (минут)</label>
+                <input
+                  type="number"
+                  value={roiReenableForm.interval_minutes}
+                  onChange={(e) => setRoiReenableForm({ ...roiReenableForm, interval_minutes: parseInt(e.target.value) || 60 })}
+                  className="input w-full"
+                  min="1"
+                />
+                <p className="text-xs text-zinc-500 mt-1">Как часто проверять</p>
+              </div>
+              <div>
+                <label className="block text-xs sm:text-sm text-zinc-400 mb-1">Период анализа (дней)</label>
+                <input
+                  type="number"
+                  value={roiReenableForm.lookback_days}
+                  onChange={(e) => setRoiReenableForm({ ...roiReenableForm, lookback_days: parseInt(e.target.value) || 7 })}
+                  className="input w-full"
+                  min="1"
+                />
+                <p className="text-xs text-zinc-500 mt-1">Данные LeadsTech за N дней</p>
+              </div>
+              <div>
+                <label className="block text-xs sm:text-sm text-zinc-400 mb-1">Порог ROI (%)</label>
+                <input
+                  type="number"
+                  value={roiReenableForm.roi_threshold}
+                  onChange={(e) => setRoiReenableForm({ ...roiReenableForm, roi_threshold: parseFloat(e.target.value) || 50 })}
+                  className="input w-full"
+                  step="0.1"
+                />
+                <p className="text-xs text-zinc-500 mt-1">Включать если ROI &gt;= порога</p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between p-4 bg-yellow-900/20 border border-yellow-700/30 rounded-lg mb-4">
+              <div>
+                <p className="text-white font-medium">Тестовый режим (Dry Run)</p>
+                <p className="text-sm text-zinc-400">Не включает баннеры реально, только логирует</p>
+              </div>
+              <Toggle
+                checked={roiReenableForm.dry_run}
+                onChange={(checked) => setRoiReenableForm({ ...roiReenableForm, dry_run: checked })}
+              />
+            </div>
+
+            <div className="mt-4 pt-4 border-t border-zinc-700">
+              <button
+                onClick={() => updateRoiReenableMutation.mutate(roiReenableForm)}
+                disabled={updateRoiReenableMutation.isPending || !schedulerSettings}
+                className="btn bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 text-sm w-full sm:w-auto"
+              >
+                {updateRoiReenableMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Save className="w-4 h-4" />
+                )}
+                Сохранить настройки ROI автовключения
+              </button>
             </div>
           </Card>
         </>

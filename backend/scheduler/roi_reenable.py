@@ -11,6 +11,7 @@ from utils.time_utils import get_moscow_time
 from utils.vk_api.banner_stats import get_banners_paginated
 from database import crud
 from database.crud.leadstech import get_leadstech_roi_for_banners, get_leadstech_cabinets
+from database.models import Account
 from scheduler.config import VK_API_BASE_URL
 from scheduler.reenable import enable_banner_with_parents
 from scheduler.notifications import send_reenable_notification
@@ -83,9 +84,11 @@ def run_roi_reenable_analysis(
     """
     # Extract settings
     roi_threshold = roi_reenable_settings.get("roi_threshold", 50.0)
-    account_ids = roi_reenable_settings.get("account_ids", [])
     dry_run = roi_reenable_settings.get("dry_run", True)
     lookback_days = roi_reenable_settings.get("lookback_days", 7)
+
+    # Get enabled LeadsTech cabinets (same as used for LeadsTech analysis)
+    enabled_cabinets = get_leadstech_cabinets(db, user_id=user_id, enabled_only=True)
 
     if logger:
         logger.info("")
@@ -94,7 +97,7 @@ def run_roi_reenable_analysis(
         logger.info("=" * 60)
         logger.info(f"   User ID: {user_id}")
         logger.info(f"   ROI threshold: >= {roi_threshold}%")
-        logger.info(f"   Accounts to check: {len(account_ids)}")
+        logger.info(f"   Enabled LeadsTech cabinets: {len(enabled_cabinets)}")
         logger.info(f"   Lookback days (ROI period): {lookback_days}")
         logger.info(f"   Mode: {'DRY RUN (test)' if dry_run else 'REAL'}")
         logger.info(f"   Telegram: {'enabled' if telegram_config.get('enabled') else 'disabled'}")
@@ -107,27 +110,28 @@ def run_roi_reenable_analysis(
         run_count=run_count,
         extra_data={
             "roi_threshold": roi_threshold,
-            "account_ids": account_ids,
+            "enabled_cabinets": len(enabled_cabinets),
             "lookback_days": lookback_days,
             "dry_run": dry_run,
             "type": "roi_reenable"
         }
     )
 
-    if not account_ids:
+    if not enabled_cabinets:
         if logger:
-            logger.warning("No accounts configured for ROI reenable, skipping")
+            logger.warning("No enabled LeadsTech cabinets found, skipping ROI reenable")
         return 0, 0, 0, 0
 
-    # Get accounts from DB
-    all_accounts = crud.get_accounts(db, user_id=user_id)
-    accounts_map = {acc.id: acc for acc in all_accounts}
+    # Get account IDs from enabled cabinets and fetch Account objects
+    cabinet_account_ids = [cab.account_id for cab in enabled_cabinets]
+    selected_accounts = db.query(Account).filter(
+        Account.id.in_(cabinet_account_ids),
+        Account.user_id == user_id
+    ).all()
 
-    # Filter to selected accounts
-    selected_accounts = [accounts_map[aid] for aid in account_ids if aid in accounts_map]
     if not selected_accounts:
         if logger:
-            logger.warning("None of the selected accounts found in DB")
+            logger.warning("No accounts found for enabled cabinets")
         return 0, 0, 0, 0
 
     # Get account names for filtering LeadsTech results
@@ -378,7 +382,7 @@ def _send_roi_reenable_notification(
     logger=None
 ):
     """Send Telegram notification about ROI reenable results."""
-    from utils.telegram import send_telegram_message
+    from scheduler.notifications import send_telegram_message
 
     chat_ids = telegram_config.get("chat_id", [])
     bot_token = telegram_config.get("bot_token")

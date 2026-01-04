@@ -61,12 +61,13 @@ class ReenableSettings:
 
 @dataclass
 class RoiReenableSettings:
-    """Settings for ROI-based auto-enabling of disabled banners"""
+    """Settings for ROI-based auto-enabling of disabled banners.
+    Uses enabled LeadsTech cabinets (same as LeadsTech analysis).
+    """
     enabled: bool = False
     interval_minutes: int = 60  # Run every hour by default
     lookback_days: int = 7  # Analyze ROI for last 7 days
     roi_threshold: float = 50.0  # Enable banners with ROI >= 50%
-    account_ids: List[int] = field(default_factory=list)  # Specific accounts to analyze
     dry_run: bool = True
     delay_after_analysis_seconds: int = 30
 

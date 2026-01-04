@@ -13,6 +13,7 @@ import sys
 import time
 import signal
 import random
+import subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
@@ -146,7 +147,6 @@ class VKAdsScheduler:
                         "interval_minutes": 60,
                         "lookback_days": 7,
                         "roi_threshold": 50.0,
-                        "account_ids": [],
                         "dry_run": True,
                         "delay_after_analysis_seconds": 30
                     }
@@ -374,6 +374,11 @@ class VKAdsScheduler:
                 run_count=self.run_count,
                 logger=self.logger
             )
+
+            # After ROI reenable, trigger LeadsTech analysis to update the table
+            if not self.should_stop:
+                self._trigger_leadstech_analysis(user_id)
+
         except Exception as e:
             self.logger.error(f"Critical ROI reenable error: {e}")
             import traceback
@@ -389,6 +394,47 @@ class VKAdsScheduler:
             )
         finally:
             db.close()
+
+    def _trigger_leadstech_analysis(self, user_id: int):
+        """Trigger LeadsTech analysis to update the profitable ads table"""
+        self.logger.info("Triggering LeadsTech analysis to update table...")
+
+        # Determine script path (inside Docker or local)
+        project_root = Path(__file__).parent.parent
+        leadstech_script = project_root / "leadstech" / "analyzer.py"
+
+        if not leadstech_script.exists():
+            self.logger.warning(f"LeadsTech analyzer not found at {leadstech_script}")
+            return
+
+        try:
+            # Set environment variables for the analyzer
+            env = os.environ.copy()
+            env["VK_ADS_USER_ID"] = str(user_id)
+            env["VK_ADS_USERNAME"] = self.username
+
+            # Run analyzer synchronously (wait for completion)
+            self.logger.info(f"Running LeadsTech analyzer: {leadstech_script}")
+            result = subprocess.run(
+                [sys.executable, str(leadstech_script)],
+                cwd=str(project_root),
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=600  # 10 minute timeout
+            )
+
+            if result.returncode == 0:
+                self.logger.info("LeadsTech analysis completed successfully")
+            else:
+                self.logger.error(f"LeadsTech analysis failed with code {result.returncode}")
+                if result.stderr:
+                    self.logger.error(f"stderr: {result.stderr[:500]}")
+
+        except subprocess.TimeoutExpired:
+            self.logger.error("LeadsTech analysis timed out after 10 minutes")
+        except Exception as e:
+            self.logger.error(f"Failed to run LeadsTech analysis: {e}")
 
     def calculate_next_run(self) -> datetime:
         """Calculate next run time"""

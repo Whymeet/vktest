@@ -63,7 +63,10 @@ async def get_settings(
             "retry_on_error": True,
             "retry_delay_minutes": 5,
             "max_retries": 3,
-            "quiet_hours": {"enabled": False, "start": "23:00", "end": "08:00"}
+            "quiet_hours": {"enabled": False, "start": "23:00", "end": "08:00"},
+            "second_pass": {"enabled": True, "extra_days_min": 7, "extra_days_max": 50, "delay_seconds": 30},
+            "reenable": {"enabled": False, "interval_minutes": 120, "lookback_hours": 24, "delay_after_analysis_seconds": 30, "dry_run": True},
+            "roi_reenable": None
         }),
         "statistics_trigger": settings.get('statistics_trigger', {
             "enabled": False,

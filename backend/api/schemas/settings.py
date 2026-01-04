@@ -40,6 +40,18 @@ class ReEnableSettings(BaseModel):
     dry_run: bool = True
 
 
+class RoiReenableSettings(BaseModel):
+    """Settings for ROI-based auto-enabling of disabled banners.
+    Uses enabled LeadsTech cabinets (same as LeadsTech analysis).
+    """
+    enabled: bool = False
+    interval_minutes: int = 60
+    lookback_days: int = 7
+    roi_threshold: float = 50.0
+    dry_run: bool = True
+    delay_after_analysis_seconds: int = 30
+
+
 class SchedulerSettings(BaseModel):
     enabled: bool = True
     interval_minutes: float = 60
@@ -51,6 +63,7 @@ class SchedulerSettings(BaseModel):
     quiet_hours: QuietHours = QuietHours()
     second_pass: SecondPassSettings = SecondPassSettings()
     reenable: ReEnableSettings = ReEnableSettings()
+    roi_reenable: Optional[RoiReenableSettings] = None
 
 
 class StatisticsTriggerSettings(BaseModel):

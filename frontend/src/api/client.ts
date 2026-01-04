@@ -145,7 +145,6 @@ export interface RoiReenableSettings {
   interval_minutes: number;
   lookback_days: number;
   roi_threshold: number;
-  account_ids: number[];
   dry_run: boolean;
   delay_after_analysis_seconds: number;
 }
