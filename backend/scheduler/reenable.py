@@ -337,6 +337,13 @@ def run_reenable_analysis(
             goals = fresh_stats.get('goals', 0)
             clicks = fresh_stats.get('clicks', 0)
 
+            # Skip banners with zero spend - no real statistics to evaluate
+            if spent is None or spent <= 0:
+                total_skipped += 1
+                if logger:
+                    logger.debug(f"   [{banner_id}] Skipped - zero spend (no real stats)")
+                continue
+
             # Check if should reenable
             if should_reenable_banner(fresh_stats, rules):
                 if logger:
