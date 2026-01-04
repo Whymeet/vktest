@@ -25,7 +25,6 @@ import {
   FileText,
   Filter,
   RotateCcw,
-  Power,
   Save,
   Zap,
 } from 'lucide-react';
