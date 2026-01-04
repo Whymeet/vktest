@@ -71,7 +71,7 @@ async def log_disabled_banners_to_db(
                         date_to=date_to,
                         is_dry_run=is_dry_run,
                         disable_success=disable_success,
-                        reason=f"Matched rule: {matched_rule}",
+                        reason=matched_rule,
                         user_id=user_id
                     )
                     logged_count += 1

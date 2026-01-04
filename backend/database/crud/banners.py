@@ -111,7 +111,7 @@ def log_disabled_banner(
 
     if reason is None:
         matched_rule = banner_data.get("matched_rule", "Не указано")
-        reason = f"Сработало правило: {matched_rule}"
+        reason = matched_rule
 
     if not disable_success:
         reason = f"[ОШИБКА ОТКЛЮЧЕНИЯ] {reason}"
