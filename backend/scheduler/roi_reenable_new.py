@@ -357,8 +357,7 @@ def run_roi_reenable_analysis(
 
     # Send Telegram notification
     if telegram_config.get("enabled", False) and reenabled_banners:
-        from scheduler.roi_reenable_notification import send_roi_reenable_notification
-        send_roi_reenable_notification(
+        _send_roi_reenable_notification(
             telegram_config=telegram_config,
             reenabled_banners=reenabled_banners,
             roi_threshold=roi_threshold,
@@ -366,8 +365,9 @@ def run_roi_reenable_analysis(
             total_reenabled=total_reenabled,
             total_errors=total_errors,
             dry_run=dry_run,
-            lookback_days=lookback_days,
             logger=logger
         )
 
     return len(all_disabled_banners), total_reenabled, total_skipped, total_errors
+
+
