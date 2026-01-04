@@ -491,3 +491,57 @@ def get_cabinet_total_spent(
 
     result = query.scalar()
     return float(result or 0)
+
+
+def get_leadstech_roi_for_banners(
+    db: Session,
+    user_id: int,
+    banner_ids: List[int],
+    account_names: Optional[List[str]] = None
+) -> dict:
+    """
+    Get ROI data for specified banner IDs from LeadsTech analysis results.
+
+    Args:
+        db: Database session
+        user_id: User ID
+        banner_ids: List of banner IDs to get ROI for
+        account_names: Optional list of cabinet names to filter by
+
+    Returns:
+        Dict mapping banner_id to ROI data:
+        {
+            banner_id: {
+                "roi_percent": float | None,
+                "vk_spent": float,
+                "lt_revenue": float,
+                "profit": float,
+                "cabinet_name": str,
+                "leadstech_label": str
+            }
+        }
+    """
+    if not banner_ids:
+        return {}
+
+    query = db.query(LeadsTechAnalysisResult).filter(
+        LeadsTechAnalysisResult.user_id == user_id,
+        LeadsTechAnalysisResult.banner_id.in_(banner_ids)
+    )
+
+    if account_names:
+        query = query.filter(LeadsTechAnalysisResult.cabinet_name.in_(account_names))
+
+    results = query.all()
+
+    return {
+        r.banner_id: {
+            "roi_percent": r.roi_percent,
+            "vk_spent": r.vk_spent,
+            "lt_revenue": r.lt_revenue,
+            "profit": r.profit,
+            "cabinet_name": r.cabinet_name,
+            "leadstech_label": r.leadstech_label
+        }
+        for r in results
+    }

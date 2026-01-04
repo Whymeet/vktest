@@ -13,6 +13,7 @@ import sys
 import time
 import signal
 import random
+import subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
@@ -37,6 +38,7 @@ from scheduler.config import (
 from scheduler.event_logger import log_scheduler_event, EventType
 from scheduler.analysis import run_analysis
 from scheduler.reenable import run_reenable_analysis
+from scheduler.roi_reenable import run_roi_reenable_analysis
 
 # Initialize logging
 setup_logging()
@@ -61,6 +63,7 @@ class VKAdsScheduler:
         self.next_run_time: Optional[datetime] = None
         self.run_count = 0
         self.last_reenable_time: Optional[datetime] = None
+        self.last_roi_reenable_time: Optional[datetime] = None
 
         # Signal handling for graceful shutdown
         signal.signal(signal.SIGTERM, self.handle_signal)
@@ -137,6 +140,16 @@ class VKAdsScheduler:
                     }
                 elif "interval_minutes" not in self.settings["reenable"]:
                     self.settings["reenable"]["interval_minutes"] = 120
+                # Ensure roi_reenable settings exist
+                if "roi_reenable" not in self.settings:
+                    self.settings["roi_reenable"] = {
+                        "enabled": False,
+                        "interval_minutes": 60,
+                        "lookback_days": 7,
+                        "roi_threshold": 50.0,
+                        "dry_run": True,
+                        "delay_after_analysis_seconds": 30
+                    }
             else:
                 self.settings = get_default_settings()
                 crud.set_user_setting(db, user_id, 'scheduler', self.settings)
@@ -174,10 +187,14 @@ class VKAdsScheduler:
         return self.should_stop
 
     def run_double_analysis(self) -> bool:
-        """Run double analysis: standard + extended + auto-reenable (by interval)"""
+        """Run double analysis: standard + extended + auto-reenable + ROI reenable (by intervals)"""
         reenable_settings = self.settings.get("reenable", {})
         reenable_enabled = reenable_settings.get("enabled", False)
         reenable_interval = reenable_settings.get("interval_minutes", 120)
+
+        roi_reenable_settings = self.settings.get("roi_reenable", {})
+        roi_reenable_enabled = roi_reenable_settings.get("enabled", False)
+        roi_reenable_interval = roi_reenable_settings.get("interval_minutes", 60)
 
         # Check if it's time to run reenable
         should_run_reenable = False
@@ -197,7 +214,25 @@ class VKAdsScheduler:
                     remaining = reenable_interval - minutes_since_reenable
                     self.logger.info(f"Reenable: {remaining:.0f} min until next run")
 
-        total_passes = 3 if should_run_reenable else 2
+        # Check if it's time to run ROI reenable
+        should_run_roi_reenable = False
+        if roi_reenable_enabled:
+            if self.last_roi_reenable_time is None:
+                should_run_roi_reenable = False
+                self.logger.info(f"ROI Reenable: first run, will execute in {roi_reenable_interval} min")
+            else:
+                minutes_since_roi_reenable = (get_moscow_time() - self.last_roi_reenable_time).total_seconds() / 60
+                if minutes_since_roi_reenable >= roi_reenable_interval:
+                    should_run_roi_reenable = True
+                    self.logger.info(
+                        f"ROI Reenable: {minutes_since_roi_reenable:.0f} min passed "
+                        f"(interval {roi_reenable_interval} min) -> WILL RUN"
+                    )
+                else:
+                    remaining = roi_reenable_interval - minutes_since_roi_reenable
+                    self.logger.info(f"ROI Reenable: {remaining:.0f} min until next run")
+
+        total_passes = 2 + (1 if should_run_reenable else 0) + (1 if should_run_roi_reenable else 0)
 
         # Pass 1: standard analysis
         self.logger.info(f"PASS 1/{total_passes}: Standard analysis")
@@ -242,20 +277,36 @@ class VKAdsScheduler:
             self.logger.error("Both analyses failed")
 
         # Pass 3: auto-reenable (only if interval passed)
+        current_pass = 3
         if should_run_reenable and not self.should_stop:
             delay = reenable_settings.get("delay_after_analysis_seconds", 30)
             self.logger.info(f"Pause {delay} sec before reenable...")
             time.sleep(delay)
 
             if not self.should_stop:
-                self.logger.info(f"PASS 3/{total_passes}: Auto-reenable")
+                self.logger.info(f"PASS {current_pass}/{total_passes}: Auto-reenable")
                 self._run_reenable()
                 self.last_reenable_time = get_moscow_time()
                 self.logger.info(f"Next reenable in {reenable_interval} min")
+                current_pass += 1
 
-        # Initialize time for first run
+        # Pass 4: ROI auto-reenable (only if interval passed)
+        if should_run_roi_reenable and not self.should_stop:
+            delay = roi_reenable_settings.get("delay_after_analysis_seconds", 30)
+            self.logger.info(f"Pause {delay} sec before ROI reenable...")
+            time.sleep(delay)
+
+            if not self.should_stop:
+                self.logger.info(f"PASS {current_pass}/{total_passes}: ROI Auto-reenable")
+                self._run_roi_reenable()
+                self.last_roi_reenable_time = get_moscow_time()
+                self.logger.info(f"Next ROI reenable in {roi_reenable_interval} min")
+
+        # Initialize times for first run
         if reenable_enabled and self.last_reenable_time is None:
             self.last_reenable_time = get_moscow_time()
+        if roi_reenable_enabled and self.last_roi_reenable_time is None:
+            self.last_roi_reenable_time = get_moscow_time()
 
         return success1 or success2
 
@@ -299,6 +350,91 @@ class VKAdsScheduler:
             )
         finally:
             db.close()
+
+    def _run_roi_reenable(self):
+        """Run ROI-based reenable analysis with current settings"""
+        user_id = int(self.user_id) if self.user_id else None
+        if not user_id:
+            self.logger.error("user_id not set, ROI reenable not possible")
+            return
+
+        roi_reenable_settings = self.settings.get("roi_reenable", {})
+
+        db = SessionLocal()
+        try:
+            telegram_config = crud.get_user_setting(db, user_id, 'telegram') or {}
+
+            run_roi_reenable_analysis(
+                db=db,
+                user_id=user_id,
+                username=self.username,
+                roi_reenable_settings=roi_reenable_settings,
+                telegram_config=telegram_config,
+                should_stop_fn=self._should_stop,
+                run_count=self.run_count,
+                logger=self.logger
+            )
+
+            # After ROI reenable, trigger LeadsTech analysis to update the table
+            if not self.should_stop:
+                self._trigger_leadstech_analysis(user_id)
+
+        except Exception as e:
+            self.logger.error(f"Critical ROI reenable error: {e}")
+            import traceback
+            self.logger.error(traceback.format_exc())
+
+            log_scheduler_event(
+                EventType.REENABLE_ERROR,
+                f"ROI Reenable exception: {e}",
+                username=self.username,
+                user_id=str(user_id),
+                run_count=self.run_count,
+                extra_data={"exception": str(e), "type": "roi_reenable"}
+            )
+        finally:
+            db.close()
+
+    def _trigger_leadstech_analysis(self, user_id: int):
+        """Trigger LeadsTech analysis to update the profitable ads table"""
+        self.logger.info("Triggering LeadsTech analysis to update table...")
+
+        # Determine script path (inside Docker or local)
+        project_root = Path(__file__).parent.parent
+        leadstech_script = project_root / "leadstech" / "analyzer.py"
+
+        if not leadstech_script.exists():
+            self.logger.warning(f"LeadsTech analyzer not found at {leadstech_script}")
+            return
+
+        try:
+            # Set environment variables for the analyzer
+            env = os.environ.copy()
+            env["VK_ADS_USER_ID"] = str(user_id)
+            env["VK_ADS_USERNAME"] = self.username
+
+            # Run analyzer synchronously (wait for completion)
+            self.logger.info(f"Running LeadsTech analyzer: {leadstech_script}")
+            result = subprocess.run(
+                [sys.executable, str(leadstech_script)],
+                cwd=str(project_root),
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=600  # 10 minute timeout
+            )
+
+            if result.returncode == 0:
+                self.logger.info("LeadsTech analysis completed successfully")
+            else:
+                self.logger.error(f"LeadsTech analysis failed with code {result.returncode}")
+                if result.stderr:
+                    self.logger.error(f"stderr: {result.stderr[:500]}")
+
+        except subprocess.TimeoutExpired:
+            self.logger.error("LeadsTech analysis timed out after 10 minutes")
+        except Exception as e:
+            self.logger.error(f"Failed to run LeadsTech analysis: {e}")
 
     def calculate_next_run(self) -> datetime:
         """Calculate next run time"""

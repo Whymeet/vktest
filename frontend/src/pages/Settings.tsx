@@ -56,11 +56,25 @@ export function Settings() {
         delay_after_analysis_seconds: 30,
         dry_run: true,
       };
+      // Добавляем дефолтные значения для roi_reenable если их нет
+      const defaultRoiReenable = {
+        enabled: false,
+        interval_minutes: 60,
+        lookback_days: 7,
+        roi_threshold: 50,
+        account_ids: [] as number[],
+        dry_run: true,
+        delay_after_analysis_seconds: 30,
+      };
       const schedulerWithDefaults = {
         ...settings.scheduler,
         reenable: {
           ...defaultReenable,
           ...(settings.scheduler?.reenable || {})
+        },
+        roi_reenable: {
+          ...defaultRoiReenable,
+          ...(settings.scheduler?.roi_reenable || {})
         }
       };
       setSchedulerForm(schedulerWithDefaults);

@@ -118,6 +118,7 @@ export interface SchedulerSettings {
   quiet_hours: QuietHours;
   second_pass: SecondPassSettings;
   reenable: ReEnableSettings;
+  roi_reenable?: RoiReenableSettings;
 }
 
 export interface TelegramSettings {
@@ -137,6 +138,15 @@ export interface ReEnableSettings {
   lookback_hours: number;
   delay_after_analysis_seconds: number;
   dry_run: boolean;
+}
+
+export interface RoiReenableSettings {
+  enabled: boolean;
+  interval_minutes: number;
+  lookback_days: number;
+  roi_threshold: number;
+  dry_run: boolean;
+  delay_after_analysis_seconds: number;
 }
 
 export interface LeadsTechCredentials {

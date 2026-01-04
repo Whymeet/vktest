@@ -555,7 +555,7 @@ class BannerScalingEngine:
                                     self._update_task_progress_numbers(completed, successful, failed)
                                     continue
 
-                                # Create campaign with group
+                                # Create campaign with group (with classification - banners are created with correct status)
                                 result = duplicate_ad_group_to_new_campaign(
                                     token=account.api_token,
                                     base_url=VK_API_BASE_URL,
@@ -565,7 +565,13 @@ class BannerScalingEngine:
                                     new_budget=self.engine_config.new_budget,
                                     auto_activate=False,
                                     rate_limit_delay=0.03,
-                                    account_name=account.name
+                                    account_name=account.name,
+                                    # Pass classification for immediate status/name assignment
+                                    positive_banner_ids=set(group_positive),
+                                    negative_banner_ids=set(group_negative),
+                                    activate_positive=self.engine_config.activate_positive_banners,
+                                    activate_negative=self.engine_config.activate_negative_banners,
+                                    duplicate_negative=self.engine_config.duplicate_negative_banners
                                 )
 
                                 if result.get("success"):
@@ -573,14 +579,6 @@ class BannerScalingEngine:
                                     new_campaign_id = result.get("new_campaign_id")
                                     if new_campaign_id:
                                         self._cache_campaign(account.name, original_campaign_id, new_campaign_id)
-
-                                    # Now apply banner classification (activate/block/delete based on toggles)
-                                    result = self._apply_banner_classification_to_result(
-                                        account=account,
-                                        result=result,
-                                        positive_banner_ids=set(group_positive),
-                                        negative_banner_ids=set(group_negative)
-                                    )
                         else:
                             # Normal duplication to same campaign
                             result = self._duplicate_group_with_classification(
@@ -648,117 +646,6 @@ class BannerScalingEngine:
             if self._own_db:
                 self.db.close()
 
-    def _apply_banner_classification_to_result(
-        self,
-        account: Account,
-        result: dict,
-        positive_banner_ids: Set[int],
-        negative_banner_ids: Set[int]
-    ) -> dict:
-        """
-        Apply banner classification (activate/block/delete/rename) to already created group.
-        Used after duplicate_ad_group_to_new_campaign which creates group without classification.
-
-        Args:
-            account: Account object
-            result: Result from duplicate_ad_group_to_new_campaign
-            positive_banner_ids: Set of positive banner IDs
-            negative_banner_ids: Set of negative banner IDs
-
-        Returns:
-            Updated result dict
-        """
-        from utils.vk_api.banners import update_banner, delete_banner
-
-        new_group_id = result.get("new_group_id")
-        duplicated_banners = result.get("duplicated_banners", [])
-
-        if not new_group_id or not duplicated_banners:
-            return result
-
-        # Build mapping: original_id -> (new_id, original_name)
-        original_to_new: Dict[int, Tuple[int, str]] = {}
-        for banner_info in duplicated_banners:
-            orig_id = banner_info.get("original_id")
-            new_id = banner_info.get("new_id")
-            orig_name = banner_info.get("name") or ""
-            if orig_id and new_id:
-                original_to_new[orig_id] = (new_id, orig_name)
-
-        # Determine banner actions
-        banners_to_activate: List[int] = []
-        banners_to_delete: List[int] = []
-        banners_to_rename: Dict[int, str] = {}
-
-        logger.info(f"    Applying classification to {len(original_to_new)} banners in new campaign group")
-
-        for orig_id, (new_id, orig_name) in original_to_new.items():
-            display_name = orig_name if orig_name else f"Banner_{orig_id}"
-
-            if orig_id in positive_banner_ids:
-                new_name = f"Позитив {display_name}"
-                banners_to_rename[new_id] = new_name
-                if self.engine_config.activate_positive_banners:
-                    banners_to_activate.append(new_id)
-            elif orig_id in negative_banner_ids:
-                if not self.engine_config.duplicate_negative_banners:
-                    banners_to_delete.append(new_id)
-                else:
-                    new_name = f"Негатив {display_name}"
-                    banners_to_rename[new_id] = new_name
-                    if self.engine_config.activate_negative_banners:
-                        banners_to_activate.append(new_id)
-
-        # Delete negative banners (parallel)
-        if banners_to_delete:
-            logger.info(f"      Deleting {len(banners_to_delete)} negative banners (parallel)...")
-            with ThreadPoolExecutor(max_workers=5) as executor:
-                futures = {
-                    executor.submit(delete_banner, account.api_token, VK_API_BASE_URL, bid): bid
-                    for bid in banners_to_delete
-                }
-                for future in as_completed(futures):
-                    bid = futures[future]
-                    try:
-                        future.result()
-                    except Exception as e:
-                        logger.warning(f"      Failed to delete banner {bid}: {e}")
-
-        # Update banners: combine rename + activate in one request per banner (parallel)
-        if banners_to_rename or banners_to_activate:
-            logger.info(f"      Updating {len(banners_to_rename)} banners (parallel, rename + activate)...")
-            activate_set = set(banners_to_activate)
-
-            def update_single_banner(banner_id: int, new_name: str):
-                update_data = {"name": new_name}
-                if banner_id in activate_set:
-                    update_data["status"] = "active"
-                update_banner(account.api_token, VK_API_BASE_URL, banner_id, update_data)
-
-            with ThreadPoolExecutor(max_workers=5) as executor:
-                futures = {
-                    executor.submit(update_single_banner, bid, name): bid
-                    for bid, name in banners_to_rename.items()
-                }
-                for future in as_completed(futures):
-                    bid = futures[future]
-                    try:
-                        future.result()
-                    except Exception as e:
-                        logger.warning(f"      Failed to update banner {bid}: {e}")
-
-        # Activate group if there are any banners to activate
-        # (either positive with activate_positive_banners=true, or negative with activate_negative_banners=true)
-        if banners_to_activate:
-            from utils.vk_api.ad_groups import update_ad_group
-            try:
-                update_ad_group(account.api_token, VK_API_BASE_URL, new_group_id, {"status": "active"})
-                logger.info(f"    Activated group {new_group_id}")
-            except Exception as e:
-                logger.warning(f"    Failed to activate group {new_group_id}: {e}")
-
-        return result
-
     def _duplicate_group_with_classification(
         self,
         account: Account,
@@ -770,169 +657,51 @@ class BannerScalingEngine:
         """
         Duplicate a group with banner status control based on classification.
 
-        Banner statuses are controlled by toggle settings:
-        - Positive banners: active if activate_positive_banners else blocked
-        - Negative banners: skipped if not duplicate_negative_banners,
-                          otherwise active if activate_negative_banners else blocked
+        Banner statuses and names are set at creation time (no post-updates needed).
+        This is much faster than creating blocked and then updating each banner.
 
         Args:
             target_campaign_id: If set, duplicate to this campaign instead of original
         """
-        # First, duplicate the group with all banners using existing function
-        # This creates the group in blocked status
+        # Duplicate the group with classification - banners are created with correct status/name
         result = duplicate_ad_group_full(
             token=account.api_token,
             base_url=VK_API_BASE_URL,
             ad_group_id=group_id,
             new_name=self.engine_config.new_name,
             new_budget=self.engine_config.new_budget,
-            auto_activate=False,  # We'll handle activation manually based on toggles
+            auto_activate=False,
             rate_limit_delay=0.03,
             account_name=account.name,
-            target_campaign_id=target_campaign_id
+            target_campaign_id=target_campaign_id,
+            # Pass classification for immediate status/name assignment
+            positive_banner_ids=positive_banner_ids,
+            negative_banner_ids=negative_banner_ids,
+            activate_positive=self.engine_config.activate_positive_banners,
+            activate_negative=self.engine_config.activate_negative_banners,
+            duplicate_negative=self.engine_config.duplicate_negative_banners
         )
 
         if not result.get("success"):
             return result
 
-        new_group_id = result.get("new_group_id")
+        # Log summary
         duplicated_banners = result.get("duplicated_banners", [])
+        skipped_banners = result.get("skipped_banners", [])
+        group_status = result.get("group_status", "blocked")
 
-        # Now we need to set banner statuses based on classification
-        # Build mapping: original_id -> (new_id, original_name)
-        original_to_new: Dict[int, Tuple[int, str]] = {}
-        for banner_info in duplicated_banners:
-            orig_id = banner_info.get("original_id")
-            new_id = banner_info.get("new_id")
-            orig_name = banner_info.get("name") or ""
-            if orig_id and new_id:
-                original_to_new[orig_id] = (new_id, orig_name)
+        active_count = sum(1 for b in duplicated_banners if b.get("status") == "active")
+        blocked_count = sum(1 for b in duplicated_banners if b.get("status") == "blocked")
 
-        # Determine which banners to activate/block/delete and rename
-        banners_to_activate: List[int] = []
-        banners_to_keep_blocked: List[int] = []
-        banners_to_delete: List[int] = []
-        # Rename mapping: new_id -> new_name with prefix
-        banners_to_rename: Dict[int, str] = {}
-
-        logger.info(f"    Processing {len(original_to_new)} banners for classification")
-        logger.info(f"    Positive banner IDs in this group: {len([oid for oid in original_to_new.keys() if oid in positive_banner_ids])}")
-        logger.info(f"    Negative banner IDs in this group: {len([oid for oid in original_to_new.keys() if oid in negative_banner_ids])}")
-
-        for orig_id, (new_id, orig_name) in original_to_new.items():
-            # Use banner ID as fallback if name is empty
-            display_name = orig_name if orig_name else f"Banner_{orig_id}"
-
-            if orig_id in positive_banner_ids:
-                # Positive banner - add "Позитив" prefix
-                new_name = f"Позитив {display_name}"
-                banners_to_rename[new_id] = new_name
-                logger.debug(f"      Banner {orig_id} -> {new_id}: POSITIVE, rename to '{new_name}'")
-                if self.engine_config.activate_positive_banners:
-                    banners_to_activate.append(new_id)
-                else:
-                    banners_to_keep_blocked.append(new_id)
-            elif orig_id in negative_banner_ids:
-                # Negative banner
-                if not self.engine_config.duplicate_negative_banners:
-                    # Should not duplicate negative banners - delete them
-                    banners_to_delete.append(new_id)
-                    logger.debug(f"      Banner {orig_id} -> {new_id}: NEGATIVE, will be deleted")
-                else:
-                    # Add "Негатив" prefix
-                    new_name = f"Негатив {display_name}"
-                    banners_to_rename[new_id] = new_name
-                    logger.debug(f"      Banner {orig_id} -> {new_id}: NEGATIVE, rename to '{new_name}'")
-                    if self.engine_config.activate_negative_banners:
-                        banners_to_activate.append(new_id)
-                    else:
-                        banners_to_keep_blocked.append(new_id)
-            else:
-                # Banner not in classification - might be new or missed
-                logger.warning(f"      Banner {orig_id} -> {new_id}: NOT CLASSIFIED (not in positive or negative set)")
-
-        # Delete negative banners if needed (parallel)
-        if banners_to_delete:
-            logger.info(f"    Deleting {len(banners_to_delete)} negative banners (parallel)")
-            with ThreadPoolExecutor(max_workers=5) as executor:
-                futures = {
-                    executor.submit(self._delete_banner, account.api_token, bid): bid
-                    for bid in banners_to_delete
-                }
-                for future in as_completed(futures):
-                    bid = futures[future]
-                    try:
-                        future.result()
-                    except Exception as e:
-                        logger.warning(f"    Failed to delete banner {bid}: {e}")
-
-        # Update banners: combine rename + activate in one request per banner (parallel optimization)
-        if banners_to_rename:
-            logger.info(f"    Updating {len(banners_to_rename)} banners (parallel, rename + activate)")
-            activate_set = set(banners_to_activate)
-            updated_count = 0
-            failed_count = 0
-
-            def update_single_banner(banner_id: int, new_name: str):
-                update_data = {"name": new_name}
-                if banner_id in activate_set:
-                    update_data["status"] = "active"
-                self._update_banner(account.api_token, banner_id, update_data)
-
-            with ThreadPoolExecutor(max_workers=5) as executor:
-                futures = {
-                    executor.submit(update_single_banner, bid, name): bid
-                    for bid, name in banners_to_rename.items()
-                }
-                for future in as_completed(futures):
-                    bid = futures[future]
-                    try:
-                        future.result()
-                        updated_count += 1
-                    except Exception as e:
-                        failed_count += 1
-                        logger.warning(f"      Failed to update banner {bid}: {e}")
-            logger.info(f"    Updated {updated_count}/{len(banners_to_rename)} banners (failed: {failed_count})")
-        else:
-            logger.warning(f"    No banners to rename! Check classification logic.")
-
-        # Activate group if any banners should be active
-        should_activate_group = len(banners_to_activate) > 0
-
-        if should_activate_group:
-            logger.info(f"    Activating group {new_group_id}")
-            try:
-                from utils.vk_api.ad_groups import update_ad_group
-                update_ad_group(account.api_token, VK_API_BASE_URL, new_group_id, {"status": "active"})
-            except Exception as e:
-                logger.warning(f"    Failed to activate group {new_group_id}: {e}")
+        logger.info(f"    Created {len(duplicated_banners)} banners (active: {active_count}, blocked: {blocked_count}, skipped: {len(skipped_banners)})")
+        logger.info(f"    Group status: {group_status}")
 
         # Update result with classification info
-        result["positive_count"] = len([orig_id for orig_id in original_to_new.keys() if orig_id in positive_banner_ids])
-        result["negative_count"] = len([orig_id for orig_id in original_to_new.keys() if orig_id in negative_banner_ids])
-        result["deleted_negative"] = len(banners_to_delete)
-        result["activated_banners"] = len(banners_to_activate)
-        result["renamed_banners"] = len(banners_to_rename)
+        result["positive_count"] = active_count
+        result["negative_count"] = blocked_count
+        result["activated_banners"] = active_count
 
         return result
-
-    def _update_banner(self, token: str, banner_id: int, data: dict):
-        """Update banner with given data (name, status, etc.)"""
-        import requests
-        from utils.vk_api.core import _headers
-        url = f"{VK_API_BASE_URL}/banners/{banner_id}.json"
-        response = requests.post(url, headers=_headers(token), json=data, timeout=10)
-        if response.status_code not in (200, 204):
-            raise RuntimeError(f"Failed to update banner: {response.text[:200]}")
-
-    def _delete_banner(self, token: str, banner_id: int):
-        """Delete a banner"""
-        import requests
-        from utils.vk_api.core import _headers
-        url = f"{VK_API_BASE_URL}/banners/{banner_id}.json"
-        response = requests.delete(url, headers=_headers(token), timeout=10)
-        if response.status_code not in (200, 204):
-            raise RuntimeError(f"Failed to delete banner: {response.text[:200]}")
 
     def _activate_campaign_for_group(self, token: str, group_id: int) -> bool:
         """

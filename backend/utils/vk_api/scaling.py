@@ -159,7 +159,13 @@ def duplicate_ad_group_full(
     auto_activate: bool = False,
     rate_limit_delay: float = 0.03,
     account_name: str = None,  # For logging
-    target_campaign_id: int = None  # If set, duplicate to this campaign instead of original
+    target_campaign_id: int = None,  # If set, duplicate to this campaign instead of original
+    # Banner classification for immediate status/name assignment
+    positive_banner_ids: set = None,
+    negative_banner_ids: set = None,
+    activate_positive: bool = True,
+    activate_negative: bool = False,
+    duplicate_negative: bool = True
 ):
     """
     Full duplication of ad group with all non-deleted banners.
@@ -172,8 +178,13 @@ def duplicate_ad_group_full(
         account_name: Account name for logging (optional)
         new_name: New group name. If None or empty - uses ORIGINAL name.
         new_budget: New group budget in rubles. If None or 0 - copies original budget.
-        auto_activate: Automatically activate group and banners
+        auto_activate: Automatically activate group and banners (legacy, use classification params instead)
         rate_limit_delay: Delay between requests (default 0.03 sec = ~33 req/sec)
+        positive_banner_ids: Set of banner IDs classified as positive
+        negative_banner_ids: Set of banner IDs classified as negative
+        activate_positive: Whether to activate positive banners
+        activate_negative: Whether to activate negative banners
+        duplicate_negative: Whether to include negative banners at all
 
     Returns:
         dict: {
@@ -204,11 +215,14 @@ def duplicate_ad_group_full(
         'clicks', 'shows', 'spent', 'ctr', 'conversions',
         'cost_per_conversion', 'impressions',
         # Other read-only fields
-        'stats_info', 'preview_url', 'audit_pixels',
-        # Field status - remove, as when creating group with banners, status is inherited from group
-        'status'
-        # Note: 'name' is NOT excluded - we want to preserve banner names
+        'stats_info', 'preview_url', 'audit_pixels'
+        # Note: 'name' and 'status' are NOT excluded - we set them based on classification
     }
+
+    # Initialize classification sets
+    positive_ids = positive_banner_ids or set()
+    negative_ids = negative_banner_ids or set()
+    has_classification = bool(positive_ids or negative_ids)
 
     def clean_content(content_data):
         """Clean content, keeping only media object ids"""
@@ -310,10 +324,6 @@ def duplicate_ad_group_full(
         # VK API accepts budget_limit_day as integer (in rubles)
         new_group_data['budget_limit_day'] = budget_to_set
 
-        # IMPORTANT: Always create group with 'blocked' status to bypass active banners limit
-        # If auto-activation needed - activate after creation
-        new_group_data['status'] = 'blocked'
-
         # Override campaign if target_campaign_id is specified
         if target_campaign_id:
             new_group_data['ad_plan_id'] = target_campaign_id
@@ -322,16 +332,54 @@ def duplicate_ad_group_full(
         # ===== STEP 2: Prepare banners for creation with group =====
         banners_for_create = []
         original_banner_info = []  # For tracking original IDs
+        skipped_banners = []
+        has_active_banners = False  # Track if any banners will be active
 
         for banner in banners:
             banner_id = banner.get('id')
             banner_name = banner.get('name', 'Unknown')
+            display_name = banner_name if banner_name else f"Banner_{banner_id}"
+
+            # Determine banner status and name based on classification
+            if has_classification:
+                if banner_id in positive_ids:
+                    # Positive banner
+                    target_status = 'active' if activate_positive else 'blocked'
+                    target_name = f"Позитив {display_name}"
+                    if activate_positive:
+                        has_active_banners = True
+                elif banner_id in negative_ids:
+                    # Negative banner
+                    if not duplicate_negative:
+                        # Skip this banner entirely
+                        skipped_banners.append({
+                            "original_id": banner_id,
+                            "name": banner_name,
+                            "reason": "negative, duplicate_negative=False"
+                        })
+                        continue
+                    target_status = 'active' if activate_negative else 'blocked'
+                    target_name = f"Негатив {display_name}"
+                    if activate_negative:
+                        has_active_banners = True
+                else:
+                    # Not classified - keep original
+                    target_status = 'blocked'
+                    target_name = banner_name
+            else:
+                # No classification - legacy behavior
+                target_status = 'blocked'
+                target_name = banner_name
 
             # Copy banner fields
             new_banner_data = {}
             for key, value in banner.items():
                 if key not in EXCLUDED_BANNER_FIELDS and value is not None:
                     new_banner_data[key] = value
+
+            # Set status and name
+            new_banner_data['status'] = target_status
+            new_banner_data['name'] = target_name
 
             # Clean content - keep only id
             if 'content' in new_banner_data:
@@ -349,27 +397,37 @@ def duplicate_ad_group_full(
                 else:
                     del new_banner_data['urls']
 
-            print(f"   [INFO] Banner {banner_id}: content={new_banner_data.get('content')}, urls={new_banner_data.get('urls')}, textblocks={list(new_banner_data.get('textblocks', {}).keys()) if new_banner_data.get('textblocks') else None}")
+            logger.debug(f"   [INFO] Banner {banner_id}: status={target_status}, name={target_name[:30]}...")
 
             banners_for_create.append(new_banner_data)
             original_banner_info.append({
                 "original_id": banner_id,
-                "name": banner_name
+                "name": banner_name,
+                "new_name": target_name,
+                "status": target_status
             })
+
+        # Determine group status - active if any banners will be active
+        if has_classification and has_active_banners:
+            new_group_data['status'] = 'active'
+            group_status = 'active'
+        else:
+            new_group_data['status'] = 'blocked'
+            group_status = 'blocked'
 
         # Add banners to group data
         if banners_for_create:
             new_group_data['banners'] = banners_for_create
-            print(f"[INFO] Prepared {len(banners_for_create)} banners for creation with group")
+            print(f"[INFO] Prepared {len(banners_for_create)} banners for creation (skipped: {len(skipped_banners)})")
 
         # ===== Create group with banners in one request =====
-        print(f"[ACTION] Step 2/2: Creating group with banners (status: blocked)...")
+        print(f"[ACTION] Step 2/2: Creating group with banners (status: {group_status})...")
         logger.info(f"[INFO] New group settings:")
         logger.info(f"   - Name: {new_group_data['name']}")
-        logger.info(f"   - Status: blocked (to bypass active banners limit)")
-        logger.info(f"   - Auto-activation after creation: {auto_activate}")
+        logger.info(f"   - Status: {group_status}")
+        logger.info(f"   - Has classification: {has_classification}")
         logger.info(f"   - Objective: {new_group_data.get('objective', 'NOT SET')}")
-        logger.info(f"   - Banners: {len(banners_for_create)}")
+        logger.info(f"   - Banners: {len(banners_for_create)} (skipped: {len(skipped_banners)})")
 
         time.sleep(rate_limit_delay)
 
@@ -381,25 +439,10 @@ def duplicate_ad_group_full(
         new_group_id = create_result["data"].get("id")
         created_banners = create_result["data"].get("banners", [])
 
-        logger.info(f"[OK] Group created! ID: {new_group_id}")
+        logger.info(f"[OK] Group created! ID: {new_group_id}, status: {group_status}")
         logger.info(f"[OK] Banners created: {len(created_banners)}")
 
-        # Final status (may change after activation)
-        final_status = 'blocked'
-
-        # If auto-activation needed - activate group after creation
-        if auto_activate:
-            logger.info(f"[ACTION] Activating group {new_group_id}...")
-            time.sleep(rate_limit_delay)
-            activate_result = update_ad_group(token, base_url, new_group_id, {"status": "active"})
-            if activate_result.get("success"):
-                final_status = 'active'
-                logger.info(f"[OK] Group {new_group_id} activated")
-            else:
-                error_text = str(activate_result.get('error', 'Unknown error'))[:100]
-                logger.warning(f"[WARN] Failed to activate group: {error_text}")
-
-        # Form result
+        # Form result - use original_banner_info which has correct status
         duplicated_banners = []
         for i, created_banner in enumerate(created_banners):
             new_banner_id = created_banner.get("id")
@@ -409,14 +452,15 @@ def duplicate_ad_group_full(
                     "original_id": orig_info["original_id"],
                     "new_id": new_banner_id,
                     "name": orig_info["name"],
-                    "status": final_status
+                    "new_name": orig_info.get("new_name", orig_info["name"]),
+                    "status": orig_info.get("status", "blocked")
                 })
             else:
                 duplicated_banners.append({
                     "original_id": None,
                     "new_id": new_banner_id,
                     "name": "Unknown",
-                    "status": final_status
+                    "status": "blocked"
                 })
 
         # ===== RESULTS =====
@@ -425,8 +469,8 @@ def duplicate_ad_group_full(
         logger.info(f"[OK] DUPLICATION COMPLETED")
         logger.info(f"{'='*80}")
         logger.info(f"Original group: {ad_group_id} - {original_group.get('name')}")
-        logger.info(f"New group: {new_group_id} - {new_group_data['name']}")
-        logger.info(f"Copied banners: {len(duplicated_banners)}/{len(banners)}")
+        logger.info(f"New group: {new_group_id} - {new_group_data['name']} (status: {group_status})")
+        logger.info(f"Copied banners: {len(duplicated_banners)}/{len(banners)} (skipped: {len(skipped_banners)})")
         logger.info(f"{'='*80}")
 
         return {
@@ -435,9 +479,10 @@ def duplicate_ad_group_full(
             "original_group_name": original_group.get('name'),
             "new_group_id": new_group_id,
             "new_group_name": new_group_data['name'],
+            "group_status": group_status,
             "total_banners": len(banners),
             "duplicated_banners": duplicated_banners,
-            "skipped_banners": [],
+            "skipped_banners": skipped_banners,
             "errors": []
         }
 
@@ -458,7 +503,13 @@ def duplicate_ad_group_to_new_campaign(
     new_budget: float = None,
     auto_activate: bool = False,
     rate_limit_delay: float = 0.03,
-    account_name: str = None
+    account_name: str = None,
+    # Banner classification for immediate status/name assignment
+    positive_banner_ids: set = None,
+    negative_banner_ids: set = None,
+    activate_positive: bool = True,
+    activate_negative: bool = False,
+    duplicate_negative: bool = True
 ) -> dict:
     """
     Duplicate ad group and create a NEW campaign with it.
@@ -471,9 +522,14 @@ def duplicate_ad_group_to_new_campaign(
         campaign_data: Campaign data (name, objective, status, etc.) - without ad_groups
         new_name: New group name (optional)
         new_budget: New group budget (optional)
-        auto_activate: Auto-activate after creation
+        auto_activate: Auto-activate after creation (legacy)
         rate_limit_delay: Delay between API calls
         account_name: Account name for logging
+        positive_banner_ids: Set of banner IDs classified as positive
+        negative_banner_ids: Set of banner IDs classified as negative
+        activate_positive: Whether to activate positive banners
+        activate_negative: Whether to activate negative banners
+        duplicate_negative: Whether to include negative banners at all
 
     Returns:
         dict: {
@@ -505,9 +561,14 @@ def duplicate_ad_group_to_new_campaign(
         'issues', 'ord_marker', 'user_id', 'read_only', 'interface_read_only',
         'clicks', 'shows', 'spent', 'ctr', 'conversions',
         'cost_per_conversion', 'impressions',
-        'stats_info', 'preview_url', 'audit_pixels',
-        'status'
+        'stats_info', 'preview_url', 'audit_pixels'
+        # Note: 'name' and 'status' are NOT excluded - we set them based on classification
     }
+
+    # Initialize classification sets
+    positive_ids = positive_banner_ids or set()
+    negative_ids = negative_banner_ids or set()
+    has_classification = bool(positive_ids or negative_ids)
 
     def clean_content(content_data):
         if not content_data:
@@ -587,20 +648,52 @@ def duplicate_ad_group_to_new_campaign(
             budget_to_set = VK_MIN_DAILY_BUDGET
 
         new_group_data['budget_limit_day'] = budget_to_set
-        new_group_data['status'] = 'blocked'  # Create blocked, activate later
 
-        # Prepare banners
+        # Prepare banners with classification
         banners_for_create = []
         original_banner_info = []
+        skipped_banners = []
+        has_active_banners = False
 
         for banner in banners:
             banner_id = banner.get('id')
             banner_name = banner.get('name', 'Unknown')
+            display_name = banner_name if banner_name else f"Banner_{banner_id}"
+
+            # Determine banner status and name based on classification
+            if has_classification:
+                if banner_id in positive_ids:
+                    target_status = 'active' if activate_positive else 'blocked'
+                    target_name = f"Позитив {display_name}"
+                    if activate_positive:
+                        has_active_banners = True
+                elif banner_id in negative_ids:
+                    if not duplicate_negative:
+                        skipped_banners.append({
+                            "original_id": banner_id,
+                            "name": banner_name,
+                            "reason": "negative, duplicate_negative=False"
+                        })
+                        continue
+                    target_status = 'active' if activate_negative else 'blocked'
+                    target_name = f"Негатив {display_name}"
+                    if activate_negative:
+                        has_active_banners = True
+                else:
+                    target_status = 'blocked'
+                    target_name = banner_name
+            else:
+                target_status = 'blocked'
+                target_name = banner_name
 
             new_banner_data = {}
             for key, value in banner.items():
                 if key not in EXCLUDED_BANNER_FIELDS and value is not None:
                     new_banner_data[key] = value
+
+            # Set status and name
+            new_banner_data['status'] = target_status
+            new_banner_data['name'] = target_name
 
             if 'content' in new_banner_data:
                 cleaned_content = clean_content(new_banner_data['content'])
@@ -619,13 +712,23 @@ def duplicate_ad_group_to_new_campaign(
             banners_for_create.append(new_banner_data)
             original_banner_info.append({
                 "original_id": banner_id,
-                "name": banner_name
+                "name": banner_name,
+                "new_name": target_name,
+                "status": target_status
             })
+
+        # Set group status based on banner activation
+        if has_classification and has_active_banners:
+            new_group_data['status'] = 'active'
+            group_status = 'active'
+        else:
+            new_group_data['status'] = 'blocked'
+            group_status = 'blocked'
 
         # Add banners to group
         if banners_for_create:
             new_group_data['banners'] = banners_for_create
-            print(f"[INFO] Prepared {len(banners_for_create)} banners")
+            print(f"[INFO] Prepared {len(banners_for_create)} banners (skipped: {len(skipped_banners)}, status: {group_status})")
 
         # Step 2: Create campaign with group
         print(f"[ACTION] Step 2/2: Creating campaign '{campaign_data.get('name')}' with group...")
@@ -642,10 +745,10 @@ def duplicate_ad_group_to_new_campaign(
         created_banners = result.get('data', {}).get('ad_groups', [{}])[0].get('banners', [])
 
         print(f"[OK] Campaign created: {new_campaign_id}")
-        print(f"[OK] Group created: {new_group_id}")
+        print(f"[OK] Group created: {new_group_id} (status: {group_status})")
         print(f"[OK] Banners: {len(created_banners)}")
 
-        # Build result
+        # Build result - use original_banner_info which has correct status
         duplicated_banners = []
         for i, created_banner in enumerate(created_banners):
             new_banner_id = created_banner.get("id")
@@ -655,12 +758,13 @@ def duplicate_ad_group_to_new_campaign(
                     "original_id": orig_info["original_id"],
                     "new_id": new_banner_id,
                     "name": orig_info["name"],
-                    "status": "blocked"
+                    "new_name": orig_info.get("new_name", orig_info["name"]),
+                    "status": orig_info.get("status", "blocked")
                 })
 
         print(f"")
         print(f"{'='*80}")
-        print(f"[OK] NEW CAMPAIGN DUPLICATION COMPLETED")
+        print(f"[OK] NEW CAMPAIGN DUPLICATION COMPLETED (group status: {group_status})")
         print(f"{'='*80}")
 
         return {
@@ -670,9 +774,10 @@ def duplicate_ad_group_to_new_campaign(
             "new_campaign_id": new_campaign_id,
             "new_group_id": new_group_id,
             "new_group_name": new_group_data['name'],
+            "group_status": group_status,
             "total_banners": len(banners),
             "duplicated_banners": duplicated_banners,
-            "skipped_banners": [],
+            "skipped_banners": skipped_banners,
             "errors": []
         }
 
