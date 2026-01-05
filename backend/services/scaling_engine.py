@@ -909,13 +909,17 @@ class BannerScalingEngine:
 
         logger.info(f"LeadsTech config loaded: base_url={lt_config.base_url}, sub_fields={banner_sub_fields}")
 
-        # Create LeadsTech client
-        lt_client = LeadstechClient(LeadstechClientConfig(
-            base_url=lt_config.base_url or "https://api.leads.tech",
-            login=lt_config.login,
-            password=lt_config.password,
-            banner_sub_fields=banner_sub_fields
-        ))
+        # Create LeadsTech client (with DB caching for token)
+        lt_client = LeadstechClient(
+            LeadstechClientConfig(
+                base_url=lt_config.base_url or "https://api.leads.tech",
+                login=lt_config.login,
+                password=lt_config.password,
+                banner_sub_fields=banner_sub_fields
+            ),
+            db=self.db,
+            user_id=self.user_id
+        )
 
         # Factory to create VK client for each account
         def vk_client_factory(account: Account) -> VkAdsClient:

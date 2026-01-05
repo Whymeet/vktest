@@ -91,13 +91,13 @@ async def _load_roi_for_account(
             from leadstech.roi_loader_disable import load_roi_for_banners_sync
             from leadstech.vk_client import VkAdsClient, VkAdsConfig
 
-            # Create LeadsTech client
+            # Create LeadsTech client (with DB caching for token)
             lt_client_config = LeadstechClientConfig(
                 base_url=lt_config.base_url,
                 login=lt_config.login,
                 password=lt_config.password
             )
-            lt_client = LeadstechClient(lt_client_config)
+            lt_client = LeadstechClient(lt_client_config, db=db, user_id=user_id)
 
             # Create VK client for account (will only be used if no cache)
             vk_config = VkAdsConfig(

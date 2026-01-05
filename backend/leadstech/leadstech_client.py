@@ -2,18 +2,26 @@
 LeadsTech API Client
 
 Handles authentication and data fetching from LeadsTech API.
+Supports token caching in database to avoid 429 Too Many Requests.
 """
 
 import time
 from dataclasses import dataclass, field
-from datetime import date
-from typing import Any, Dict, List, Optional
+from datetime import date, timedelta
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 import requests
 
 from utils.logging_setup import get_logger
+from utils.time_utils import get_moscow_time
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 logger = get_logger(service="leadstech", function="client")
+
+# Token TTL: 23 hours (LeadsTech JWT lives 24 hours)
+TOKEN_TTL_HOURS = 23
 
 
 @dataclass
@@ -29,9 +37,16 @@ class LeadstechClientConfig:
 class LeadstechClient:
     """LeadsTech API client for fetching statistics."""
 
-    def __init__(self, cfg: LeadstechClientConfig):
+    def __init__(
+        self,
+        cfg: LeadstechClientConfig,
+        db: Optional["Session"] = None,
+        user_id: Optional[int] = None
+    ):
         self.cfg = cfg
         self._token: Optional[str] = None
+        self._db = db
+        self._user_id = user_id
 
     @property
     def _login_url(self) -> str:
@@ -105,10 +120,47 @@ class LeadstechClient:
         raise RuntimeError(f"LeadsTech login failed after {max_retries} attempts: {last_error}")
 
     def _get_token(self) -> str:
-        """Get cached token or login to get a new one."""
-        if self._token is None:
-            self._token = self._login()
+        """Get cached token or login to get a new one.
+
+        Priority:
+        1. In-memory cache (self._token)
+        2. Database cache (if db and user_id provided)
+        3. Fresh login
+        """
+        # 1. Check in-memory cache
+        if self._token is not None:
+            return self._token
+
+        # 2. Check database cache
+        if self._db is not None and self._user_id is not None:
+            from database.crud.leadstech import get_cached_token
+            cached = get_cached_token(self._db, self._user_id)
+            if cached:
+                self._token = cached
+                return self._token
+
+        # 3. Fresh login
+        self._token = self._login()
+
+        # Save to database cache
+        if self._db is not None and self._user_id is not None:
+            from database.crud.leadstech import save_cached_token
+            expires_at = get_moscow_time() + timedelta(hours=TOKEN_TTL_HOURS)
+            save_cached_token(self._db, self._user_id, self._token, expires_at)
+
         return self._token
+
+    def _clear_token_cache(self) -> None:
+        """Clear token from memory and database (call on 401/403 errors)."""
+        self._token = None
+        if self._db is not None and self._user_id is not None:
+            from database.crud.leadstech import clear_cached_token
+            clear_cached_token(self._db, self._user_id)
+
+    def _refresh_token(self) -> str:
+        """Force refresh token (clear cache and login again)."""
+        self._clear_token_cache()
+        return self._get_token()
 
     def get_stat_by_subid(
         self,
@@ -173,9 +225,23 @@ class LeadstechClient:
             try:
                 resp.raise_for_status()
             except requests.HTTPError as exc:
-                error_msg = f"LeadsTech: error requesting by-subid page={page}: {exc}, body={resp.text}"
-                logger.error(error_msg)
-                raise
+                # Handle expired token (401/403) - refresh and retry once
+                if exc.response is not None and exc.response.status_code in (401, 403):
+                    logger.warning(f"LeadsTech token expired (HTTP {exc.response.status_code}), refreshing...")
+                    token = self._refresh_token()
+                    headers["X-Auth-Token"] = token
+                    # Retry the same request
+                    resp = requests.get(
+                        self._by_subid_url,
+                        headers=headers,
+                        params=params,
+                        timeout=30,
+                    )
+                    resp.raise_for_status()
+                else:
+                    error_msg = f"LeadsTech: error requesting by-subid page={page}: {exc}, body={resp.text}"
+                    logger.error(error_msg)
+                    raise
 
             payload = resp.json()
             rows = self._extract_rows(payload)
@@ -269,9 +335,23 @@ class LeadstechClient:
             try:
                 resp.raise_for_status()
             except requests.HTTPError as exc:
-                error_msg = f"LeadsTech: error requesting by-subid page={page}: {exc}, body={resp.text}"
-                logger.error(error_msg)
-                raise
+                # Handle expired token (401/403) - refresh and retry once
+                if exc.response is not None and exc.response.status_code in (401, 403):
+                    logger.warning(f"LeadsTech token expired (HTTP {exc.response.status_code}), refreshing...")
+                    token = self._refresh_token()
+                    headers["X-Auth-Token"] = token
+                    # Retry the same request
+                    resp = requests.get(
+                        self._by_subid_url,
+                        headers=headers,
+                        params=params,
+                        timeout=30,
+                    )
+                    resp.raise_for_status()
+                else:
+                    error_msg = f"LeadsTech: error requesting by-subid page={page}: {exc}, body={resp.text}"
+                    logger.error(error_msg)
+                    raise
 
             payload = resp.json()
             rows = self._extract_rows(payload)

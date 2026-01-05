@@ -73,6 +73,76 @@ def delete_leadstech_config(db: Session, user_id: int = None) -> bool:
     return True
 
 
+# ===== LeadsTech Token Cache =====
+
+def get_cached_token(db: Session, user_id: int) -> Optional[str]:
+    """
+    Get cached LeadsTech token if it's still valid.
+
+    Returns:
+        Token string if valid and not expired, None otherwise
+    """
+    config = get_leadstech_config(db, user_id=user_id)
+    if not config or not config.cached_token or not config.token_expires_at:
+        return None
+
+    # Check if token is expired
+    now = get_moscow_time()
+    if now >= config.token_expires_at:
+        logger.debug(f"LeadsTech token expired for user {user_id}")
+        return None
+
+    logger.debug(f"Using cached LeadsTech token for user {user_id}")
+    return config.cached_token
+
+
+def save_cached_token(db: Session, user_id: int, token: str, expires_at) -> bool:
+    """
+    Save LeadsTech token to cache.
+
+    Args:
+        db: Database session
+        user_id: User ID
+        token: JWT token
+        expires_at: Token expiration datetime
+
+    Returns:
+        True if saved successfully
+    """
+    config = get_leadstech_config(db, user_id=user_id)
+    if not config:
+        logger.warning(f"Cannot cache token: no LeadsTech config for user {user_id}")
+        return False
+
+    config.cached_token = token
+    config.token_expires_at = expires_at
+    db.commit()
+    logger.info(f"Cached LeadsTech token for user {user_id}, expires at {expires_at}")
+    return True
+
+
+def clear_cached_token(db: Session, user_id: int) -> bool:
+    """
+    Clear cached LeadsTech token (e.g., on 401/403 error).
+
+    Args:
+        db: Database session
+        user_id: User ID
+
+    Returns:
+        True if cleared successfully
+    """
+    config = get_leadstech_config(db, user_id=user_id)
+    if not config:
+        return False
+
+    config.cached_token = None
+    config.token_expires_at = None
+    db.commit()
+    logger.info(f"Cleared cached LeadsTech token for user {user_id}")
+    return True
+
+
 # ===== LeadsTech Cabinets =====
 
 def get_leadstech_cabinets(db: Session, user_id: int, enabled_only: bool = False) -> List[LeadsTechCabinet]:

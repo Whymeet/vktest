@@ -438,6 +438,10 @@ class LeadsTechConfig(Base):
     date_to = Column(String(10), nullable=True)  # YYYY-MM-DD format, end of analysis period
     banner_sub_fields = Column(JSON, default=["sub4", "sub5"])  # List of sub fields to analyze (e.g. ["sub4", "sub5"])
 
+    # Token cache (to avoid 429 Too Many Requests on login)
+    cached_token = Column(Text, nullable=True)  # JWT token from LeadsTech
+    token_expires_at = Column(DateTime, nullable=True)  # Token expiration time
+
     # Timestamps
     created_at = Column(DateTime, default=get_moscow_time, nullable=False)
     updated_at = Column(DateTime, default=get_moscow_time, onupdate=get_moscow_time, nullable=False)
