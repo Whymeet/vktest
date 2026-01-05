@@ -1,57 +1,95 @@
 # VK Ads Manager
 
-Система автоматизации управления рекламными кампаниями ВКонтакте с Telegram ботом и современным веб-интерфейсом.
+Система автоматизации управления рекламными кампаниями ВКонтакте с анализом ROI, автоматическим отключением неэффективных баннеров, масштабированием бюджетов, Telegram-уведомлениями и современным веб-интерфейсом.
+
+## Возможности
+
+- **Автоматический анализ баннеров** — мониторинг эффективности рекламы по настраиваемым правилам
+- **Auto-disable** — автоматическое отключение неэффективных баннеров
+- **ROI-анализ** — интеграция с LeadsTech для анализа прибыльности
+- **Автомасштабирование** — автоматическое увеличение бюджетов прибыльных кампаний
+- **Telegram-уведомления** — мгновенные уведомления о действиях системы
+- **Multi-tenant** — изолированные данные для каждого пользователя
+- **REST API** — полноценный API с JWT-аутентификацией
 
 ## Структура проекта
 
 ```
-vktest/
-├── backend/                  # Python backend
-│   ├── api/                  # FastAPI веб-сервер
-│   │   └── main.py           # REST API endpoints
-│   ├── bot/                  # Telegram бот
-│   │   ├── telegram_bot.py   # Основной модуль бота
+vktest2/
+├── backend/                    # Python FastAPI backend
+│   ├── api/                    # REST API
+│   │   ├── routers/           # Роуты (accounts, banners, settings...)
+│   │   ├── schemas/           # Pydantic модели
+│   │   ├── services/          # Бизнес-логика
+│   │   └── app.py             # FastAPI приложение
+│   ├── core/                   # Ядро системы
+│   │   ├── analyzer.py        # Анализатор баннеров
+│   │   └── config_loader.py   # Загрузка конфигурации
+│   ├── database/               # База данных
+│   │   ├── models.py          # SQLAlchemy модели
+│   │   └── crud/              # CRUD операции
+│   ├── scheduler/              # Планировщик задач
+│   │   ├── scheduler_main.py  # Оркестратор
+│   │   ├── analysis.py        # Анализ по расписанию
+│   │   └── roi_reenable.py    # ROI-based reenable
+│   ├── leadstech/              # LeadsTech интеграция
+│   │   ├── leadstech_client.py # API клиент
+│   │   └── roi_loader.py      # Загрузка ROI данных
+│   ├── bot/                    # Telegram бот
+│   │   ├── telegram_bot.py    # Обработчики команд
 │   │   └── telegram_notify.py # Уведомления
-│   ├── core/                 # Основная бизнес-логика
-│   │   └── main.py           # Анализатор объявлений
-│   ├── scheduler/            # Планировщик задач
-│   │   ├── scheduler_main.py # Автозапуск анализа
-│   │   └── logs/             # Логи планировщика
-│   ├── utils/                # Утилиты
-│   │   ├── config.py         # Работа с конфигурацией
-│   │   ├── logging_setup.py  # Настройка логирования
-│   │   └── vk_api_async.py   # Асинхронный VK API клиент
-│   └── requirements.txt      # Python зависимости
-├── frontend/                 # React веб-интерфейс
+│   ├── utils/                  # Утилиты
+│   │   └── vk_api_async.py    # Асинхронный VK API клиент
+│   └── requirements.txt
+├── frontend/                   # React веб-интерфейс
 │   ├── src/
-│   │   ├── api/              # API клиент
-│   │   ├── components/       # React компоненты
-│   │   └── pages/            # Страницы приложения
-│   ├── package.json
-│   └── ...
-├── config/                   # Конфигурация
-│   ├── config.json           # Основные настройки
-│   └── whitelist.json        # Белый список объявлений
-├── data/                     # Данные и кэш
-├── logs/                     # Логи приложения
-├── start-web.bat             # Запуск (Windows)
-├── start-web.sh              # Запуск (Linux/Mac)
-└── README.md
+│   │   ├── pages/             # Страницы приложения
+│   │   ├── components/        # React компоненты
+│   │   ├── api/               # API клиент (Axios)
+│   │   └── hooks/             # React hooks
+│   └── package.json
+├── config/                     # Конфигурация
+│   ├── config.json            # Основные настройки
+│   └── whitelist.json         # Белый список баннеров
+├── migrations/                 # Миграции базы данных (Alembic)
+├── nginx/                      # Nginx конфигурация
+├── docker-compose.yml          # Docker оркестрация
+├── start-web.bat               # Запуск (Windows)
+└── start-web.sh                # Запуск (Linux/Mac)
 ```
 
 ## Быстрый старт
 
-### Установка
+### Локальная разработка
 
 ```bash
 # 1. Установите Python зависимости
 pip install -r backend/requirements.txt
 
 # 2. Установите Node.js зависимости
-cd frontend && npm install
+cd frontend && npm install && cd ..
+
+# 3. Запустите PostgreSQL (или используйте Docker)
+docker run -d --name postgres -e POSTGRES_PASSWORD=password -p 5432:5432 postgres:15-alpine
+
+# 4. Запустите backend
+cd backend && uvicorn api.app:app --reload --port 8000
+
+# 5. Запустите frontend (в отдельном терминале)
+cd frontend && npm run dev
 ```
 
-### Запуск веб-интерфейса
+### Docker (Production)
+
+```bash
+# Запуск всех сервисов
+docker-compose up -d
+
+# Просмотр логов
+docker-compose logs -f
+```
+
+### Скрипты запуска
 
 **Windows:**
 ```cmd
@@ -64,27 +102,29 @@ chmod +x start-web.sh
 ./start-web.sh
 ```
 
-После запуска откроются:
-- **Frontend:** http://localhost:5173
+После запуска:
+- **Frontend:** http://localhost:5173 (dev) / http://localhost (prod)
 - **Backend API:** http://localhost:8000
 - **API Docs:** http://localhost:8000/docs
 
 ## Веб-интерфейс
 
-### Разделы
-
 | Раздел | Описание |
 |--------|----------|
 | **Dashboard** | Общая статистика, статус процессов |
-| **Кабинеты** | Управление VK Ads кабинетами (CRUD) |
-| **Настройки** | Анализ, Telegram, Планировщик |
+| **Кабинеты** | Управление VK Ads кабинетами |
+| **Правила отключения** | Настройка правил автоматического отключения баннеров |
+| **Скейлинг** | Настройка автомасштабирования бюджетов |
+| **Прибыльные объявления** | ROI-анализ (LeadsTech) |
+| **Статистика** | История анализа и графики |
+| **Whitelist** | Защита баннеров от отключения |
+| **Настройки** | Анализ, Telegram, планировщик |
 | **Управление** | Запуск/остановка сервисов |
 | **Логи** | Просмотр лог-файлов |
-| **Whitelist** | Защита объявлений от отключения |
 
 ## Конфигурация
 
-Основные настройки в `config/config.json`:
+### config/config.json
 
 ```json
 {
@@ -98,7 +138,7 @@ chmod +x start-web.sh
     }
   },
   "analysis_settings": {
-    "lookback_days": 10,
+    "lookback_days": 15,
     "spent_limit_rub": 100.0,
     "dry_run": false
   },
@@ -109,39 +149,80 @@ chmod +x start-web.sh
   },
   "scheduler": {
     "enabled": true,
-    "interval_minutes": 60
+    "interval_minutes": 1
   }
 }
 ```
 
-## Технологии
+### Переменные окружения
 
-### Backend
-- **Python 3.8+**
-- **FastAPI** - REST API
-- **aiohttp** - асинхронные HTTP запросы
-- **python-telegram-bot** - Telegram интеграция
-
-### Frontend
-- **React 18** + **TypeScript**
-- **Vite** - сборка
-- **TailwindCSS** - стили
-- **React Query** - управление данными
-- **React Router** - маршрутизация
+```env
+DATABASE_URL=postgresql://user:password@localhost:5432/vkads
+SECRET_KEY=your-secret-key-for-jwt
+```
 
 ## API Endpoints
+
+### Аутентификация
+
+| Метод | Endpoint | Описание |
+|-------|----------|----------|
+| POST | `/api/auth/login` | Авторизация |
+| POST | `/api/auth/refresh` | Обновление токена |
+| GET | `/api/auth/me` | Текущий пользователь |
 
 ### Основные
 
 | Метод | Endpoint | Описание |
 |-------|----------|----------|
 | GET | `/api/dashboard` | Данные дашборда |
-| GET | `/api/accounts` | Список кабинетов |
-| POST | `/api/accounts` | Создать кабинет |
-| GET | `/api/settings` | Все настройки |
-| GET | `/api/whitelist` | Белый список |
+| GET/POST | `/api/accounts` | Управление кабинетами |
+| GET | `/api/banners` | Список баннеров |
+| GET | `/api/banners/stats` | Статистика баннеров |
+| GET/POST | `/api/settings` | Настройки |
+| GET/POST | `/api/whitelist` | Белый список |
+
+### Правила и скейлинг
+
+| Метод | Endpoint | Описание |
+|-------|----------|----------|
+| GET/POST | `/api/disable-rules` | Правила отключения |
+| GET/POST | `/api/scaling` | Настройки масштабирования |
+| GET/POST | `/api/leadstech` | LeadsTech конфигурация |
+
+### Управление процессами
+
+| Метод | Endpoint | Описание |
+|-------|----------|----------|
 | GET | `/api/process/status` | Статус процессов |
 | POST | `/api/process/scheduler/start` | Запустить планировщик |
+| POST | `/api/process/scheduler/stop` | Остановить планировщик |
 | POST | `/api/process/analysis/start` | Запустить анализ |
 
 Полная документация API: http://localhost:8000/docs
+
+## Технологии
+
+### Backend
+- **Python 3.8+**
+- **FastAPI** — REST API
+- **SQLAlchemy 2.0** — ORM
+- **PostgreSQL 15** — база данных
+- **aiohttp** — асинхронные HTTP запросы
+- **python-telegram-bot** — Telegram интеграция
+- **JWT** — аутентификация
+- **Alembic** — миграции БД
+- **Loguru** — логирование
+
+### Frontend
+- **React 19** + **TypeScript**
+- **Vite** — сборка
+- **TailwindCSS 4** — стили
+- **TanStack Query** — управление данными
+- **React Router 7** — маршрутизация
+- **Axios** — HTTP клиент
+
+### Инфраструктура
+- **Docker** + **Docker Compose**
+- **Nginx** — reverse proxy
+- **Let's Encrypt** — SSL сертификаты
