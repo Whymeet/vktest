@@ -1,5 +1,6 @@
 import requests
 from datetime import datetime
+from html import escape
 from utils.logging_setup import get_logger
 
 logger = get_logger(service="telegram")
@@ -101,10 +102,10 @@ def format_telegram_unprofitable_groups(unprofitable_groups):
         # Добавляем объявления в сообщение
         for i, group in enumerate(batch_groups, batch_start + 1):
             group_id = group.get("id", "N/A")
-            group_name = group.get("name", "Без названия")[:30]  # Ограничиваем длину
+            group_name = escape(group.get("name", "Без названия"))[:30]  # Экранируем HTML и ограничиваем длину
             spent = group.get("spent", 0)
             goals = int(group.get("vk_goals", 0))  # Получаем количество результатов
-            matched_rule = group.get("matched_rule", "Без результата")  # Получаем название правила
+            matched_rule = escape(group.get("matched_rule", "Без результата"))  # Экранируем HTML
 
             message += f"{i}. <code>{group_id}</code> {group_name}\n"
             message += f"   Потрачено: <b>{spent:.2f}₽</b> | Резов: <b>{goals}</b>\n"
@@ -144,10 +145,10 @@ def format_telegram_account_statistics(account_name, unprofitable_count, effecti
             # Добавляем объявления в сообщение
             for i, group in enumerate(batch_groups, batch_start + 1):
                 group_id = group.get("id", "N/A")
-                group_name = group.get("name", "Без названия")[:25]  # Ограничиваем длину
+                group_name = escape(group.get("name", "Без названия"))[:25]  # Экранируем HTML и ограничиваем длину
                 spent = group.get("spent", 0)
                 goals = int(group.get("vk_goals", 0))  # Получаем количество результатов
-                matched_rule = group.get("matched_rule", "Без результата")  # Получаем название правила
+                matched_rule = escape(group.get("matched_rule", "Без результата"))  # Экранируем HTML
 
                 groups_message += f"{i}. <code>{group_id}</code> {group_name}\n"
                 groups_message += f"   Потрачено: <b>{spent:.2f}₽</b> | Рез: <b>{goals}</b>\n"

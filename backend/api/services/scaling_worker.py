@@ -174,14 +174,21 @@ def run_auto_scaling_task(
 
         # Convert account tuples to Account-like objects
         class AccountWrapper:
-            def __init__(self, account_id, name, api_token, label=None):
+            def __init__(self, account_id, name, api_token, label=None, leadstech_enabled=False):
                 self.id = account_id
                 self.name = name
                 self.api_token = api_token
                 self.label = label
+                self.leadstech_enabled = leadstech_enabled
 
         account_objects = [
-            AccountWrapper(acc[0], acc[1], acc[2], acc[3] if len(acc) > 3 else None)
+            AccountWrapper(
+                acc[0],
+                acc[1],
+                acc[2],
+                acc[3] if len(acc) > 3 else None,
+                acc[4] if len(acc) > 4 else False
+            )
             for acc in accounts
         ]
 

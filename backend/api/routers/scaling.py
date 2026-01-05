@@ -480,7 +480,7 @@ async def run_scaling_config(
         total_operations=0
     )
 
-    accounts_data = [(acc.id, acc.name, acc.api_token, acc.label) for acc in accounts]
+    accounts_data = [(acc.id, acc.name, acc.api_token, acc.label, acc.leadstech_enabled) for acc in accounts]
 
     conditions_data = [
         {'metric': cond.metric, 'operator': cond.operator, 'value': cond.value}
