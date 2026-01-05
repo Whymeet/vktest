@@ -35,7 +35,8 @@ def create_disable_rule(
     name: str,
     description: Optional[str] = None,
     enabled: bool = True,
-    priority: int = 0
+    priority: int = 0,
+    roi_sub_field: Optional[str] = None
 ) -> DisableRule:
     """Create a new disable rule for user"""
     rule = DisableRule(
@@ -43,7 +44,8 @@ def create_disable_rule(
         name=name,
         description=description,
         enabled=enabled,
-        priority=priority
+        priority=priority,
+        roi_sub_field=roi_sub_field
     )
     db.add(rule)
     db.commit()
@@ -57,7 +59,8 @@ def update_disable_rule(
     name: Optional[str] = None,
     description: Optional[str] = None,
     enabled: Optional[bool] = None,
-    priority: Optional[int] = None
+    priority: Optional[int] = None,
+    roi_sub_field: Optional[str] = None
 ) -> Optional[DisableRule]:
     """Update an existing disable rule"""
     rule = get_disable_rule_by_id(db, rule_id)
@@ -72,6 +75,8 @@ def update_disable_rule(
         rule.enabled = enabled
     if priority is not None:
         rule.priority = priority
+    if roi_sub_field is not None:
+        rule.roi_sub_field = roi_sub_field
 
     rule.updated_at = get_moscow_time()
     db.commit()
@@ -305,7 +310,8 @@ def get_rules_for_account_by_name(db: Session, account_name: str, enabled_only: 
 
 def check_banner_against_rules(
     stats: dict,
-    rules: List[DisableRule]
+    rules: List[DisableRule],
+    roi_data: Optional[dict] = None
 ) -> Optional[DisableRule]:
     """
     Check if banner stats match any disable rule.
@@ -314,10 +320,13 @@ def check_banner_against_rules(
     Args:
         stats: Dict with keys: goals, spent, clicks, shows, ctr, cpc, cost_per_goal
         rules: List of DisableRule objects (should be pre-filtered for account)
+        roi_data: Optional dict mapping banner_id -> BannerROIData for ROI metric
 
     Returns:
         The first matching DisableRule, or None if no rules match
     """
+    banner_id = stats.get("id") or stats.get("banner_id")
+
     for rule in rules:
         if not rule.enabled:
             continue
@@ -354,6 +363,18 @@ def check_banner_against_rules(
                     clicks = stats.get("clicks", 0) or 0
                     spent = stats.get("spent", 0) or 0
                     actual_value = (spent / clicks) if clicks > 0 else float('inf')
+                elif metric == "roi":
+                    # Get ROI from roi_data if available
+                    if roi_data and banner_id:
+                        roi_info = roi_data.get(banner_id)
+                        if roi_info:
+                            actual_value = roi_info.roi_percent if hasattr(roi_info, 'roi_percent') else roi_info.get('roi_percent')
+                            if actual_value is None:
+                                actual_value = 0.0  # No spent = ROI 0
+                        else:
+                            actual_value = 0.0  # No LeadsTech data = ROI 0
+                    else:
+                        actual_value = 0.0  # No ROI data available = ROI 0
                 else:
                     actual_value = 0
 
@@ -399,13 +420,14 @@ def check_banner_against_rules(
     return None
 
 
-def format_rule_match_reason(rule: DisableRule, stats: dict) -> str:
+def format_rule_match_reason(rule: DisableRule, stats: dict, roi_data: Optional[dict] = None) -> str:
     """
     Format a human-readable reason for why a banner matched a rule.
 
     Args:
         rule: The matched DisableRule
         stats: Banner statistics
+        roi_data: Optional dict mapping banner_id -> BannerROIData for ROI metric
 
     Returns:
         Human-readable string explaining the match
@@ -417,7 +439,8 @@ def format_rule_match_reason(rule: DisableRule, stats: dict) -> str:
         "shows": "показов",
         "ctr": "CTR",
         "cpc": "цена клика",
-        "cost_per_goal": "цена результата"
+        "cost_per_goal": "цена результата",
+        "roi": "ROI"
     }
 
     operator_names = {
@@ -430,6 +453,7 @@ def format_rule_match_reason(rule: DisableRule, stats: dict) -> str:
     }
 
     parts = [f"Правило \"{rule.name}\":"]
+    banner_id = stats.get("id") or stats.get("banner_id")
 
     for condition in rule.conditions:
         metric_name = metric_names.get(condition.metric, condition.metric)
@@ -444,6 +468,17 @@ def format_rule_match_reason(rule: DisableRule, stats: dict) -> str:
                 goals = stats.get("goals", 0) or stats.get("vk_goals", 0)
                 spent = stats.get("spent", 0) or 0
                 actual = (spent / goals) if goals > 0 else "∞"
+            elif condition.metric == "roi":
+                if roi_data and banner_id:
+                    roi_info = roi_data.get(banner_id)
+                    if roi_info:
+                        actual = roi_info.roi_percent if hasattr(roi_info, 'roi_percent') else roi_info.get('roi_percent')
+                        if actual is None:
+                            actual = 0.0
+                    else:
+                        actual = 0.0
+                else:
+                    actual = 0.0
             else:
                 actual = 0
 

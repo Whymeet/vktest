@@ -237,6 +237,11 @@ class BannerAction(Base):
     conversions = Column(Integer, default=0)  # vk_goals
     cost_per_conversion = Column(Float, nullable=True)  # Цена конверсии
 
+    # ROI data from LeadsTech (optional)
+    roi = Column(Float, nullable=True)  # ROI процент из LeadsTech
+    lt_revenue = Column(Float, nullable=True)  # Выручка из LeadsTech
+    lt_spent = Column(Float, nullable=True)  # Затраты для расчёта ROI
+
     # Status info
     banner_status = Column(String(50), nullable=True)  # Статус баннера
     delivery_status = Column(String(50), nullable=True)  # Статус доставки
@@ -788,6 +793,10 @@ class DisableRule(Base):
     # Rule status
     enabled = Column(Boolean, default=True)
     priority = Column(Integer, default=0)  # Higher priority rules checked first
+
+    # ROI settings (for LeadsTech integration)
+    # Если правило использует метрику ROI, нужно указать из какого sub поля брать banner_id
+    roi_sub_field = Column(String(10), nullable=True)  # "sub4" or "sub5", NULL = use default from config
 
     # Timestamps
     created_at = Column(DateTime, default=get_moscow_time, nullable=False)

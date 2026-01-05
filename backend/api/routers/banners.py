@@ -36,6 +36,10 @@ def _format_banner_action(h) -> dict:
         # Conversions
         "conversions": h.conversions,
         "cost_per_conversion": h.cost_per_conversion,
+        # ROI data from LeadsTech
+        "roi": h.roi,
+        "lt_revenue": h.lt_revenue,
+        "lt_spent": h.lt_spent,
         # Status info
         "banner_status": h.banner_status,
         "delivery_status": h.delivery_status,

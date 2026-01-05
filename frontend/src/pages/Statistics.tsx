@@ -16,7 +16,7 @@ import { getDisabledBanners, getDisabledBannersAccounts } from '../api/client';
 import { Card } from '../components/Card';
 import { Pagination } from '../components/Pagination';
 
-type SortField = 'created_at' | 'banner_id' | 'spend' | 'clicks' | 'shows' | 'ctr' | 'conversions';
+type SortField = 'created_at' | 'banner_id' | 'spend' | 'clicks' | 'shows' | 'ctr' | 'conversions' | 'roi';
 type SortOrder = 'asc' | 'desc';
 
 function formatMoney(amount: number | null): string {
@@ -37,6 +37,11 @@ function formatDate(isoString: string | null): string {
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+function formatRoi(roi: number | null): string {
+  if (roi === null || roi === undefined) return '-';
+  return `${roi.toFixed(1)}%`;
 }
 
 export function Statistics() {
@@ -309,7 +314,7 @@ export function Statistics() {
                   </div>
 
                   {/* Stats row */}
-                  <div className="flex items-center gap-4 text-xs">
+                  <div className="flex items-center gap-4 text-xs flex-wrap">
                     <span className="text-blue-400">
                       <MousePointerClick className="w-3 h-3 inline mr-1" />
                       {banner.clicks.toLocaleString()}
@@ -321,6 +326,11 @@ export function Statistics() {
                     <span className="text-green-400">
                       CTR: {banner.ctr !== null ? `${banner.ctr.toFixed(2)}%` : '-'}
                     </span>
+                    {banner.roi !== null && (
+                      <span className={banner.roi >= 0 ? 'text-green-400' : 'text-red-400'}>
+                        ROI: {formatRoi(banner.roi)}
+                      </span>
+                    )}
                   </div>
 
                   {/* Reason (if exists) */}
@@ -395,13 +405,22 @@ export function Statistics() {
                         <SortIcon field="ctr" />
                       </button>
                     </th>
-                    <th className="pb-3 text-right">
+                    <th className="pb-3 pr-4 text-right">
                       <button
                         onClick={() => handleSort('conversions')}
                         className="flex items-center gap-1 hover:text-white ml-auto"
                       >
                         Конверсии
                         <SortIcon field="conversions" />
+                      </button>
+                    </th>
+                    <th className="pb-3 text-right">
+                      <button
+                        onClick={() => handleSort('roi')}
+                        className="flex items-center gap-1 hover:text-white ml-auto"
+                      >
+                        ROI
+                        <SortIcon field="roi" />
                       </button>
                     </th>
                   </tr>
@@ -443,9 +462,17 @@ export function Statistics() {
                           {banner.ctr !== null ? `${banner.ctr.toFixed(2)}%` : '-'}
                         </span>
                       </td>
-                      <td className="py-3 text-right whitespace-nowrap">
+                      <td className="py-3 pr-4 text-right whitespace-nowrap">
                         <span className={banner.conversions > 0 ? 'text-green-400' : 'text-zinc-400'}>
                           {banner.conversions}
+                        </span>
+                      </td>
+                      <td className="py-3 text-right whitespace-nowrap">
+                        <span className={
+                          banner.roi === null ? 'text-zinc-500' :
+                          banner.roi >= 0 ? 'text-green-400' : 'text-red-400'
+                        }>
+                          {formatRoi(banner.roi)}
                         </span>
                       </td>
                     </tr>

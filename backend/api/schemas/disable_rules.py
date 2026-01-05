@@ -1,13 +1,13 @@
 """
 Disable Rules schemas
 """
-from typing import List, Optional
+from typing import List, Literal, Optional
 from pydantic import BaseModel
 
 
 class DisableRuleConditionModel(BaseModel):
     """Single condition for disable rule"""
-    metric: str  # goals, spent, clicks, shows, ctr, cpc, cost_per_goal
+    metric: str  # goals, spent, clicks, shows, ctr, cpc, cost_per_goal, roi
     operator: str  # equals, not_equals, greater_than, less_than, greater_or_equal, less_or_equal
     value: float
     order: int = 0
@@ -21,6 +21,8 @@ class DisableRuleCreate(BaseModel):
     priority: int = 0
     conditions: List[DisableRuleConditionModel] = []
     account_ids: List[int] = []
+    # ROI settings - какое sub поле использовать для поиска banner_id в LeadsTech
+    roi_sub_field: Optional[Literal["sub4", "sub5"]] = None
 
 
 class DisableRuleUpdate(BaseModel):
@@ -31,6 +33,7 @@ class DisableRuleUpdate(BaseModel):
     priority: Optional[int] = None
     conditions: Optional[List[DisableRuleConditionModel]] = None
     account_ids: Optional[List[int]] = None
+    roi_sub_field: Optional[Literal["sub4", "sub5"]] = None
 
 
 class DisableRuleResponse(BaseModel):
@@ -40,6 +43,7 @@ class DisableRuleResponse(BaseModel):
     description: Optional[str]
     enabled: bool
     priority: int
+    roi_sub_field: Optional[str]
     created_at: str
     updated_at: str
     conditions: List[dict]

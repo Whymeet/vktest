@@ -909,6 +909,7 @@ export interface DisableRule {
   description: string | null;
   enabled: boolean;
   priority: number;
+  roi_sub_field: 'sub4' | 'sub5' | null;
   created_at: string;
   updated_at: string;
   conditions: DisableRuleCondition[];
@@ -923,6 +924,7 @@ export interface DisableRuleCreate {
   priority?: number;
   conditions: DisableRuleCondition[];
   account_ids?: number[];
+  roi_sub_field?: 'sub4' | 'sub5' | null;
 }
 
 export interface DisableRuleUpdate {
@@ -932,6 +934,7 @@ export interface DisableRuleUpdate {
   priority?: number;
   conditions?: DisableRuleCondition[];
   account_ids?: number[];
+  roi_sub_field?: 'sub4' | 'sub5' | null;
 }
 
 export interface DisableRuleMetrics {

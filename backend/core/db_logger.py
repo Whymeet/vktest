@@ -21,7 +21,8 @@ async def log_disabled_banners_to_db(
     date_from: str,
     date_to: str,
     is_dry_run: bool = False,
-    user_id: Optional[int] = None
+    user_id: Optional[int] = None,
+    roi_data: Optional[Dict] = None
 ) -> int:
     """
     Log disabled banners to database asynchronously.
@@ -37,6 +38,7 @@ async def log_disabled_banners_to_db(
         date_to: Analysis end date
         is_dry_run: Whether this was a dry run
         user_id: User ID (if None, gets from environment)
+        roi_data: Optional dict mapping banner_id -> BannerROIData with ROI metrics
 
     Returns:
         Number of banners logged successfully
@@ -72,7 +74,8 @@ async def log_disabled_banners_to_db(
                         is_dry_run=is_dry_run,
                         disable_success=disable_success,
                         reason=matched_rule,
-                        user_id=user_id
+                        user_id=user_id,
+                        roi_data=roi_data
                     )
                     logged_count += 1
                 except Exception as e:

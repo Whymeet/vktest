@@ -195,6 +195,102 @@ class LeadstechClient:
         logger.info(f"LeadsTech: total {len(all_rows)} rows received")
         return all_rows
 
+    def get_stat_by_subid_with_filter(
+        self,
+        date_from: date,
+        date_to: date,
+        sub1_value: str,
+        sub_field: str,
+        sub_filter: str,
+        subs_fields: Optional[List[str]] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Fetch stats by subid with additional filter on a specific sub field.
+
+        Uses LeadsTech search syntax:
+        - "!" for strict search
+        - "#" to exclude
+        - "|" for OR search (e.g., "123|456|789")
+        - "@" for AND search
+
+        Args:
+            date_from: Start date for statistics
+            date_to: End date for statistics
+            sub1_value: Value for sub1 filter (usually LeadsTech label)
+            sub_field: Which sub field to filter (e.g., "sub4")
+            sub_filter: Filter value (e.g., "123|456|789" for OR search)
+            subs_fields: List of sub fields to fetch
+
+        Returns:
+            List of statistics rows
+        """
+        token = self._get_token()
+        subs_fields = subs_fields or [sub_field]
+
+        headers = {
+            "X-Auth-Token": token,
+            "Accept": "application/json",
+        }
+
+        all_rows: List[Dict[str, Any]] = []
+        page = 1
+
+        while True:
+            # Build params with sub field filter
+            params: List[tuple] = [
+                ("page", page),
+                ("pageSize", self.cfg.page_size),
+                ("dateStart", date_from.strftime("%d-%m-%Y")),
+                ("dateEnd", date_to.strftime("%d-%m-%Y")),
+                ("sub1", sub1_value),
+                (sub_field, sub_filter),  # Filter on specific sub field
+                ("strictSubs", 0),
+                ("untilCurrentTime", 0),
+                ("limitLowerDay", 0),
+                ("limitUpperDay", 0),
+            ]
+            # Add all sub fields
+            for sf in subs_fields:
+                params.append(("subs[]", sf))
+
+            logger.info(
+                f"LeadsTech: by-subid page={page} "
+                f"(sub1={sub1_value}, {sub_field}=<batch>, "
+                f"{date_from.strftime('%d-%m-%Y')}..{date_to.strftime('%d-%m-%Y')})"
+            )
+
+            resp = requests.get(
+                self._by_subid_url,
+                headers=headers,
+                params=params,
+                timeout=30,
+            )
+
+            try:
+                resp.raise_for_status()
+            except requests.HTTPError as exc:
+                error_msg = f"LeadsTech: error requesting by-subid page={page}: {exc}, body={resp.text}"
+                logger.error(error_msg)
+                raise
+
+            payload = resp.json()
+            rows = self._extract_rows(payload)
+
+            logger.info(f"LeadsTech: page={page} - {len(rows)} rows")
+
+            if not rows:
+                break
+
+            all_rows.extend(rows)
+
+            if len(rows) < self.cfg.page_size:
+                break
+
+            page += 1
+
+        logger.info(f"LeadsTech: total {len(all_rows)} rows with filter")
+        return all_rows
+
     @staticmethod
     def _extract_rows(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Extract rows from API response."""
