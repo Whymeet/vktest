@@ -144,6 +144,10 @@ def log_disabled_banner(
                 roi = roi_info.get('roi_percent')
                 lt_revenue = roi_info.get('lt_revenue')
                 lt_spent = roi_info.get('vk_spent')
+            # Debug logging
+            from utils.logging_setup import get_logger
+            logger = get_logger(service="crud", function="banners")
+            logger.info(f"[ROI DEBUG] banner_id={banner_id}, roi={roi}, lt_revenue={lt_revenue}, lt_spent={lt_spent}")
 
     return create_banner_action(
         db=db,
