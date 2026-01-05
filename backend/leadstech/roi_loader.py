@@ -100,6 +100,7 @@ def load_roi_data_for_accounts(
     from leadstech.aggregator import aggregate_leadstech_by_banner
 
     all_roi_data: Dict[int, BannerROIData] = {}
+    vk_clients_cache: Dict[int, Any] = {}  # Cache VK clients by account.id
     accounts_with_label = [a for a in accounts if a.label and a.leadstech_enabled]
 
     if not accounts_with_label:
@@ -179,7 +180,10 @@ def load_roi_data_for_accounts(
                 total_accounts_processed += 1
                 logger.info(f"  Processing account: {account.name} ({len(remaining_banner_ids)} banners to check)")
 
-                vk_client = vk_client_factory(account)
+                # Get or create cached VK client for this account
+                if account.id not in vk_clients_cache:
+                    vk_clients_cache[account.id] = vk_client_factory(account)
+                vk_client = vk_clients_cache[account.id]
 
                 try:
                     vk_spent_map, vk_valid_ids = vk_client.get_spent_by_banner(

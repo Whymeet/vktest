@@ -19,8 +19,7 @@ def get_all_banners(token: str, base_url: str, fields: str = "id,ad_group_id", l
     Excludes deleted banners. Makes two separate API calls since VK API
     doesn't support OR filters or negation.
     """
-    import requests
-    from utils.vk_api.core import _headers
+    from utils.vk_api.core import _headers, _request_with_retries
 
     url = f"{base_url}/banners.json"
     items_all = []
@@ -36,7 +35,7 @@ def get_all_banners(token: str, base_url: str, fields: str = "id,ad_group_id", l
                 "_status": status,
             }
             try:
-                r = requests.get(url, headers=_headers(token), params=params, timeout=30)
+                r = _request_with_retries("GET", url, headers=_headers(token), params=params, timeout=30)
                 if r.status_code != 200:
                     logger.error(f"HTTP {r.status_code} loading {status} banners: {r.text[:200]}")
                     break
@@ -47,10 +46,10 @@ def get_all_banners(token: str, base_url: str, fields: str = "id,ad_group_id", l
                     break
                 offset += limit
             except Exception as e:
-                logger.error(f"Error loading {status} banners: {e}")
+                logger.error(f"Error loading {status} banners after retries: {e}")
                 break
 
-    logger.info(f"📥 Загружено {len(items_all)} баннеров (active + blocked)")
+    logger.info(f"Loaded {len(items_all)} banners (active + blocked)")
     return items_all
 
 

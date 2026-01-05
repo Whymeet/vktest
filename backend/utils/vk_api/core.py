@@ -91,8 +91,8 @@ def _request_with_retries(
                         error_info = error_data["error"]
                         if isinstance(error_info, dict):
                             error_type = error_info.get("code", "unknown")
-            except:
-                pass
+            except (ValueError, KeyError, TypeError) as e:
+                logger.debug(f"Could not parse error response: {e}")
 
             logger.debug(
                 f"[DEBUG] Error {resp.status_code} details (type: {error_type}):\n"
@@ -140,8 +140,8 @@ def _request_with_retries(
                                 error_type = error_info.get("code", "unknown")
                             else:
                                 error_type = str(error_info)
-                except:
-                    pass
+                except (ValueError, KeyError, TypeError) as e:
+                    logger.debug(f"Could not parse error response for type detection: {e}")
 
                 # For server errors use shorter delays
                 if resp.status_code in [500, 502, 503, 504]:

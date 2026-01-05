@@ -741,8 +741,9 @@ def duplicate_ad_group_to_new_campaign(
         new_campaign_id = result.get('campaign_id')
         new_group_id = result.get('ad_group_id')
 
-        # Get banners from response
-        created_banners = result.get('data', {}).get('ad_groups', [{}])[0].get('banners', [])
+        # Get banners from response (safe access to avoid IndexError)
+        ad_groups = result.get('data', {}).get('ad_groups', [])
+        created_banners = ad_groups[0].get('banners', []) if ad_groups else []
 
         print(f"[OK] Campaign created: {new_campaign_id}")
         print(f"[OK] Group created: {new_group_id} (status: {group_status})")
