@@ -68,7 +68,7 @@ def parse_banner_sub_fields(raw_value: Optional[str | List[str]]) -> List[str]:
     Parse banner_sub_fields from database value.
 
     Handles backwards compatibility where value might be:
-    - None -> ["sub4"]
+    - None -> ["sub4", "sub5"]
     - str (JSON) -> parsed list
     - str (single value) -> [value]
     - List -> returned as-is
@@ -80,7 +80,7 @@ def parse_banner_sub_fields(raw_value: Optional[str | List[str]]) -> List[str]:
         List of sub field names
     """
     if raw_value is None:
-        return ["sub4"]
+        return ["sub4", "sub5"]
 
     if isinstance(raw_value, list):
         return raw_value
@@ -96,7 +96,7 @@ def parse_banner_sub_fields(raw_value: Optional[str | List[str]]) -> List[str]:
         # Treat as single value
         return [raw_value]
 
-    return ["sub4"]
+    return ["sub4", "sub5"]
 
 
 def load_cabinets(db: Session, user_id: int) -> List[CabinetConfig]:

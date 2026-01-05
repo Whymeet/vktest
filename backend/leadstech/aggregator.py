@@ -84,7 +84,7 @@ def aggregate_leadstech_by_banner(
         Dictionary mapping banner ID to aggregated data
     """
     if banner_sub_fields is None:
-        banner_sub_fields = ["sub4"]
+        banner_sub_fields = ["sub4", "sub5"]
 
     logger.info(f"Aggregating LeadsTech by fields: {banner_sub_fields}")
 

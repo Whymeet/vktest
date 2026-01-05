@@ -899,7 +899,7 @@ class BannerScalingEngine:
             return {}
 
         # Get banner sub fields from config or use default
-        banner_sub_fields = lt_config.banner_sub_fields or ["sub4"]
+        banner_sub_fields = lt_config.banner_sub_fields or ["sub4", "sub5"]
         if isinstance(banner_sub_fields, str):
             import json
             try:

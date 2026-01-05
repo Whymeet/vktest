@@ -22,7 +22,7 @@ class LeadstechClientConfig:
     login: str
     password: str
     page_size: int = 500
-    banner_sub_fields: List[str] = field(default_factory=lambda: ["sub4"])
+    banner_sub_fields: List[str] = field(default_factory=lambda: ["sub4", "sub5"])
 
 
 class LeadstechClient:
