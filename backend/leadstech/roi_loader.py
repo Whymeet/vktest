@@ -7,6 +7,8 @@ Only called when scaling conditions include ROI metric.
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
 
 from database.models import Account
 from utils.logging_setup import get_logger
@@ -229,4 +231,207 @@ def load_roi_data_for_accounts(
 
     logger.info(f"")
     logger.info(f"Total: loaded ROI data for {len(all_roi_data)} banners across {total_accounts_processed} accounts")
+    return all_roi_data
+
+
+def load_roi_data_parallel(
+    lt_client: Any,  # LeadstechClient
+    vk_client_factory: Any,  # Callable to create VkAdsClient
+    accounts: List[Account],
+    date_from: str,
+    date_to: str,
+    banner_sub_fields: List[str],
+    progress_callback: Optional[callable] = None,
+    cancel_check_fn: Optional[callable] = None,
+    max_workers: int = 5
+) -> Dict[int, BannerROIData]:
+    """
+    Load ROI data for all accounts with labels - PARALLEL VERSION.
+
+    Uses ThreadPoolExecutor to process multiple accounts in parallel.
+    Thread-safe handling of remaining_banner_ids set.
+
+    Args:
+        lt_client: LeadsTech API client
+        vk_client_factory: Factory function to create VK client for account
+        accounts: List of accounts to process
+        date_from: Start date (YYYY-MM-DD)
+        date_to: End date (YYYY-MM-DD)
+        banner_sub_fields: List of sub fields to extract banner IDs from
+        progress_callback: Optional callback for progress updates
+        cancel_check_fn: Optional function to check for cancellation
+        max_workers: Max number of parallel workers (default: 5)
+
+    Returns:
+        Dict mapping banner_id to BannerROIData
+    """
+    from leadstech.aggregator import aggregate_leadstech_by_banner
+
+    all_roi_data: Dict[int, BannerROIData] = {}
+    roi_data_lock = threading.Lock()  # Lock for thread-safe access to all_roi_data
+
+    accounts_with_label = [a for a in accounts if a.label and a.leadstech_enabled]
+
+    if not accounts_with_label:
+        logger.warning("No accounts with label and leadstech_enabled found, ROI data will be empty")
+        return all_roi_data
+
+    # Group accounts by label to avoid duplicate LeadsTech requests
+    accounts_by_label = _group_accounts_by_label(accounts_with_label)
+
+    logger.info(f"Loading ROI data PARALLEL for {len(accounts_with_label)} accounts with {len(accounts_by_label)} unique labels")
+    logger.info(f"Date range: {date_from} to {date_to}")
+    logger.info(f"Banner sub fields: {banner_sub_fields}")
+    logger.info(f"Max workers: {max_workers}")
+
+    # Convert date strings to date objects
+    try:
+        date_from_obj = datetime.strptime(date_from, "%Y-%m-%d").date()
+        date_to_obj = datetime.strptime(date_to, "%Y-%m-%d").date()
+    except ValueError as e:
+        logger.error(f"Invalid date format: {e}")
+        return all_roi_data
+
+    def process_account_for_label(
+        account: Account,
+        lt_by_banner: Dict[int, Any],
+        remaining_ids: set,
+        remaining_lock: threading.Lock
+    ) -> Dict[int, BannerROIData]:
+        """Process single account within a label group - thread worker function."""
+        account_roi_data = {}
+
+        if cancel_check_fn and cancel_check_fn():
+            return account_roi_data
+
+        # Get banner IDs to check for this account (thread-safe copy)
+        with remaining_lock:
+            if not remaining_ids:
+                logger.debug(f"  [{account.name}] No remaining banners to check")
+                return account_roi_data
+            banners_to_check = list(remaining_ids)
+
+        logger.info(f"  [{account.name}] Checking {len(banners_to_check)} banners...")
+
+        try:
+            vk_client = vk_client_factory(account)
+            vk_spent_map, vk_valid_ids = vk_client.get_spent_by_banner(
+                date_from_obj,
+                date_to_obj,
+                banners_to_check
+            )
+        except Exception as e:
+            logger.error(f"  [{account.name}] Failed to load VK spent: {e}")
+            return account_roi_data
+
+        logger.info(f"  [{account.name}] VK returned {len(vk_valid_ids)}/{len(banners_to_check)} banners")
+
+        # Calculate ROI for found banners
+        banners_with_roi = 0
+        found_banner_ids = set()
+
+        for banner_id in vk_valid_ids:
+            lt_data = lt_by_banner.get(banner_id)
+            if not lt_data:
+                continue
+
+            spent = vk_spent_map.get(banner_id, 0.0)
+            revenue = lt_data.lt_revenue
+            roi = calculate_roi(revenue, spent)
+
+            account_roi_data[banner_id] = BannerROIData(
+                banner_id=banner_id,
+                lt_revenue=revenue,
+                vk_spent=spent,
+                roi_percent=roi
+            )
+
+            found_banner_ids.add(banner_id)
+            if roi is not None:
+                banners_with_roi += 1
+
+        # Remove found banners from remaining set (thread-safe)
+        if found_banner_ids:
+            with remaining_lock:
+                remaining_ids -= found_banner_ids
+
+        logger.info(f"  [{account.name}] Calculated ROI for {banners_with_roi} banners")
+        return account_roi_data
+
+    # Process each label group
+    total_accounts_processed = 0
+    label_idx = 0
+
+    for label, label_accounts in accounts_by_label.items():
+        if cancel_check_fn and cancel_check_fn():
+            logger.warning("ROI loading cancelled by user")
+            break
+
+        label_idx += 1
+
+        if progress_callback:
+            progress_callback(f"Loading ROI for label '{label}' ({label_idx}/{len(accounts_by_label)}, {len(label_accounts)} accounts)")
+
+        logger.info(f"")
+        logger.info(f"Processing label '{label}' ({len(label_accounts)} accounts) - PARALLEL")
+
+        try:
+            # 1. Load LeadsTech data ONCE for this label (sequential - one API call)
+            lt_rows = lt_client.get_stat_by_subid(
+                date_from=date_from_obj,
+                date_to=date_to_obj,
+                sub1_value=label,
+                subs_fields=banner_sub_fields
+            )
+
+            if not lt_rows:
+                logger.info(f"  No LeadsTech data for label '{label}'")
+                continue
+
+            # 2. Aggregate by banner_id
+            lt_by_banner = aggregate_leadstech_by_banner(lt_rows, banner_sub_fields)
+
+            if not lt_by_banner:
+                logger.info(f"  No banner IDs extracted from LeadsTech data")
+                continue
+
+            logger.info(f"  Found {len(lt_by_banner)} unique banners in LeadsTech for label '{label}'")
+
+            # 3. Process all accounts for this label IN PARALLEL
+            remaining_banner_ids = set(lt_by_banner.keys())
+            remaining_lock = threading.Lock()
+
+            # Use ThreadPoolExecutor for parallel VK API calls
+            with ThreadPoolExecutor(max_workers=min(max_workers, len(label_accounts))) as executor:
+                futures = {
+                    executor.submit(
+                        process_account_for_label,
+                        account,
+                        lt_by_banner,
+                        remaining_banner_ids,
+                        remaining_lock
+                    ): account
+                    for account in label_accounts
+                }
+
+                for future in as_completed(futures):
+                    account = futures[future]
+                    total_accounts_processed += 1
+
+                    try:
+                        account_roi_data = future.result()
+                        # Merge results (thread-safe)
+                        with roi_data_lock:
+                            all_roi_data.update(account_roi_data)
+                    except Exception as e:
+                        logger.error(f"  [{account.name}] Worker error: {e}")
+
+            logger.info(f"  Label '{label}' done, {len(remaining_banner_ids)} banners not found in any account")
+
+        except Exception as e:
+            logger.error(f"  Error processing label '{label}': {e}")
+            continue
+
+    logger.info(f"")
+    logger.info(f"Total: loaded ROI data for {len(all_roi_data)} banners across {total_accounts_processed} accounts (PARALLEL)")
     return all_roi_data

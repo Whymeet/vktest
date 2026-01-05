@@ -417,7 +417,8 @@ def format_rule_match_reason(rule: DisableRule, stats: dict) -> str:
         "shows": "показов",
         "ctr": "CTR",
         "cpc": "цена клика",
-        "cost_per_goal": "цена результата"
+        "cost_per_goal": "цена результата",
+        "roi": "ROI%"
     }
 
     operator_names = {

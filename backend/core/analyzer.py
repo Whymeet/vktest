@@ -3,7 +3,7 @@ Core analyzer - Banner analysis logic with streaming batch processing
 """
 import aiohttp
 from datetime import date, timedelta
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from database import crud
 from database.models import DisableRule
@@ -66,12 +66,13 @@ def prepare_banner_info(banners: List[Dict]) -> Tuple[List[int], Dict[int, Dict]
     return banner_ids, banners_info
 
 
-def calculate_banner_metrics(banner: Dict) -> Dict:
+def calculate_banner_metrics(banner: Dict, roi_data: Optional[Dict[int, Any]] = None) -> Dict:
     """
     Calculate derived metrics for banner analysis.
 
     Args:
         banner: Banner data with spent, clicks, shows, vk_goals
+        roi_data: Optional dict mapping banner_id to BannerROIData objects
 
     Returns:
         Dict with all metrics including calculated ones
@@ -81,7 +82,7 @@ def calculate_banner_metrics(banner: Dict) -> Dict:
     shows = banner.get("shows", 0.0)
     vk_goals = banner.get("vk_goals", 0.0)
 
-    return {
+    metrics = {
         "goals": vk_goals,
         "vk_goals": vk_goals,
         "spent": spent,
@@ -92,11 +93,25 @@ def calculate_banner_metrics(banner: Dict) -> Dict:
         "cost_per_goal": (spent / vk_goals) if vk_goals > 0 else float('inf'),
     }
 
+    # Add ROI from LeadsTech data if available
+    banner_id = banner.get("id")
+    if roi_data and banner_id and banner_id in roi_data:
+        # Banner found in LeadsTech - use real ROI
+        roi_obj = roi_data[banner_id]
+        metrics["roi"] = roi_obj.roi_percent if roi_obj.roi_percent is not None else -100.0
+    elif spent > 0:
+        # Banner NOT in LeadsTech but has spent - ROI = -100% (worse than zero)
+        metrics["roi"] = -100.0
+    # If no spent - don't add ROI metric (conditions won't be checked)
+
+    return metrics
+
 
 def check_banner_profitability(
     banner: Dict,
     rules: List[DisableRule],
-    whitelist: Set[int]
+    whitelist: Set[int],
+    roi_data: Optional[Dict[int, Any]] = None
 ) -> Tuple[bool, Optional[DisableRule], str]:
     """
     Check if banner should be disabled based on rules.
@@ -105,6 +120,7 @@ def check_banner_profitability(
         banner: Banner data with metrics
         rules: List of disable rules
         whitelist: Set of whitelisted banner IDs
+        roi_data: Optional dict mapping banner_id to BannerROIData for ROI conditions
 
     Returns:
         Tuple of (is_unprofitable, matched_rule, category)
@@ -116,8 +132,8 @@ def check_banner_profitability(
     if bid in whitelist:
         return False, None, "whitelisted"
 
-    # Calculate metrics for rule checking
-    metrics = calculate_banner_metrics(banner)
+    # Calculate metrics for rule checking (with ROI enrichment)
+    metrics = calculate_banner_metrics(banner, roi_data)
 
     # Check against rules
     matched_rule = crud.check_banner_against_rules(metrics, rules)
@@ -149,7 +165,8 @@ async def process_banner_batch(
     lookback_days: int,
     date_from: str,
     date_to: str,
-    user_id: int
+    user_id: int,
+    roi_data: Optional[Dict[int, Any]] = None
 ) -> Dict:
     """
     Process a single batch of banners: analyze and disable unprofitable ones.
@@ -167,6 +184,7 @@ async def process_banner_batch(
         date_from: Analysis start date
         date_to: Analysis end date
         user_id: User ID for DB logging
+        roi_data: Optional dict mapping banner_id to BannerROIData for ROI conditions
 
     Returns:
         Dict with categorized banners and disable results
@@ -204,7 +222,7 @@ async def process_banner_batch(
         }
 
         is_unprofitable, matched_rule, category = check_banner_profitability(
-            banner_data, rules, whitelist
+            banner_data, rules, whitelist, roi_data
         )
 
         if category == "whitelisted":
@@ -216,7 +234,7 @@ async def process_banner_batch(
             banner_data["matched_rule_id"] = matched_rule.id
             over_limit.append(banner_data)
 
-            metrics = calculate_banner_metrics(banner_data)
+            metrics = calculate_banner_metrics(banner_data, roi_data)
             reason = crud.format_rule_match_reason(matched_rule, metrics)
             logger.info(f"[{account_name}] UNPROFITABLE: [{bid}] {name}")
             logger.info(f"   {reason.replace(chr(10), chr(10) + '   ')}")
@@ -268,7 +286,8 @@ async def analyze_account(
     account_name: str,
     access_token: str,
     config: AnalysisConfig,
-    account_trigger_id: Optional[int] = None
+    account_trigger_id: Optional[int] = None,
+    roi_data: Optional[Dict[int, Any]] = None
 ) -> Optional[Dict]:
     """
     Analyze one VK Ads account asynchronously with streaming batch processing.
@@ -279,6 +298,7 @@ async def analyze_account(
         access_token: VK API access token
         config: Analysis configuration
         account_trigger_id: Optional trigger ID for this account
+        roi_data: Optional dict mapping banner_id to BannerROIData for ROI conditions
 
     Returns:
         Analysis result dict or None on error
@@ -409,7 +429,8 @@ async def analyze_account(
                 lookback_days=lookback_days,
                 date_from=date_from,
                 date_to=date_to,
-                user_id=config.user_id
+                user_id=config.user_id,
+                roi_data=roi_data
             )
 
             all_over_limit.extend(batch_result["over_limit"])

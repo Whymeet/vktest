@@ -179,3 +179,38 @@ def get_account_rules(account_name: str, user_id: Optional[int] = None) -> list:
         return crud.get_rules_for_account_by_name(db, account_name, enabled_only=True)
     finally:
         db.close()
+
+
+def rules_require_roi(rules: list) -> bool:
+    """
+    Check if any rule has ROI conditions.
+
+    Args:
+        rules: List of DisableRule objects
+
+    Returns:
+        True if any rule has at least one condition with metric='roi'
+    """
+    for rule in rules:
+        for condition in rule.conditions:
+            if condition.metric == 'roi':
+                return True
+    return False
+
+
+def any_rules_require_roi(user_id: int) -> bool:
+    """
+    Check if any disable rule for user has ROI conditions.
+
+    Args:
+        user_id: User ID
+
+    Returns:
+        True if any enabled rule has ROI condition
+    """
+    db = SessionLocal()
+    try:
+        rules = crud.get_disable_rules(db, user_id=user_id, enabled_only=True)
+        return rules_require_roi(rules)
+    finally:
+        db.close()
