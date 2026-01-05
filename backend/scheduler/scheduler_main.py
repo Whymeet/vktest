@@ -22,7 +22,7 @@ from typing import Optional
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from utils.time_utils import get_moscow_time
-from utils.logging_setup import setup_logging, get_logger
+from utils.logging_setup import setup_logging, get_logger, add_user_log_file, set_context
 from database import SessionLocal, init_db
 from database import crud
 
@@ -108,11 +108,15 @@ class VKAdsScheduler:
         SCHEDULER_LOGS_DIR.mkdir(exist_ok=True)
 
         user_id_int = int(self.user_id) if self.user_id else None
-        self.logger = get_logger(service="scheduler", function="auto_disable", user_id=user_id_int)
 
-        timestamp = get_moscow_time().strftime("%Y%m%d")
-        log_file = SCHEDULER_LOGS_DIR / f"scheduler_{self.username}_{timestamp}.log"
-        self.logger.info(f"Logging to file: {log_file}")
+        # Устанавливаем контекст для логирования
+        set_context(user_id=user_id_int, service="scheduler", function="auto_disable")
+
+        # Создаём персональный лог-файл для пользователя в logs/user_{id}/
+        if user_id_int:
+            add_user_log_file(user_id_int, "auto_disable")
+
+        self.logger = get_logger(service="scheduler", function="auto_disable", user_id=user_id_int)
 
     def load_settings(self):
         """Load settings from DB for current user"""

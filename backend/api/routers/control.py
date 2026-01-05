@@ -61,12 +61,14 @@ async def start_scheduler(
             detail=f"Scheduler already running (PID: {existing_pid})"
         )
 
-    LOGS_DIR.mkdir(parents=True, exist_ok=True)
+    # Ensure user logs directory exists
+    user_log_dir = LOGS_DIR / f"user_{current_user.id}"
+    user_log_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        user_log_prefix = f"user_{current_user.id}"
-        scheduler_stdout = open(LOGS_DIR / f"{user_log_prefix}_scheduler_stdout.log", "a", encoding="utf-8")
-        scheduler_stderr = open(LOGS_DIR / f"{user_log_prefix}_scheduler_stderr.log", "a", encoding="utf-8")
+        # Open log files for stdout/stderr in user's folder
+        scheduler_stdout = open(user_log_dir / "scheduler_stdout.log", "a", encoding="utf-8")
+        scheduler_stderr = open(user_log_dir / "scheduler_stderr.log", "a", encoding="utf-8")
 
         env = os.environ.copy()
         env["VK_ADS_USER_ID"] = str(current_user.id)
@@ -247,12 +249,14 @@ async def start_scaling_scheduler(
             detail=f"Scaling scheduler already running (PID: {existing_pid})"
         )
 
-    LOGS_DIR.mkdir(parents=True, exist_ok=True)
+    # Ensure user logs directory exists
+    user_log_dir = LOGS_DIR / f"user_{current_user.id}"
+    user_log_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        user_log_prefix = f"user_{current_user.id}"
-        scaling_scheduler_stdout = open(LOGS_DIR / f"{user_log_prefix}_scaling_scheduler_stdout.log", "a", encoding="utf-8")
-        scaling_scheduler_stderr = open(LOGS_DIR / f"{user_log_prefix}_scaling_scheduler_stderr.log", "a", encoding="utf-8")
+        # Open log files for stdout/stderr in user's folder
+        scaling_scheduler_stdout = open(user_log_dir / "scaling_scheduler_stdout.log", "a", encoding="utf-8")
+        scaling_scheduler_stderr = open(user_log_dir / "scaling_scheduler_stderr.log", "a", encoding="utf-8")
 
         env = os.environ.copy()
         env["VK_ADS_USER_ID"] = str(current_user.id)

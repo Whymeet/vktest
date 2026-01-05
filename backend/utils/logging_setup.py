@@ -238,10 +238,59 @@ def clear_context():
     _current_function.set(None)
 
 
+class _AutoCreateFileSink:
+    """
+    Кастомный sink для loguru, который автоматически пересоздаёт
+    файл и папку если они были удалены.
+    """
+
+    def __init__(self, file_path: Path):
+        self.file_path = file_path
+        self._file = None
+        self._ensure_file()
+
+    def _ensure_file(self):
+        """Убедиться что файл и папка существуют."""
+        # Создаём папку если удалена
+        self.file_path.parent.mkdir(parents=True, exist_ok=True)
+        # Открываем/создаём файл
+        if self._file is None or self._file.closed:
+            self._file = open(self.file_path, "a", encoding="utf-8")
+
+    def write(self, message: str):
+        """Записать сообщение, пересоздавая файл при необходимости."""
+        # Проверяем существует ли файл
+        if not self.file_path.exists():
+            # Файл удалён - закрываем старый handle и создаём заново
+            if self._file and not self._file.closed:
+                try:
+                    self._file.close()
+                except Exception:
+                    pass
+            self._file = None
+            self._ensure_file()
+
+        try:
+            self._file.write(message)
+            self._file.flush()
+        except Exception:
+            # При любой ошибке пересоздаём файл
+            self._file = None
+            self._ensure_file()
+            self._file.write(message)
+            self._file.flush()
+
+    def close(self):
+        """Закрыть файл."""
+        if self._file and not self._file.closed:
+            self._file.close()
+
+
 def add_user_log_file(user_id: int, function: str = "scaling"):
     """
     Добавить отдельный лог-файл для конкретного пользователя.
-    Полезно для отслеживания операций конкретного пользователя.
+    Логи сохраняются в папку logs/user_{id}/.
+    Файл автоматически пересоздаётся если был удалён.
 
     Args:
         user_id: ID пользователя
@@ -250,22 +299,25 @@ def add_user_log_file(user_id: int, function: str = "scaling"):
     Returns:
         ID хендлера (для последующего удаления если нужно)
     """
-    # Убеждаемся что директория существует
-    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    # Создаём папку для пользователя
+    user_log_dir = LOG_DIR / f"user_{user_id}"
+    user_log_dir.mkdir(parents=True, exist_ok=True)
 
     timestamp = get_moscow_time().strftime("%Y%m%d_%H%M%S")
-    log_file = LOG_DIR / f"user_{user_id}_{function}_{timestamp}.log"
+    log_file = user_log_dir / f"{function}_{timestamp}.log"
+
+    # Используем кастомный sink для автопересоздания файла
+    sink = _AutoCreateFileSink(log_file)
 
     handler_id = logger.add(
-        log_file,
+        sink,
         format=_format_record,
         level="DEBUG",
         filter=_filter_by_user(user_id),
-        encoding="utf-8",
     )
 
     logger.bind(service="app", user_id=user_id).info(
-        f"Создан персональный лог-файл: {log_file.name}"
+        f"Создан персональный лог-файл: user_{user_id}/{log_file.name}"
     )
 
     return handler_id

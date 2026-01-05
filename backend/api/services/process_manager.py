@@ -137,13 +137,13 @@ def autostart_scaling_schedulers():
 
             # Start scaling scheduler for this user
             try:
-                # Ensure logs directory exists
-                LOGS_DIR.mkdir(parents=True, exist_ok=True)
+                # Ensure user logs directory exists
+                user_log_dir = LOGS_DIR / f"user_{user.id}"
+                user_log_dir.mkdir(parents=True, exist_ok=True)
 
-                # Open log files for stdout/stderr with user-specific filenames
-                user_log_prefix = f"user_{user.id}"
-                scaling_scheduler_stdout = open(LOGS_DIR / f"{user_log_prefix}_scaling_scheduler_stdout.log", "a", encoding="utf-8")
-                scaling_scheduler_stderr = open(LOGS_DIR / f"{user_log_prefix}_scaling_scheduler_stderr.log", "a", encoding="utf-8")
+                # Open log files for stdout/stderr in user's folder
+                scaling_scheduler_stdout = open(user_log_dir / "scaling_scheduler_stdout.log", "a", encoding="utf-8")
+                scaling_scheduler_stderr = open(user_log_dir / "scaling_scheduler_stderr.log", "a", encoding="utf-8")
 
                 # Pass user_id and username as environment variables to the scaling scheduler
                 env = os.environ.copy()
@@ -208,11 +208,13 @@ def autostart_schedulers():
 
             # Start the scheduler
             try:
-                LOGS_DIR.mkdir(parents=True, exist_ok=True)
+                # Ensure user logs directory exists
+                user_log_dir = LOGS_DIR / f"user_{user.id}"
+                user_log_dir.mkdir(parents=True, exist_ok=True)
 
-                user_log_prefix = f"user_{user.id}"
-                scheduler_stdout = open(LOGS_DIR / f"{user_log_prefix}_scheduler_stdout.log", "a", encoding="utf-8")
-                scheduler_stderr = open(LOGS_DIR / f"{user_log_prefix}_scheduler_stderr.log", "a", encoding="utf-8")
+                # Open log files for stdout/stderr in user's folder
+                scheduler_stdout = open(user_log_dir / "scheduler_stdout.log", "a", encoding="utf-8")
+                scheduler_stderr = open(user_log_dir / "scheduler_stderr.log", "a", encoding="utf-8")
 
                 env = os.environ.copy()
                 env["VK_ADS_USER_ID"] = str(user.id)
