@@ -315,8 +315,11 @@ async def start_leadstech_analysis(
     if not config:
         raise HTTPException(status_code=400, detail="LeadsTech not configured. Please configure login/password first.")
 
-    cabinets = crud.get_leadstech_cabinets(db, user_id=current_user.id, enabled_only=True)
-    if not cabinets:
+    # Get accounts with LeadsTech enabled and label set
+    accounts = crud.get_accounts(db, user_id=current_user.id)
+    enabled_accounts = [acc for acc in accounts if acc.label and acc.leadstech_enabled]
+
+    if not enabled_accounts:
         raise HTTPException(status_code=400, detail="No enabled LeadsTech cabinets. Please configure at least one cabinet.")
 
     is_running, existing_pid = is_process_running_by_db("leadstech_analysis", db, current_user.id)
@@ -356,7 +359,7 @@ async def start_leadstech_analysis(
         return {
             "message": "LeadsTech analysis started",
             "pid": process.pid,
-            "cabinets_count": len(cabinets)
+            "cabinets_count": len(enabled_accounts)
         }
     except Exception as e:
         print(f"Failed to start LeadsTech analysis: {e}")
