@@ -149,7 +149,8 @@ def disable_ad_group(token: str, base_url: str, group_id: int, dry_run: bool = F
             logger.info(f"[OK] Ad group {group_id} successfully disabled (HTTP {response.status_code})")
             try:
                 resp_json = response.json()
-            except Exception:
+            except (ValueError, requests.exceptions.JSONDecodeError) as e:
+                logger.debug(f"Could not parse JSON response for ad group {group_id}: {e}")
                 resp_json = None
             return {"success": True, "response": resp_json}
         else:
@@ -193,7 +194,8 @@ def toggle_ad_group_status(token: str, base_url: str, group_id: int, status: str
             logger.info(f"[OK] Ad group {group_id} successfully changed to '{status}' (HTTP {response.status_code})")
             try:
                 resp_json = response.json()
-            except Exception:
+            except (ValueError, requests.exceptions.JSONDecodeError) as e:
+                logger.debug(f"Could not parse JSON response for ad group {group_id}: {e}")
                 resp_json = None
             return {"success": True, "response": resp_json}
         else:
@@ -244,7 +246,8 @@ def update_ad_group(token: str, base_url: str, group_id: int, update_data: dict)
         if response.status_code in (200, 204):
             try:
                 result = response.json()
-            except:
+            except (ValueError, requests.exceptions.JSONDecodeError) as e:
+                logger.debug(f"Could not parse JSON response for ad group {group_id}: {e}")
                 result = {}
             logger.info(f"[OK] Ad group {group_id} updated")
             return {"success": True, "data": result}

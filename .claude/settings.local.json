@@ -42,7 +42,11 @@
       "Bash(cut:*)",
       "Bash(done)",
       "Bash(comm:*)",
-      "Bash(docker builder prune:*)"
+      "Bash(docker builder prune:*)",
+      "Bash(tasklist:*)",
+      "Bash(wmic process:*)",
+      "Bash(git log:*)",
+      "Bash(cd:*)"
     ],
     "deny": [],
     "ask": []

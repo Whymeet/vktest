@@ -71,48 +71,65 @@ class VkAdsClient:
         )
 
         max_retries = 5
-        backoff = 2.0  # Start with 2 seconds
+        last_error = None
 
         for attempt in range(1, max_retries + 1):
-            resp = requests.get(
-                url,
-                headers=self._headers(),
-                params=params,
-                timeout=60,  # Increased timeout
-            )
-
-            if resp.status_code == 429:
-                wait_time = backoff + (attempt - 1)  # Linear increase: 2, 3, 4, 5, 6 seconds
-                logger.warning(
-                    f"VK Ads: 429 Too Many Requests, attempt {attempt}/{max_retries}, "
-                    f"waiting {wait_time:.1f} sec"
-                )
-                time.sleep(wait_time)
-                continue
-
             try:
+                resp = requests.get(
+                    url,
+                    headers=self._headers(),
+                    params=params,
+                    timeout=60,  # Increased timeout
+                )
+
+                # Rate limit (429) or server error (5xx) - retry
+                if resp.status_code == 429 or resp.status_code >= 500:
+                    wait_time = 2 ** attempt  # Exponential backoff: 2, 4, 8, 16, 32 seconds
+                    logger.warning(
+                        f"VK Ads: HTTP {resp.status_code}, attempt {attempt}/{max_retries}, "
+                        f"waiting {wait_time} sec"
+                    )
+                    if attempt < max_retries:
+                        time.sleep(wait_time)
+                        continue
+                    else:
+                        resp.raise_for_status()
+
                 resp.raise_for_status()
+
+                payload = resp.json()
+                items = payload.get("items", [])
+
+                # Log which banners were returned
+                logger.info(f"VK Ads: requested {len(banner_ids)} banners, received {len(items)} in response")
+
+                if len(items) == 0 and len(banner_ids) > 0:
+                    logger.warning(
+                        f"VK Ads: API returned 0 items! Banner IDs may not exist in this VK account. "
+                        f"Requested: {banner_ids[:5]}"
+                    )
+
+                return items
+
+            except (requests.Timeout, requests.ConnectionError) as e:
+                last_error = e
+                if attempt < max_retries:
+                    wait_time = 2 ** attempt
+                    logger.warning(
+                        f"VK Ads: network error, attempt {attempt}/{max_retries}, "
+                        f"retrying in {wait_time}s: {e}"
+                    )
+                    time.sleep(wait_time)
+                else:
+                    logger.error(f"VK Ads: failed to get banner stats after {max_retries} attempts: {e}")
+                    raise
+
             except requests.HTTPError as exc:
                 error_msg = f"VK Ads: error requesting banner stats: {exc}, body={resp.text}"
                 logger.error(error_msg)
                 raise
 
-            payload = resp.json()
-            items = payload.get("items", [])
-
-            # Log which banners were returned
-            returned_ids = [item.get("id") for item in items if item.get("id")]
-            logger.info(f"VK Ads: requested {len(banner_ids)} banners, received {len(items)} in response")
-
-            if len(items) == 0 and len(banner_ids) > 0:
-                logger.warning(
-                    f"VK Ads: API returned 0 items! Banner IDs may not exist in this VK account. "
-                    f"Requested: {banner_ids[:5]}"
-                )
-
-            return items
-
-        logger.error(f"VK Ads: failed to get stats after {max_retries} attempts due to rate limiting")
+        logger.error(f"VK Ads: failed to get stats after {max_retries} attempts: {last_error}")
         return []
 
     def get_spent_by_banner(
@@ -211,35 +228,53 @@ class VkAdsClient:
         )
 
         max_retries = 5
-        backoff = 2.0
+        last_error = None
 
         for attempt in range(1, max_retries + 1):
-            resp = requests.get(
-                url,
-                headers=self._headers(),
-                params=params,
-                timeout=60,
-            )
-
-            if resp.status_code == 429:
-                wait_time = backoff + (attempt - 1)
-                logger.warning(
-                    f"VK Ads: 429 Too Many Requests, attempt {attempt}/{max_retries}, "
-                    f"waiting {wait_time:.1f} sec"
-                )
-                time.sleep(wait_time)
-                continue
-
             try:
+                resp = requests.get(
+                    url,
+                    headers=self._headers(),
+                    params=params,
+                    timeout=60,
+                )
+
+                # Rate limit (429) or server error (5xx) - retry
+                if resp.status_code == 429 or resp.status_code >= 500:
+                    wait_time = 2 ** attempt  # Exponential backoff: 2, 4, 8, 16, 32 seconds
+                    logger.warning(
+                        f"VK Ads: HTTP {resp.status_code}, attempt {attempt}/{max_retries}, "
+                        f"waiting {wait_time} sec"
+                    )
+                    if attempt < max_retries:
+                        time.sleep(wait_time)
+                        continue
+                    else:
+                        resp.raise_for_status()
+
                 resp.raise_for_status()
+
+                payload = resp.json()
+                total_spent = float(payload.get("total", {}).get("base", {}).get("spent", 0) or 0)
+                logger.info(f"VK Ads: total spent for account = {total_spent}")
+                return total_spent
+
+            except (requests.Timeout, requests.ConnectionError) as e:
+                last_error = e
+                if attempt < max_retries:
+                    wait_time = 2 ** attempt
+                    logger.warning(
+                        f"VK Ads: network error (total spent), attempt {attempt}/{max_retries}, "
+                        f"retrying in {wait_time}s: {e}"
+                    )
+                    time.sleep(wait_time)
+                else:
+                    logger.error(f"VK Ads: failed to get total spent after {max_retries} attempts: {e}")
+                    raise
+
             except requests.HTTPError as exc:
                 logger.error(f"VK Ads: error requesting total spent: {exc}, body={resp.text}")
                 raise
 
-            payload = resp.json()
-            total_spent = float(payload.get("total", {}).get("base", {}).get("spent", 0) or 0)
-            logger.info(f"VK Ads: total spent for account = {total_spent}")
-            return total_spent
-
-        logger.error(f"VK Ads: failed to get total spent after {max_retries} attempts")
+        logger.error(f"VK Ads: failed to get total spent after {max_retries} attempts: {last_error}")
         return 0.0

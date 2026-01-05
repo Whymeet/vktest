@@ -53,7 +53,7 @@ def get_banners_stats_day(token: str, base_url: str, date_from: str, date_to: st
     }
     if banner_ids:
         params["id"] = ",".join(map(str, banner_ids))
-    r = requests.get(url, headers=_headers(token), params=params, timeout=30)
+    r = _request_with_retries("GET", url, headers=_headers(token), params=params, timeout=30)
     if r.status_code != 200:
         error_text = r.text[:200]
         logger.error(f"[ERROR] HTTP {r.status_code} getting statistics: {error_text}")
@@ -104,7 +104,8 @@ def disable_banner(token: str, base_url: str, banner_id: int, dry_run: bool = Tr
             logger.info(f"[OK] Banner {banner_id} successfully disabled (HTTP {response.status_code})")
             try:
                 resp_json = response.json()
-            except Exception:
+            except (ValueError, requests.exceptions.JSONDecodeError) as e:
+                logger.debug(f"Could not parse JSON response for banner {banner_id}: {e}")
                 resp_json = None
             return {"success": True, "response": resp_json}
         else:
@@ -148,7 +149,8 @@ def toggle_banner_status(token: str, base_url: str, banner_id: int, status: str)
             logger.info(f"[OK] Banner {banner_id} successfully changed to '{status}' (HTTP {response.status_code})")
             try:
                 resp_json = response.json()
-            except Exception:
+            except (ValueError, requests.exceptions.JSONDecodeError) as e:
+                logger.debug(f"Could not parse JSON response for banner {banner_id}: {e}")
                 resp_json = None
             return {"success": True, "response": resp_json}
         else:
@@ -183,7 +185,8 @@ def update_banner(token: str, base_url: str, banner_id: int, data: dict):
         if response.status_code in (200, 204):
             try:
                 resp_json = response.json()
-            except Exception:
+            except (ValueError, requests.exceptions.JSONDecodeError) as e:
+                logger.debug(f"Could not parse JSON response for banner {banner_id}: {e}")
                 resp_json = None
             return {"success": True, "response": resp_json}
         else:
@@ -220,7 +223,8 @@ def delete_banner(token: str, base_url: str, banner_id: int):
             logger.info(f"[OK] Banner {banner_id} deleted")
             try:
                 resp_json = response.json()
-            except Exception:
+            except (ValueError, requests.exceptions.JSONDecodeError) as e:
+                logger.debug(f"Could not parse JSON response for banner {banner_id}: {e}")
                 resp_json = None
             return {"success": True, "response": resp_json}
         else:

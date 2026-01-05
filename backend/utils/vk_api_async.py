@@ -415,25 +415,32 @@ async def get_banners_stats_batched(
     logger.info(f"✅ Потоковая загрузка завершена: обработано {processed_total} объявлений")
 
 
-async def disable_banner(
+async def disable_banners_mass_action(
     session: aiohttp.ClientSession,
     token: str,
     base_url: str,
-    banner_id: int,
+    banner_ids: list[int],
     dry_run: bool = True,
 ) -> dict:
     """
-    Отключает рекламное объявление асинхронно.
+    Массовое отключение баннеров через /banners/mass_action.json (до 200 за раз).
+
+    Это намного эффективнее чем отключать по одному - один запрос вместо N.
     """
+    if not banner_ids:
+        return {"success": True, "disabled": 0, "banner_ids": []}
+
     if dry_run:
         logger.info(
-            f"🧪 [DRY RUN] Баннер {banner_id} помечен как убыточный — "
-            f"в реальном режиме был бы отключён"
+            f"🧪 [DRY RUN] {len(banner_ids)} баннеров помечены как убыточные — "
+            f"в реальном режиме были бы отключены"
         )
-        return {"success": True, "dry_run": True, "banner_id": banner_id}
+        return {"success": True, "dry_run": True, "disabled": len(banner_ids), "banner_ids": banner_ids}
 
-    url = f"{base_url}/banners/{banner_id}.json"
-    data = {"status": "blocked"}
+    url = f"{base_url}/banners/mass_action.json"
+
+    # Формируем тело запроса: [{"id": 123, "status": "blocked"}, ...]
+    payload = [{"id": bid, "status": "blocked"} for bid in banner_ids]
 
     try:
         resp = await _request_with_retries(
@@ -441,21 +448,23 @@ async def disable_banner(
             "POST",
             url,
             headers=_headers(token),
-            json=data,
-            timeout=aiohttp.ClientTimeout(total=20),
+            json=payload,
+            timeout=aiohttp.ClientTimeout(total=60),  # Дольше для массовой операции
         )
     except Exception as e:
-        logger.error(f"❌ Ошибка сети при отключении баннера {banner_id}: {e}")
-        return {"success": False, "error": str(e), "banner_id": banner_id}
+        logger.error(f"❌ Ошибка сети при массовом отключении {len(banner_ids)} баннеров: {e}")
+        return {"success": False, "error": str(e), "banner_ids": banner_ids}
 
-    if resp.status in (200, 204):
-        logger.info(f"✅ Баннер {banner_id} успешно отключён")
-        return {"success": True, "banner_id": banner_id}
+    # 204 No Content = успех
+    if resp.status == 204:
+        logger.info(f"✅ Массово отключено {len(banner_ids)} баннеров за 1 запрос")
+        return {"success": True, "disabled": len(banner_ids), "banner_ids": banner_ids}
 
+    # Обработка ошибок
     text = await resp.text()
-    error_text = text[:200]
-    logger.error(f"❌ Ошибка HTTP {resp.status} при отключении баннера {banner_id}: {error_text}")
-    return {"success": False, "error": f"HTTP {resp.status}: {text}", "banner_id": banner_id}
+    error_text = text[:500]
+    logger.error(f"❌ Ошибка HTTP {resp.status} при массовом отключении: {error_text}")
+    return {"success": False, "error": f"HTTP {resp.status}: {error_text}", "banner_ids": banner_ids}
 
 
 async def disable_banners_batch(
@@ -465,44 +474,69 @@ async def disable_banners_batch(
     banners: list[dict],
     dry_run: bool = True,
     whitelist_ids: set | None = None,
-    concurrency: int = 5,
+    concurrency: int = 5,  # Deprecated, сохранён для обратной совместимости
 ) -> dict:
     """
-    Отключает несколько баннеров параллельно с ограничением concurrency.
+    Отключает несколько баннеров через массовый API /banners/mass_action.json.
+
+    Оптимизировано: вместо N запросов делает ceil(N/200) запросов.
+    VK API позволяет отключать до 200 баннеров за один запрос.
     """
     if not banners:
         logger.info("✅ Нет убыточных объявлений для отключения")
         return {"disabled": 0, "failed": 0, "skipped": 0, "results": []}
 
     whitelist_ids = whitelist_ids or set()
-    logger.info(f"🎯 {'[DRY RUN] ' if dry_run else ''}Начинаем отключение {len(banners)} убыточных объявлений")
 
-    # Семафор для ограничения параллельных запросов
-    semaphore = asyncio.Semaphore(concurrency)
+    # Разделяем на те что нужно отключить и те что в whitelist
+    to_disable = []
+    skipped_results = []
 
-    async def _disable_one(banner: dict) -> dict:
-        async with semaphore:
+    for banner in banners:
+        banner_id = banner.get("id")
+        banner_name = banner.get("name", "Unknown")
+        spent = banner.get("spent", 0)
+        ad_group_id = banner.get("ad_group_id", "N/A")
+
+        if banner_id in whitelist_ids:
+            logger.info(f"⏳ Пропускаем объявление {banner_id} — находится в белом списке")
+            skipped_results.append({
+                "banner_id": banner_id,
+                "banner_name": banner_name,
+                "ad_group_id": ad_group_id,
+                "spent": spent,
+                "success": False,
+                "skipped": True,
+                "error": "skipped (whitelisted)"
+            })
+        else:
+            to_disable.append(banner)
+
+    logger.info(f"🎯 {'[DRY RUN] ' if dry_run else ''}Отключение {len(to_disable)} убыточных объявлений (пропущено: {len(skipped_results)})")
+
+    # Результаты отключения
+    disabled_results = []
+    failed_results = []
+
+    # Массовое отключение чанками по 200 (лимит VK API)
+    MASS_ACTION_LIMIT = 200
+
+    for chunk_start in range(0, len(to_disable), MASS_ACTION_LIMIT):
+        chunk = to_disable[chunk_start:chunk_start + MASS_ACTION_LIMIT]
+        chunk_ids = [b.get("id") for b in chunk]
+
+        result = await disable_banners_mass_action(
+            session, token, base_url, chunk_ids, dry_run
+        )
+
+        # Формируем результаты для каждого баннера в чанке
+        for banner in chunk:
             banner_id = banner.get("id")
             banner_name = banner.get("name", "Unknown")
             spent = banner.get("spent", 0)
             ad_group_id = banner.get("ad_group_id", "N/A")
 
-            # Проверяем белый список
-            if banner_id in whitelist_ids:
-                logger.info(f"⏳ Пропускаем объявление {banner_id} — находится в белом списке")
-                return {
-                    "banner_id": banner_id,
-                    "banner_name": banner_name,
-                    "ad_group_id": ad_group_id,
-                    "spent": spent,
-                    "success": False,
-                    "skipped": True,
-                    "error": "skipped (whitelisted)"
-                }
-
-            result = await disable_banner(session, token, base_url, banner_id, dry_run)
-
-            return {
+            banner_result = {
                 "banner_id": banner_id,
                 "banner_name": banner_name,
                 "ad_group_id": ad_group_id,
@@ -512,13 +546,17 @@ async def disable_banners_batch(
                 "error": result.get("error") if not result.get("success") else None
             }
 
-    # Запускаем все отключения параллельно
-    tasks = [_disable_one(banner) for banner in banners]
-    results = await asyncio.gather(*tasks)
+            if result.get("success"):
+                disabled_results.append(banner_result)
+            else:
+                failed_results.append(banner_result)
 
-    disabled_count = sum(1 for r in results if r.get("success") and not r.get("skipped"))
-    failed_count = sum(1 for r in results if not r.get("success") and not r.get("skipped"))
-    skipped_count = sum(1 for r in results if r.get("skipped"))
+    # Объединяем все результаты
+    all_results = disabled_results + failed_results + skipped_results
+
+    disabled_count = len(disabled_results)
+    failed_count = len(failed_results)
+    skipped_count = len(skipped_results)
 
     logger.info("=" * 80)
     logger.info(f"🎯 {'[DRY RUN] ' if dry_run else ''}Итоги отключения объявлений:")
@@ -526,6 +564,7 @@ async def disable_banners_batch(
     logger.info(f"⏳ Пропущено (whitelist): {skipped_count}")
     logger.info(f"❌ Ошибок: {failed_count}")
     logger.info(f"📊 Всего обработано: {len(banners)}")
+    logger.info(f"📡 API запросов: {max(1, (len(to_disable) + MASS_ACTION_LIMIT - 1) // MASS_ACTION_LIMIT) if to_disable else 0}")
     logger.info("=" * 80)
 
     return {
@@ -533,7 +572,7 @@ async def disable_banners_batch(
         "failed": failed_count,
         "skipped": skipped_count,
         "total": len(banners),
-        "results": results,
+        "results": all_results,
         "dry_run": dry_run
     }
 

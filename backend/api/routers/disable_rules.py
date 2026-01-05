@@ -35,6 +35,7 @@ def _format_rule_response(rule, db) -> dict:
         "description": rule.description,
         "enabled": rule.enabled,
         "priority": rule.priority,
+        "roi_sub_field": rule.roi_sub_field,
         "created_at": rule.created_at.isoformat(),
         "updated_at": rule.updated_at.isoformat(),
         "conditions": conditions,
@@ -75,6 +76,7 @@ async def get_disable_rules(
             "description": rule.description,
             "enabled": rule.enabled,
             "priority": rule.priority,
+            "roi_sub_field": rule.roi_sub_field,
             "created_at": rule.created_at.isoformat(),
             "updated_at": rule.updated_at.isoformat(),
             "conditions": conditions,
@@ -175,7 +177,8 @@ async def create_disable_rule(
         name=data.name,
         description=data.description,
         enabled=data.enabled,
-        priority=data.priority
+        priority=data.priority,
+        roi_sub_field=data.roi_sub_field
     )
 
     if data.conditions:
@@ -206,7 +209,8 @@ async def update_disable_rule(
         name=data.name,
         description=data.description,
         enabled=data.enabled,
-        priority=data.priority
+        priority=data.priority,
+        roi_sub_field=data.roi_sub_field
     )
 
     if data.conditions is not None:

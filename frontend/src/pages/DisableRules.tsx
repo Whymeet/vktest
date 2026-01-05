@@ -282,6 +282,13 @@ function RuleCard({
             )}
           </div>
 
+          {/* ROI Sub Field indicator */}
+          {rule.conditions.some(c => c.metric === 'roi') && (
+            <div className="text-xs text-blue-400 mb-1">
+              ROI источник: {rule.roi_sub_field ? rule.roi_sub_field : 'sub4 + sub5'}
+            </div>
+          )}
+
           {/* Accounts */}
           <div className="text-xs text-zinc-500">
             {rule.account_names.length === 0 ? (
@@ -381,6 +388,10 @@ export function DisableRules() {
   const [formPriority, setFormPriority] = useState(1);
   const [formConditions, setFormConditions] = useState<DisableRuleCondition[]>([]);
   const [formAccountIds, setFormAccountIds] = useState<number[]>([]);
+  const [formRoiSubField, setFormRoiSubField] = useState<'sub4' | 'sub5' | null>(null);
+
+  // Check if any condition uses ROI metric
+  const hasRoiCondition = formConditions.some(c => c.metric === 'roi');
 
   // Queries
   const { data: rulesData, isLoading: rulesLoading } = useQuery({
@@ -444,6 +455,7 @@ export function DisableRules() {
     setFormPriority(1);
     setFormConditions([{ metric: 'spent', operator: 'greater_or_equal', value: 100 }]);
     setFormAccountIds([]);
+    setFormRoiSubField(null);
   };
 
   const openCreateModal = () => {
@@ -463,6 +475,7 @@ export function DisableRules() {
       value: c.value,
     })));
     setFormAccountIds(rule.account_ids);
+    setFormRoiSubField(rule.roi_sub_field);
     setEditingRule(rule);
     setShowModal(true);
   };
@@ -478,6 +491,7 @@ export function DisableRules() {
       value: c.value,
     })));
     setFormAccountIds(rule.account_ids);
+    setFormRoiSubField(rule.roi_sub_field);
     setEditingRule(null);
     setShowModal(true);
   };
@@ -495,6 +509,7 @@ export function DisableRules() {
       priority: formPriority,
       conditions: formConditions,
       account_ids: formAccountIds.length > 0 ? formAccountIds : undefined,
+      roi_sub_field: hasRoiCondition ? formRoiSubField : null,
     };
 
     if (editingRule) {
@@ -641,6 +656,53 @@ export function DisableRules() {
             metrics={metrics}
             operators={operators}
           />
+
+          {/* ROI Sub Field Selector - shown only when ROI condition is used */}
+          {hasRoiCondition && (
+            <div className="p-4 bg-blue-900/20 rounded-lg border border-blue-800">
+              <label className="block text-sm font-medium text-blue-300 mb-2">
+                Источник данных для ROI (LeadsTech)
+              </label>
+              <p className="text-xs text-zinc-400 mb-3">
+                Укажите, в каком sub поле передаётся ID объявления в LeadsTech
+              </p>
+              <div className="flex gap-4">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="roi_sub_field"
+                    value="sub4"
+                    checked={formRoiSubField === 'sub4'}
+                    onChange={() => setFormRoiSubField('sub4')}
+                    className="text-blue-500 focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-zinc-300">sub4</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="roi_sub_field"
+                    value="sub5"
+                    checked={formRoiSubField === 'sub5'}
+                    onChange={() => setFormRoiSubField('sub5')}
+                    className="text-blue-500 focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-zinc-300">sub5</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="roi_sub_field"
+                    value=""
+                    checked={formRoiSubField === null}
+                    onChange={() => setFormRoiSubField(null)}
+                    className="text-blue-500 focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-zinc-300">Оба (sub4 + sub5)</span>
+                </label>
+              </div>
+            </div>
+          )}
 
           <AccountSelector
             selectedIds={formAccountIds}

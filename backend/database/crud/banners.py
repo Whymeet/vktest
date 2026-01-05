@@ -39,7 +39,10 @@ def create_banner_action(
     analysis_date_to: Optional[str] = None,
     reason: Optional[str] = None,
     stats: Optional[dict] = None,
-    is_dry_run: bool = False
+    is_dry_run: bool = False,
+    roi: Optional[float] = None,
+    lt_revenue: Optional[float] = None,
+    lt_spent: Optional[float] = None
 ) -> BannerAction:
     """Log a banner action (enable/disable) with full details"""
     account_db_id = None
@@ -79,7 +82,10 @@ def create_banner_action(
         lookback_days=lookback_days,
         analysis_date_from=analysis_date_from,
         analysis_date_to=analysis_date_to,
-        is_dry_run=is_dry_run
+        is_dry_run=is_dry_run,
+        roi=roi,
+        lt_revenue=lt_revenue,
+        lt_spent=lt_spent
     )
     db.add(db_action)
     db.commit()
@@ -97,9 +103,14 @@ def log_disabled_banner(
     is_dry_run: bool = False,
     disable_success: bool = True,
     reason: Optional[str] = None,
-    user_id: Optional[int] = None
+    user_id: Optional[int] = None,
+    roi_data: Optional[dict] = None
 ) -> BannerAction:
-    """Helper function for logging a disabled banner"""
+    """Helper function for logging a disabled banner
+
+    Args:
+        roi_data: Optional dict mapping banner_id -> BannerROIData with roi_percent, lt_revenue, vk_spent
+    """
     spend = banner_data.get("spent", 0.0)
     clicks = banner_data.get("clicks", 0)
     shows = banner_data.get("shows", 0)
@@ -116,9 +127,27 @@ def log_disabled_banner(
     if not disable_success:
         reason = f"[ОШИБКА ОТКЛЮЧЕНИЯ] {reason}"
 
+    # Extract ROI data if available
+    roi = None
+    lt_revenue = None
+    lt_spent = None
+    banner_id = banner_data.get("id")
+    if roi_data and banner_id:
+        roi_info = roi_data.get(banner_id)
+        if roi_info:
+            # Handle both object and dict
+            if hasattr(roi_info, 'roi_percent'):
+                roi = roi_info.roi_percent
+                lt_revenue = roi_info.lt_revenue
+                lt_spent = roi_info.vk_spent
+            else:
+                roi = roi_info.get('roi_percent')
+                lt_revenue = roi_info.get('lt_revenue')
+                lt_spent = roi_info.get('vk_spent')
+
     return create_banner_action(
         db=db,
-        banner_id=banner_data.get("id"),
+        banner_id=banner_id,
         action="disabled",
         user_id=user_id,
         account_name=account_name,
@@ -139,7 +168,10 @@ def log_disabled_banner(
         analysis_date_to=date_to,
         reason=reason,
         stats=banner_data,
-        is_dry_run=is_dry_run
+        is_dry_run=is_dry_run,
+        roi=roi,
+        lt_revenue=lt_revenue,
+        lt_spent=lt_spent
     )
 
 

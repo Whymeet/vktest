@@ -237,6 +237,11 @@ class BannerAction(Base):
     conversions = Column(Integer, default=0)  # vk_goals
     cost_per_conversion = Column(Float, nullable=True)  # Цена конверсии
 
+    # ROI data from LeadsTech (optional)
+    roi = Column(Float, nullable=True)  # ROI процент из LeadsTech
+    lt_revenue = Column(Float, nullable=True)  # Выручка из LeadsTech
+    lt_spent = Column(Float, nullable=True)  # Затраты для расчёта ROI
+
     # Status info
     banner_status = Column(String(50), nullable=True)  # Статус баннера
     delivery_status = Column(String(50), nullable=True)  # Статус доставки
@@ -432,6 +437,10 @@ class LeadsTechConfig(Base):
     date_from = Column(String(10), nullable=True)  # YYYY-MM-DD format, start of analysis period
     date_to = Column(String(10), nullable=True)  # YYYY-MM-DD format, end of analysis period
     banner_sub_fields = Column(JSON, default=["sub4", "sub5"])  # List of sub fields to analyze (e.g. ["sub4", "sub5"])
+
+    # Token cache (to avoid 429 Too Many Requests on login)
+    cached_token = Column(Text, nullable=True)  # JWT token from LeadsTech
+    token_expires_at = Column(DateTime, nullable=True)  # Token expiration time
 
     # Timestamps
     created_at = Column(DateTime, default=get_moscow_time, nullable=False)
@@ -788,6 +797,10 @@ class DisableRule(Base):
     # Rule status
     enabled = Column(Boolean, default=True)
     priority = Column(Integer, default=0)  # Higher priority rules checked first
+
+    # ROI settings (for LeadsTech integration)
+    # Если правило использует метрику ROI, нужно указать из какого sub поля брать banner_id
+    roi_sub_field = Column(String(10), nullable=True)  # "sub4" or "sub5", NULL = use default from config
 
     # Timestamps
     created_at = Column(DateTime, default=get_moscow_time, nullable=False)

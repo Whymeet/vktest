@@ -296,8 +296,8 @@ def run_analysis():
             logger.error(str(e))
             return
 
-        # 2. Create LeadsTech client
-        lt_client = LeadstechClient(config.leadstech)
+        # 2. Create LeadsTech client (with DB caching for token)
+        lt_client = LeadstechClient(config.leadstech, db=db, user_id=user_id)
 
         # 3. Analyze all cabinets with optimized grouping by label
         all_results, cabinet_totals = analyze_all_cabinets(lt_client, config)
