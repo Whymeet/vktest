@@ -30,12 +30,16 @@ async def _load_roi_for_account(
     date_from: str,
     date_to: str,
     rules: List[DisableRule],
-    user_id: Optional[int] = None
+    user_id: Optional[int] = None,
+    vk_spent_cache: Optional[Dict[int, float]] = None
 ) -> Optional[Dict]:
     """
     Load ROI data for an account if rules use ROI metric.
 
     Runs in a thread pool to avoid blocking the event loop.
+
+    ОПТИМИЗАЦИЯ: если передан vk_spent_cache, не делает запросов к VK API,
+    а использует уже загруженные данные о spent. Это экономит API лимиты.
 
     Args:
         account_name: Account name
@@ -44,6 +48,7 @@ async def _load_roi_for_account(
         date_to: Analysis end date (YYYY-MM-DD)
         rules: Disable rules for the account
         user_id: User ID
+        vk_spent_cache: Pre-loaded VK spent data {banner_id: spent_amount}
 
     Returns:
         Dict mapping banner_id -> BannerROIData, or None if not configured
@@ -94,7 +99,7 @@ async def _load_roi_for_account(
             )
             lt_client = LeadstechClient(lt_client_config)
 
-            # Create VK client for account
+            # Create VK client for account (will only be used if no cache)
             vk_config = VkAdsConfig(
                 base_url="https://ads.vk.com/api/v2",
                 api_token=account.api_token
@@ -114,7 +119,7 @@ async def _load_roi_for_account(
             date_from_obj = datetime.strptime(date_from, "%Y-%m-%d").date()
             date_to_obj = datetime.strptime(date_to, "%Y-%m-%d").date()
 
-            # Load ROI for each sub field
+            # Load ROI for each sub field, passing VK spent cache to avoid extra API calls
             all_roi_data = {}
             for sub_field in sub_fields:
                 try:
@@ -125,7 +130,8 @@ async def _load_roi_for_account(
                         banner_ids=banner_ids,
                         date_from=date_from_obj,
                         date_to=date_to_obj,
-                        sub_field=sub_field
+                        sub_field=sub_field,
+                        vk_spent_cache=vk_spent_cache  # Pass cache to avoid VK API calls
                     )
                     # Merge results (first found wins)
                     for bid, roi_info in roi_result.items():
@@ -508,37 +514,18 @@ async def analyze_account(
         banner_ids, banners_info = prepare_banner_info(banners)
 
         # Check if any rule uses ROI metric
-        roi_data = None
         rules_use_roi = any(
             any(c.metric == "roi" for c in rule.conditions)
             for rule in account_rules
         )
 
-        if rules_use_roi:
-            logger.info(f"[{account_name}] Rules use ROI metric, loading LeadsTech data...")
-            roi_data = await _load_roi_for_account(
-                account_name=account_name,
-                banner_ids=banner_ids,
-                date_from=date_from,
-                date_to=date_to,
-                rules=account_rules,
-                user_id=config.user_id
-            )
-            if roi_data:
-                logger.info(f"[{account_name}] Loaded ROI data for {len(roi_data)} banners")
-            else:
-                logger.warning(f"[{account_name}] No ROI data loaded (LeadsTech not configured?)")
-
-        # Accumulators
-        all_over_limit = []
-        all_under_limit = []
-        all_no_activity = []
-        all_whitelisted = []
-        all_disable_results = []
-
-        # Stream process batches
-        logger.info(f"STREAMING ANALYSIS: {account_name}")
+        # ФАЗА 1: Загружаем статистику всех батчей и собираем кэш spent
+        # Это нужно до загрузки ROI чтобы не делать лишние VK API запросы
+        logger.info(f"PHASE 1: Loading statistics for {account_name}")
         logger.info("=" * 80)
+
+        all_banners_with_stats = []
+        vk_spent_cache: Dict[int, float] = {}  # Кэш spent для ROI загрузки
 
         async for batch_data in get_banners_stats_batched(
             session, access_token, config.base_url, date_from, date_to,
@@ -551,38 +538,118 @@ async def analyze_account(
             batch_num = batch_data["batch_num"]
             total_batches = batch_data["total_batches"]
             batch_banners = batch_data["banners"]
+            stats_map = batch_data.get("stats_map", {})
 
-            logger.info(f"[{account_name}] Processing batch {batch_num}/{total_batches}...")
+            logger.info(f"[{account_name}] Loaded batch {batch_num}/{total_batches} ({len(batch_banners)} banners)")
 
-            batch_result = await process_banner_batch(
-                session=session,
-                batch_banners=batch_banners,
-                rules=account_rules,
-                whitelist=config.whitelist,
+            # Собираем все баннеры и кэш spent
+            all_banners_with_stats.extend(batch_banners)
+            for bid, stats in stats_map.items():
+                vk_spent_cache[bid] = stats.get("spent", 0.0)
+
+        logger.info(f"[{account_name}] Phase 1 complete: {len(all_banners_with_stats)} banners, spent cache: {len(vk_spent_cache)}")
+
+        # ФАЗА 2: Загружаем ROI данные с кэшем spent (без VK API запросов!)
+        roi_data = None
+        if rules_use_roi:
+            logger.info(f"PHASE 2: Loading ROI data for {account_name}")
+            logger.info("=" * 80)
+            logger.info(f"[{account_name}] Rules use ROI metric, loading LeadsTech data (using spent cache)...")
+
+            roi_data = await _load_roi_for_account(
                 account_name=account_name,
-                access_token=access_token,
-                base_url=config.base_url,
+                banner_ids=banner_ids,
+                date_from=date_from,
+                date_to=date_to,
+                rules=account_rules,
+                user_id=config.user_id,
+                vk_spent_cache=vk_spent_cache  # Передаём кэш чтобы не делать VK API запросы
+            )
+            if roi_data:
+                logger.info(f"[{account_name}] Loaded ROI data for {len(roi_data)} banners")
+            else:
+                logger.warning(f"[{account_name}] No ROI data loaded (LeadsTech not configured?)")
+
+        # ФАЗА 3: Анализируем баннеры и отключаем убыточные (одним массовым запросом)
+        logger.info(f"PHASE 3: Analyzing and disabling unprofitable banners for {account_name}")
+        logger.info("=" * 80)
+
+        # Accumulators
+        all_over_limit = []
+        all_under_limit = []
+        all_no_activity = []
+        all_whitelisted = []
+
+        # Анализируем все баннеры
+        for b in all_banners_with_stats:
+            bid = b.get("id")
+            banner_data = {
+                "id": bid,
+                "name": b.get("name", "Unknown"),
+                "spent": b.get("spent", 0.0),
+                "clicks": b.get("clicks", 0.0),
+                "shows": b.get("shows", 0.0),
+                "vk_goals": b.get("vk_goals", 0.0),
+                "status": b.get("status", "N/A"),
+                "delivery": b.get("delivery", "N/A"),
+                "ad_group_id": b.get("ad_group_id", "N/A"),
+                "moderation_status": b.get("moderation_status", "N/A"),
+                "account": account_name
+            }
+
+            is_unprofitable, matched_rule, category = check_banner_profitability(
+                banner_data, account_rules, config.whitelist, roi_data
+            )
+
+            if category == "whitelisted":
+                all_whitelisted.append(banner_data)
+            elif is_unprofitable and matched_rule:
+                banner_data["matched_rule"] = matched_rule.name
+                banner_data["matched_rule_id"] = matched_rule.id
+                all_over_limit.append(banner_data)
+
+                metrics = calculate_banner_metrics(banner_data)
+                metrics["id"] = bid
+                reason = crud.format_rule_match_reason(matched_rule, metrics, roi_data)
+                logger.info(f"[{account_name}] UNPROFITABLE: [{bid}] {banner_data['name']}")
+                logger.info(f"   {reason.replace(chr(10), chr(10) + '   ')}")
+            elif category == "effective":
+                all_under_limit.append(banner_data)
+            else:
+                all_no_activity.append(banner_data)
+
+        # Отключаем все убыточные баннеры одним массовым запросом
+        all_disable_results = []
+        if all_over_limit:
+            logger.info(f"[{account_name}] Disabling {len(all_over_limit)} unprofitable banners (single mass_action request)...")
+
+            disable_results = await disable_banners_batch(
+                session, access_token, config.base_url, all_over_limit,
                 dry_run=config.settings.dry_run,
+                whitelist_ids=config.whitelist,
+                concurrency=5  # Deprecated, mass_action используется
+            )
+
+            all_disable_results.append(disable_results)
+
+            # Log to DB
+            await log_disabled_banners_to_db(
+                banners=all_over_limit,
+                disable_results=disable_results,
+                account_name=account_name,
                 lookback_days=lookback_days,
                 date_from=date_from,
                 date_to=date_to,
+                is_dry_run=config.settings.dry_run,
                 user_id=config.user_id,
                 roi_data=roi_data
             )
 
-            all_over_limit.extend(batch_result["over_limit"])
-            all_under_limit.extend(batch_result["under_limit"])
-            all_no_activity.extend(batch_result["no_activity"])
-            all_whitelisted.extend(batch_result["whitelisted"])
-
-            if batch_result["disable_results"]:
-                all_disable_results.append(batch_result["disable_results"])
-
-            logger.info(
-                f"  Batch {batch_num}/{total_batches} done: "
-                f"unprofitable={len(batch_result['over_limit'])}, "
-                f"total_disabled={len(all_over_limit)}"
-            )
+        logger.info(
+            f"[{account_name}] Analysis complete: "
+            f"unprofitable={len(all_over_limit)}, effective={len(all_under_limit)}, "
+            f"testing/inactive={len(all_no_activity)}, whitelisted={len(all_whitelisted)}"
+        )
 
         # Final statistics
         logger.info("=" * 80)
