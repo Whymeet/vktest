@@ -516,18 +516,18 @@ async def get_leadstech_status_for_accounts(
 ):
     """
     Get LeadsTech availability status for all user accounts.
-    Returns dict mapping account_id to {enabled: bool, cabinet_name: str}.
+    Returns dict mapping account_id to {enabled: bool, label: str}.
     Used by frontend to enable/disable LeadsTech ROI checkbox.
     """
     accounts = crud.get_accounts(db, user_id=current_user.id)
 
     result = {}
     for account in accounts:
-        lt_cabinet = crud.get_leadstech_cabinet_by_account(db, account.id)
-        if lt_cabinet and lt_cabinet.enabled:
+        # Use label and leadstech_enabled directly from account
+        if account.label and account.leadstech_enabled:
             result[account.id] = {
                 "enabled": True,
-                "label": lt_cabinet.leadstech_label,
+                "label": account.label,
             }
         else:
             result[account.id] = {

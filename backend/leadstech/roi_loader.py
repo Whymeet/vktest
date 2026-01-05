@@ -100,10 +100,10 @@ def load_roi_data_for_accounts(
     from leadstech.aggregator import aggregate_leadstech_by_banner
 
     all_roi_data: Dict[int, BannerROIData] = {}
-    accounts_with_label = [a for a in accounts if a.label]
+    accounts_with_label = [a for a in accounts if a.label and a.leadstech_enabled]
 
     if not accounts_with_label:
-        logger.warning("No accounts with label found, ROI data will be empty")
+        logger.warning("No accounts with label and leadstech_enabled found, ROI data will be empty")
         return all_roi_data
 
     # Group accounts by label to avoid duplicate LeadsTech requests
