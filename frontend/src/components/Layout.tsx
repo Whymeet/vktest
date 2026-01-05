@@ -123,10 +123,10 @@ export function Layout() {
                 <NavLink
                   to={item.to}
                   className={({ isActive }) =>
-                    `nav-link text-sm ${isActive ? 'active' : ''}`
+                    `nav-link ${isActive ? 'active' : ''}`
                   }
                 >
-                  <item.icon className="w-4 h-4" />
+                  <item.icon className="w-[18px] h-[18px]" />
                   <span>{item.label}</span>
                 </NavLink>
               </li>
