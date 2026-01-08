@@ -12,6 +12,8 @@ from jose import JWTError, jwt
 from pydantic import BaseModel
 from loguru import logger
 
+from utils.time_utils import get_moscow_time
+
 
 # Configuration from environment variables
 # ВАЖНО: В production обязательно установите JWT_SECRET_KEY через переменную окружения!
@@ -68,9 +70,9 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     to_encode = data.copy()
 
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = get_moscow_time() + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        expire = get_moscow_time() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
 
     to_encode.update({
         "exp": expire,
@@ -87,7 +89,7 @@ def create_refresh_token(data: dict, jti: Optional[str] = None) -> tuple[str, st
     Returns: (token, jti, expires_at)
     """
     to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    expire = get_moscow_time() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
 
     # Generate unique JWT ID if not provided
     if jti is None:
