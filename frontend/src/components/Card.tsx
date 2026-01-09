@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import type { ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -8,7 +9,7 @@ interface CardProps {
   className?: string;
 }
 
-export function Card({ title, icon: Icon, children, className = '' }: CardProps) {
+export const Card = memo(function Card({ title, icon: Icon, children, className = '' }: CardProps) {
   return (
     <div className={`card ${className}`}>
       {(title || Icon) && (
@@ -20,7 +21,7 @@ export function Card({ title, icon: Icon, children, className = '' }: CardProps)
       {children}
     </div>
   );
-}
+});
 
 interface StatCardProps {
   title: string;
@@ -29,7 +30,7 @@ interface StatCardProps {
   color?: 'blue' | 'green' | 'yellow' | 'red';
 }
 
-export function StatCard({ title, value, icon: Icon, color = 'blue' }: StatCardProps) {
+export const StatCard = memo(function StatCard({ title, value, icon: Icon, color = 'blue' }: StatCardProps) {
   const colorClasses = {
     blue: 'bg-blue-600/20 text-blue-400',
     green: 'bg-green-600/20 text-green-400',
@@ -50,4 +51,4 @@ export function StatCard({ title, value, icon: Icon, color = 'blue' }: StatCardP
       </div>
     </div>
   );
-}
+});
