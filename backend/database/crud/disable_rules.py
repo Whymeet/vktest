@@ -372,9 +372,21 @@ def check_banner_against_rules(
                             if actual_value is None:
                                 actual_value = 0.0  # No spent = ROI 0
                         else:
-                            actual_value = 0.0  # No LeadsTech data = ROI 0
+                            # No LeadsTech data - check if banner has spending
+                            spent = stats.get("spent", 0) or 0
+                            if spent > 0:
+                                # Есть траты, но нет дохода в LeadsTech = очень плохой ROI
+                                actual_value = -100000000.0
+                            else:
+                                actual_value = 0.0  # No spent, no LeadsTech = ROI 0
                     else:
-                        actual_value = 0.0  # No ROI data available = ROI 0
+                        # No ROI data available - check if banner has spending
+                        spent = stats.get("spent", 0) or 0
+                        if spent > 0:
+                            # Есть траты, но нет ROI данных = очень плохой ROI
+                            actual_value = -100000000.0
+                        else:
+                            actual_value = 0.0  # No spent = ROI 0
                 else:
                     actual_value = 0
 
