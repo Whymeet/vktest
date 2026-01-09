@@ -1,10 +1,12 @@
+import { memo } from 'react';
+
 interface ToggleProps {
   checked: boolean;
   onChange: (checked: boolean) => void;
   disabled?: boolean;
 }
 
-export function Toggle({ checked, onChange, disabled }: ToggleProps) {
+export const Toggle = memo(function Toggle({ checked, onChange, disabled }: ToggleProps) {
   return (
     <button
       type="button"
@@ -15,4 +17,4 @@ export function Toggle({ checked, onChange, disabled }: ToggleProps) {
       <span className="toggle-dot" />
     </button>
   );
-}
+});

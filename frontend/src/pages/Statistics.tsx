@@ -1,5 +1,7 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, memo } from 'react';
+import type { CSSProperties } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   TrendingDown,
   RefreshCw,
@@ -18,6 +20,26 @@ import { Pagination } from '../components/Pagination';
 
 type SortField = 'created_at' | 'banner_id' | 'spend' | 'clicks' | 'shows' | 'ctr' | 'conversions' | 'roi';
 type SortOrder = 'asc' | 'desc';
+
+// Constants for virtualization
+const ROW_HEIGHT = 52;
+const MOBILE_CARD_HEIGHT = 140;
+
+// Types
+interface DisabledBanner {
+  id: number;
+  banner_id: number;
+  banner_name: string | null;
+  account_name: string | null;
+  reason: string | null;
+  spend: number | null;
+  clicks: number;
+  shows: number;
+  ctr: number | null;
+  conversions: number;
+  roi: number | null;
+  created_at: string;
+}
 
 function formatMoney(amount: number | null): string {
   if (amount === null) return '-';
@@ -42,6 +64,326 @@ function formatDate(isoString: string | null): string {
 function formatRoi(roi: number | null): string {
   if (roi === null || roi === undefined) return '-';
   return `${roi.toFixed(1)}%`;
+}
+
+// Memoized table row component
+const TableRow = memo(function TableRow({
+  banner,
+  style,
+}: {
+  banner: DisabledBanner;
+  style?: CSSProperties;
+}) {
+  return (
+    <div
+      style={style}
+      className="flex items-center border-b border-zinc-700/50 hover:bg-zinc-700/30 transition-colors"
+    >
+      <div className="py-3 pr-4 w-[14%] min-w-[140px] whitespace-nowrap">
+        <span className="text-sm text-zinc-300">{formatDate(banner.created_at)}</span>
+      </div>
+      <div className="py-3 pr-4 w-[10%] min-w-[90px] whitespace-nowrap">
+        <span className="text-white font-mono text-sm">{banner.banner_id}</span>
+      </div>
+      <div className="py-3 pr-4 w-[12%] min-w-[100px] truncate">
+        <span className="text-sm text-zinc-300">{banner.banner_name || 'Unknown'}</span>
+      </div>
+      <div className="py-3 pr-4 w-[10%] min-w-[80px] whitespace-nowrap truncate">
+        <span className="text-sm text-zinc-300">{banner.account_name || '-'}</span>
+      </div>
+      <div className="py-3 pr-4 w-[14%] min-w-[100px]">
+        <span className="text-xs text-zinc-400 line-clamp-2" title={banner.reason || 'Не указано'}>
+          {banner.reason || '-'}
+        </span>
+      </div>
+      <div className="py-3 pr-4 w-[8%] min-w-[80px] text-right whitespace-nowrap">
+        <span className="text-orange-400 text-sm">{formatMoney(banner.spend)}</span>
+      </div>
+      <div className="py-3 pr-4 w-[7%] min-w-[60px] text-right whitespace-nowrap">
+        <span className="text-blue-400 text-sm">{banner.clicks.toLocaleString()}</span>
+      </div>
+      <div className="py-3 pr-4 w-[8%] min-w-[70px] text-right whitespace-nowrap">
+        <span className="text-purple-400 text-sm">{banner.shows.toLocaleString()}</span>
+      </div>
+      <div className="py-3 pr-4 w-[6%] min-w-[55px] text-right whitespace-nowrap">
+        <span className="text-green-400 text-sm">
+          {banner.ctr !== null ? `${banner.ctr.toFixed(2)}%` : '-'}
+        </span>
+      </div>
+      <div className="py-3 pr-4 w-[5%] min-w-[50px] text-right whitespace-nowrap">
+        <span className={`text-sm ${banner.conversions > 0 ? 'text-green-400' : 'text-zinc-400'}`}>
+          {banner.conversions}
+        </span>
+      </div>
+      <div className="py-3 w-[6%] min-w-[55px] text-right whitespace-nowrap">
+        <span className={`text-sm ${
+          banner.roi === null ? 'text-zinc-500' :
+          banner.roi >= 0 ? 'text-green-400' : 'text-red-400'
+        }`}>
+          {formatRoi(banner.roi)}
+        </span>
+      </div>
+    </div>
+  );
+});
+
+// Memoized mobile card component
+const MobileCard = memo(function MobileCard({
+  banner,
+  style,
+}: {
+  banner: DisabledBanner;
+  style?: CSSProperties;
+}) {
+  return (
+    <div
+      style={style}
+      className="bg-zinc-700/30 rounded-lg p-3 border border-zinc-700/50"
+    >
+      {/* Top row: Date and Spend */}
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs text-zinc-400">{formatDate(banner.created_at)}</span>
+        <span className="text-orange-400 font-semibold text-sm">{formatMoney(banner.spend)}</span>
+      </div>
+
+      {/* Banner ID and Account */}
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <span className="text-white font-mono text-sm">ID: {banner.banner_id}</span>
+        <span className="text-xs text-zinc-300 truncate max-w-[120px]">{banner.account_name || '-'}</span>
+      </div>
+
+      {/* Stats row */}
+      <div className="flex items-center gap-3 text-xs flex-wrap">
+        <span className="text-blue-400">
+          <MousePointerClick className="w-3 h-3 inline mr-1" />
+          {banner.clicks.toLocaleString()}
+        </span>
+        <span className="text-purple-400">
+          <Eye className="w-3 h-3 inline mr-1" />
+          {banner.shows.toLocaleString()}
+        </span>
+        <span className="text-green-400">
+          CTR: {banner.ctr !== null ? `${banner.ctr.toFixed(2)}%` : '-'}
+        </span>
+        {banner.roi !== null && (
+          <span className={banner.roi >= 0 ? 'text-green-400' : 'text-red-400'}>
+            ROI: {formatRoi(banner.roi)}
+          </span>
+        )}
+      </div>
+
+      {/* Reason (if exists) */}
+      {banner.reason && (
+        <p className="text-xs text-zinc-400 line-clamp-1 mt-2" title={banner.reason}>
+          {banner.reason}
+        </p>
+      )}
+    </div>
+  );
+});
+
+// Virtualized desktop table component
+function DesktopTableVirtualized({
+  banners,
+  onSort,
+  SortIcon,
+}: {
+  banners: DisabledBanner[];
+  onSort: (field: SortField) => void;
+  SortIcon: React.ComponentType<{ field: SortField }>;
+}) {
+  const parentRef = useRef<HTMLDivElement>(null);
+
+  const rowVirtualizer = useVirtualizer({
+    count: banners.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => ROW_HEIGHT,
+    overscan: 10,
+  });
+
+  if (banners.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="hidden lg:block overflow-x-auto">
+      {/* Header - fixed outside scroll container */}
+      <div className="flex items-center text-sm text-zinc-400 border-b border-zinc-700 pb-3 min-w-[900px]">
+        <div className="w-[14%] min-w-[140px] pr-4">
+          <button onClick={() => onSort('created_at')} className="flex items-center gap-1 hover:text-white">
+            Дата отключения <SortIcon field="created_at" />
+          </button>
+        </div>
+        <div className="w-[10%] min-w-[90px] pr-4">
+          <button onClick={() => onSort('banner_id')} className="flex items-center gap-1 hover:text-white">
+            ID объявления <SortIcon field="banner_id" />
+          </button>
+        </div>
+        <div className="w-[12%] min-w-[100px] pr-4">Название</div>
+        <div className="w-[10%] min-w-[80px] pr-4">Кабинет</div>
+        <div className="w-[14%] min-w-[100px] pr-4">Правило</div>
+        <div className="w-[8%] min-w-[80px] pr-4 text-right">
+          <button onClick={() => onSort('spend')} className="flex items-center gap-1 hover:text-white ml-auto">
+            Траты <SortIcon field="spend" />
+          </button>
+        </div>
+        <div className="w-[7%] min-w-[60px] pr-4 text-right">
+          <button onClick={() => onSort('clicks')} className="flex items-center gap-1 hover:text-white ml-auto">
+            Клики <SortIcon field="clicks" />
+          </button>
+        </div>
+        <div className="w-[8%] min-w-[70px] pr-4 text-right">
+          <button onClick={() => onSort('shows')} className="flex items-center gap-1 hover:text-white ml-auto">
+            Показы <SortIcon field="shows" />
+          </button>
+        </div>
+        <div className="w-[6%] min-w-[55px] pr-4 text-right">
+          <button onClick={() => onSort('ctr')} className="flex items-center gap-1 hover:text-white ml-auto">
+            CTR <SortIcon field="ctr" />
+          </button>
+        </div>
+        <div className="w-[5%] min-w-[50px] pr-4 text-right">
+          <button onClick={() => onSort('conversions')} className="flex items-center gap-1 hover:text-white ml-auto">
+            Конв. <SortIcon field="conversions" />
+          </button>
+        </div>
+        <div className="w-[6%] min-w-[55px] text-right">
+          <button onClick={() => onSort('roi')} className="flex items-center gap-1 hover:text-white ml-auto">
+            ROI <SortIcon field="roi" />
+          </button>
+        </div>
+      </div>
+
+      {/* Scrollable body */}
+      <div
+        ref={parentRef}
+        className="overflow-auto"
+        style={{ maxHeight: '550px' }}
+      >
+        <div
+          className="min-w-[900px]"
+          style={{
+            height: `${rowVirtualizer.getTotalSize()}px`,
+            width: '100%',
+            position: 'relative',
+          }}
+        >
+          {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+            const banner = banners[virtualRow.index];
+            return (
+              <TableRow
+                key={banner.id}
+                banner={banner}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  height: `${virtualRow.size}px`,
+                  transform: `translateY(${virtualRow.start}px)`,
+                }}
+              />
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Virtualized mobile cards component
+function MobileCardsVirtualized({
+  banners,
+  sortField,
+  onSort,
+  SortIcon,
+}: {
+  banners: DisabledBanner[];
+  sortField: SortField;
+  onSort: (field: SortField) => void;
+  SortIcon: React.ComponentType<{ field: SortField }>;
+}) {
+  const parentRef = useRef<HTMLDivElement>(null);
+
+  const rowVirtualizer = useVirtualizer({
+    count: banners.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => MOBILE_CARD_HEIGHT,
+    overscan: 5,
+  });
+
+  return (
+    <div className="lg:hidden space-y-3">
+      {/* Mobile sort controls */}
+      <div className="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1 scrollbar-hide">
+        <button
+          onClick={() => onSort('created_at')}
+          className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
+            sortField === 'created_at'
+              ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/25'
+              : 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600'
+          }`}
+        >
+          Дата <SortIcon field="created_at" />
+        </button>
+        <button
+          onClick={() => onSort('spend')}
+          className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
+            sortField === 'spend'
+              ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/25'
+              : 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600'
+          }`}
+        >
+          Траты <SortIcon field="spend" />
+        </button>
+        <button
+          onClick={() => onSort('clicks')}
+          className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
+            sortField === 'clicks'
+              ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/25'
+              : 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600'
+          }`}
+        >
+          Клики <SortIcon field="clicks" />
+        </button>
+      </div>
+
+      {/* Virtualized cards container */}
+      <div
+        ref={parentRef}
+        className="overflow-auto rounded-lg"
+        style={{ maxHeight: 'calc(100vh - 420px)', minHeight: '350px' }}
+      >
+        <div
+          style={{
+            height: `${rowVirtualizer.getTotalSize()}px`,
+            width: '100%',
+            position: 'relative',
+          }}
+        >
+          {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+            const banner = banners[virtualRow.index];
+            return (
+              <div
+                key={banner.id}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  height: `${virtualRow.size}px`,
+                  transform: `translateY(${virtualRow.start}px)`,
+                  paddingBottom: '12px',
+                }}
+              >
+                <MobileCard banner={banner} />
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export function Statistics() {
@@ -74,7 +416,7 @@ export function Statistics() {
   const accountNames = accountsData?.accounts || [];
 
   // Results are now sorted server-side, use directly
-  const sortedBanners = disabledData?.disabled || [];
+  const sortedBanners: DisabledBanner[] = disabledData?.disabled || [];
 
   // Summary stats from server or calculated from current page
   const summary = useMemo(() => {
@@ -92,10 +434,10 @@ export function Statistics() {
     }
     
     const data = sortedBanners;
-    const totalSpend = data.reduce((sum: number, b: any) => sum + (b.spend || 0), 0);
-    const totalClicks = data.reduce((sum: number, b: any) => sum + b.clicks, 0);
-    const totalShows = data.reduce((sum: number, b: any) => sum + b.shows, 0);
-    const totalConversions = data.reduce((sum: number, b: any) => sum + b.conversions, 0);
+    const totalSpend = data.reduce((sum: number, b) => sum + (b.spend || 0), 0);
+    const totalClicks = data.reduce((sum: number, b) => sum + b.clicks, 0);
+    const totalShows = data.reduce((sum: number, b) => sum + b.shows, 0);
+    const totalConversions = data.reduce((sum: number, b) => sum + b.conversions, 0);
 
     return {
       totalSpend,
@@ -263,223 +605,20 @@ export function Statistics() {
           </div>
         ) : (
           <>
-            {/* Mobile: Card view */}
-            <div className="lg:hidden space-y-3">
-              {/* Mobile sort controls */}
-              <div className="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1">
-                <button
-                  onClick={() => handleSort('created_at')}
-                  className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition-colors ${
-                    sortField === 'created_at' ? 'bg-blue-600 text-white' : 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600'
-                  }`}
-                >
-                  Дата <SortIcon field="created_at" />
-                </button>
-                <button
-                  onClick={() => handleSort('spend')}
-                  className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition-colors ${
-                    sortField === 'spend' ? 'bg-blue-600 text-white' : 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600'
-                  }`}
-                >
-                  Траты <SortIcon field="spend" />
-                </button>
-                <button
-                  onClick={() => handleSort('clicks')}
-                  className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition-colors ${
-                    sortField === 'clicks' ? 'bg-blue-600 text-white' : 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600'
-                  }`}
-                >
-                  Клики <SortIcon field="clicks" />
-                </button>
-              </div>
+            {/* Mobile: Virtualized Card view */}
+            <MobileCardsVirtualized
+              banners={sortedBanners}
+              sortField={sortField}
+              onSort={handleSort}
+              SortIcon={SortIcon}
+            />
 
-              {/* Mobile cards */}
-              {sortedBanners.map((banner: any) => (
-                <div
-                  key={banner.id}
-                  className="bg-zinc-700/30 rounded-lg p-3 border border-zinc-700/50 space-y-2"
-                >
-                  {/* Top row: Date and Spend */}
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-zinc-400">{formatDate(banner.created_at)}</span>
-                    <span className="text-orange-400 font-semibold">{formatMoney(banner.spend)}</span>
-                  </div>
-
-                  {/* Banner ID and Account */}
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="min-w-0">
-                      <span className="text-white font-mono text-sm">ID: {banner.banner_id}</span>
-                    </div>
-                    <span className="text-xs text-zinc-300 truncate max-w-[120px]">{banner.account_name || '-'}</span>
-                  </div>
-
-                  {/* Stats row */}
-                  <div className="flex items-center gap-4 text-xs flex-wrap">
-                    <span className="text-blue-400">
-                      <MousePointerClick className="w-3 h-3 inline mr-1" />
-                      {banner.clicks.toLocaleString()}
-                    </span>
-                    <span className="text-purple-400">
-                      <Eye className="w-3 h-3 inline mr-1" />
-                      {banner.shows.toLocaleString()}
-                    </span>
-                    <span className="text-green-400">
-                      CTR: {banner.ctr !== null ? `${banner.ctr.toFixed(2)}%` : '-'}
-                    </span>
-                    {banner.roi !== null && (
-                      <span className={banner.roi >= 0 ? 'text-green-400' : 'text-red-400'}>
-                        ROI: {formatRoi(banner.roi)}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Reason (if exists) */}
-                  {banner.reason && (
-                    <p className="text-xs text-zinc-400 line-clamp-1" title={banner.reason}>
-                      {banner.reason}
-                    </p>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            {/* Desktop: Table view */}
-            <div className="hidden lg:block overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="text-left text-sm text-zinc-400 border-b border-zinc-700">
-                    <th className="pb-3 pr-4">
-                      <button
-                        onClick={() => handleSort('created_at')}
-                        className="flex items-center gap-1 hover:text-white"
-                      >
-                        Дата отключения
-                        <SortIcon field="created_at" />
-                      </button>
-                    </th>
-                    <th className="pb-3 pr-4">
-                      <button
-                        onClick={() => handleSort('banner_id')}
-                        className="flex items-center gap-1 hover:text-white"
-                      >
-                        ID объявления
-                        <SortIcon field="banner_id" />
-                      </button>
-                    </th>
-                    <th className="pb-3 pr-4">Название</th>
-                    <th className="pb-3 pr-4">Кабинет</th>
-                    <th className="pb-3 pr-4">Правило</th>
-                    <th className="pb-3 pr-4 text-right">
-                      <button
-                        onClick={() => handleSort('spend')}
-                        className="flex items-center gap-1 hover:text-white ml-auto"
-                      >
-                        Траты
-                        <SortIcon field="spend" />
-                      </button>
-                    </th>
-                    <th className="pb-3 pr-4 text-right">
-                      <button
-                        onClick={() => handleSort('clicks')}
-                        className="flex items-center gap-1 hover:text-white ml-auto"
-                      >
-                        Клики
-                        <SortIcon field="clicks" />
-                      </button>
-                    </th>
-                    <th className="pb-3 pr-4 text-right">
-                      <button
-                        onClick={() => handleSort('shows')}
-                        className="flex items-center gap-1 hover:text-white ml-auto"
-                      >
-                        Показы
-                        <SortIcon field="shows" />
-                      </button>
-                    </th>
-                    <th className="pb-3 pr-4 text-right">
-                      <button
-                        onClick={() => handleSort('ctr')}
-                        className="flex items-center gap-1 hover:text-white ml-auto"
-                      >
-                        CTR
-                        <SortIcon field="ctr" />
-                      </button>
-                    </th>
-                    <th className="pb-3 pr-4 text-right">
-                      <button
-                        onClick={() => handleSort('conversions')}
-                        className="flex items-center gap-1 hover:text-white ml-auto"
-                      >
-                        Конверсии
-                        <SortIcon field="conversions" />
-                      </button>
-                    </th>
-                    <th className="pb-3 text-right">
-                      <button
-                        onClick={() => handleSort('roi')}
-                        className="flex items-center gap-1 hover:text-white ml-auto"
-                      >
-                        ROI
-                        <SortIcon field="roi" />
-                      </button>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sortedBanners.map((banner: any) => (
-                    <tr
-                      key={banner.id}
-                      className="border-b border-zinc-700/50 hover:bg-zinc-700/30 transition-colors"
-                    >
-                      <td className="py-3 pr-4 whitespace-nowrap">
-                        <span className="text-sm text-zinc-300">{formatDate(banner.created_at)}</span>
-                      </td>
-                      <td className="py-3 pr-4 whitespace-nowrap">
-                        <span className="text-white font-mono">{banner.banner_id}</span>
-                      </td>
-                      <td className="py-3 pr-4">
-                        <span className="text-sm text-zinc-300">{banner.banner_name || 'Unknown'}</span>
-                      </td>
-                      <td className="py-3 pr-4 whitespace-nowrap">
-                        <span className="text-sm text-zinc-300">{banner.account_name || '-'}</span>
-                      </td>
-                      <td className="py-3 pr-4 max-w-xs">
-                        <span className="text-xs text-zinc-400 line-clamp-2" title={banner.reason || 'Не указано'}>
-                          {banner.reason || '-'}
-                        </span>
-                      </td>
-                      <td className="py-3 pr-4 text-right whitespace-nowrap">
-                        <span className="text-orange-400">{formatMoney(banner.spend)}</span>
-                      </td>
-                      <td className="py-3 pr-4 text-right whitespace-nowrap">
-                        <span className="text-blue-400">{banner.clicks.toLocaleString()}</span>
-                      </td>
-                      <td className="py-3 pr-4 text-right whitespace-nowrap">
-                        <span className="text-purple-400">{banner.shows.toLocaleString()}</span>
-                      </td>
-                      <td className="py-3 pr-4 text-right whitespace-nowrap">
-                        <span className="text-green-400">
-                          {banner.ctr !== null ? `${banner.ctr.toFixed(2)}%` : '-'}
-                        </span>
-                      </td>
-                      <td className="py-3 pr-4 text-right whitespace-nowrap">
-                        <span className={banner.conversions > 0 ? 'text-green-400' : 'text-zinc-400'}>
-                          {banner.conversions}
-                        </span>
-                      </td>
-                      <td className="py-3 text-right whitespace-nowrap">
-                        <span className={
-                          banner.roi === null ? 'text-zinc-500' :
-                          banner.roi >= 0 ? 'text-green-400' : 'text-red-400'
-                        }>
-                          {formatRoi(banner.roi)}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            {/* Desktop: Virtualized Table view */}
+            <DesktopTableVirtualized
+              banners={sortedBanners}
+              onSort={handleSort}
+              SortIcon={SortIcon}
+            />
           </>
         )}
         
