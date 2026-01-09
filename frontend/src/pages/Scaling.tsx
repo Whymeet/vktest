@@ -298,7 +298,7 @@ function ConfigFormModal({
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={config ? 'Редактировать' : 'Новая конфигурация'}>
+    <Modal isOpen={isOpen} onClose={onClose} title={config?.id ? 'Редактировать' : 'Новая конфигурация'}>
       <form onSubmit={handleSubmit} className="space-y-3">
         {/* Название и время в одну строку */}
         <div className="grid grid-cols-3 gap-2">
@@ -860,11 +860,24 @@ export function Scaling() {
   });
 
   const handleSaveConfig = (data: Partial<ScalingConfig>) => {
-    if (editingConfig) {
+    if (editingConfig && editingConfig.id) {
       updateMutation.mutate({ id: editingConfig.id, data });
     } else {
       createMutation.mutate(data as any);
     }
+  };
+
+  const duplicateConfig = (config: ScalingConfig) => {
+    // Create a copy with modified name and disabled schedule
+    const duplicatedConfig = {
+      ...config,
+      name: `${config.name} (копия)`,
+      scheduled_enabled: false,
+      // Remove ID to force creation mode
+      id: undefined as any,
+    };
+    setEditingConfig(duplicatedConfig);
+    setConfigModalOpen(true);
   };
 
   const formatCondition = (condition: ScalingCondition) => {
@@ -990,6 +1003,13 @@ export function Scaling() {
                         ) : (
                           <Play className="w-4 h-4" />
                         )}
+                      </button>
+                      <button
+                        onClick={() => duplicateConfig(config)}
+                        className="p-2 text-blue-400 hover:bg-blue-900/20 rounded transition-colors"
+                        title="Дублировать"
+                      >
+                        <Copy className="w-4 h-4" />
                       </button>
                       <button
                         onClick={() => {
