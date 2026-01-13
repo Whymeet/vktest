@@ -10,9 +10,10 @@ interface AccountFormProps {
   account?: Account | null;
   onSubmit: (account: Account) => void;
   onCancel: () => void;
+  isLoading?: boolean;
 }
 
-function AccountForm({ account, onSubmit, onCancel }: AccountFormProps) {
+function AccountForm({ account, onSubmit, onCancel, isLoading }: AccountFormProps) {
   const [name, setName] = useState(account?.name || '');
   const [api, setApi] = useState(account?.api_full || account?.api || '');
   const [trigger, setTrigger] = useState(account?.trigger?.toString() || '');
@@ -86,10 +87,17 @@ function AccountForm({ account, onSubmit, onCancel }: AccountFormProps) {
         </p>
       </div>
       <div className="flex gap-3 pt-4">
-        <button type="submit" className="btn btn-primary flex-1">
-          {account ? 'Сохранить' : 'Создать'}
+        <button type="submit" className="btn btn-primary flex-1" disabled={isLoading}>
+          {isLoading ? (
+            <>
+              <RefreshCw className="w-4 h-4 animate-spin" />
+              {account ? 'Сохранение...' : 'Создание...'}
+            </>
+          ) : (
+            account ? 'Сохранить' : 'Создать'
+          )}
         </button>
-        <button type="button" onClick={onCancel} className="btn btn-secondary">
+        <button type="button" onClick={onCancel} className="btn btn-secondary" disabled={isLoading}>
           Отмена
         </button>
       </div>
@@ -114,21 +122,31 @@ export function Accounts() {
     ? Object.values(accountsData.accounts) as Account[]
     : [];
 
+  const [error, setError] = useState<string | null>(null);
+
   const createMutation = useMutation({
     mutationFn: createAccount,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['accounts'] });
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['accounts'] });
       setIsModalOpen(false);
+      setError(null);
+    },
+    onError: (err: Error & { response?: { data?: { detail?: string } } }) => {
+      setError(err.response?.data?.detail || err.message || 'Ошибка при создании кабинета');
     },
   });
 
   const updateMutation = useMutation({
     mutationFn: ({ name, account }: { name: string; account: Account }) =>
       updateAccount(name, account),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['accounts'] });
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['accounts'] });
       setEditingAccount(null);
       setIsModalOpen(false);
+      setError(null);
+    },
+    onError: (err: Error & { response?: { data?: { detail?: string } } }) => {
+      setError(err.response?.data?.detail || err.message || 'Ошибка при обновлении кабинета');
     },
   });
 
@@ -150,11 +168,13 @@ export function Accounts() {
 
   const openEdit = (account: Account) => {
     setEditingAccount(account);
+    setError(null);
     setIsModalOpen(true);
   };
 
   const openCreate = () => {
     setEditingAccount(null);
+    setError(null);
     setIsModalOpen(true);
   };
 
@@ -244,16 +264,24 @@ export function Accounts() {
         onClose={() => {
           setIsModalOpen(false);
           setEditingAccount(null);
+          setError(null);
         }}
         title={editingAccount ? 'Редактировать кабинет' : 'Новый кабинет'}
       >
+        {error && (
+          <div className="mb-4 p-3 bg-red-900/50 border border-red-500/50 rounded-lg text-red-300 text-sm">
+            {error}
+          </div>
+        )}
         <AccountForm
           account={editingAccount}
           onSubmit={handleSubmit}
           onCancel={() => {
             setIsModalOpen(false);
             setEditingAccount(null);
+            setError(null);
           }}
+          isLoading={createMutation.isPending || updateMutation.isPending}
         />
       </Modal>
 
