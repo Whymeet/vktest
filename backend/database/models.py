@@ -672,6 +672,9 @@ class ScalingLog(Base):
     config_id = Column(Integer, ForeignKey("scaling_configs.id", ondelete="SET NULL"), nullable=True)
     config_name = Column(String(255), nullable=True)
 
+    # Reference to task (for grouping logs by run)
+    task_id = Column(Integer, ForeignKey("scaling_tasks.id", ondelete="SET NULL"), nullable=True, index=True)
+
     # Account info
     account_name = Column(String(255), nullable=True)
     

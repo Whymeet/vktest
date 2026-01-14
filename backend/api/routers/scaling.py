@@ -238,6 +238,7 @@ async def get_scaling_logs_endpoint(
         "items": [
             {
                 "id": log.id,
+                "task_id": getattr(log, 'task_id', None),
                 "config_id": log.config_id,
                 "config_name": log.config_name,
                 "account_name": log.account_name,
@@ -331,6 +332,51 @@ async def get_scaling_task(
         "created_at": task.created_at.isoformat() if task.created_at else None,
         "started_at": task.started_at.isoformat() if task.started_at else None,
         "completed_at": task.completed_at.isoformat() if task.completed_at else None,
+    }
+
+
+@router.get("/tasks/{task_id}/logs")
+async def get_scaling_task_logs(
+    task_id: int,
+    limit: int = 1000,
+    offset: int = 0,
+    current_user: User = Depends(require_feature("scaling")),
+    db: Session = Depends(get_db)
+):
+    """Get scaling logs for a specific task"""
+    task = crud.get_scaling_task(db, task_id)
+    if not task or task.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    logs, total = crud.get_scaling_logs_by_task_id(db, task_id=task_id, limit=limit, offset=offset)
+
+    return {
+        "items": [
+            {
+                "id": log.id,
+                "task_id": log.task_id,
+                "config_id": log.config_id,
+                "config_name": log.config_name,
+                "account_name": log.account_name,
+                "original_group_id": log.original_group_id,
+                "original_group_name": log.original_group_name,
+                "new_group_id": log.new_group_id,
+                "new_group_name": log.new_group_name,
+                "stats_snapshot": log.stats_snapshot,
+                "success": log.success,
+                "error_message": log.error_message,
+                "total_banners": log.total_banners,
+                "duplicated_banners": log.duplicated_banners,
+                "duplicated_banner_ids": log.duplicated_banner_ids,
+                "positive_banner_ids": getattr(log, 'positive_banner_ids', None),
+                "negative_banner_ids": getattr(log, 'negative_banner_ids', None),
+                "positive_count": getattr(log, 'positive_count', 0),
+                "negative_count": getattr(log, 'negative_count', 0),
+                "created_at": log.created_at.isoformat()
+            }
+            for log in logs
+        ],
+        "total": total
     }
 
 
