@@ -32,6 +32,12 @@ setup_logging()
 logger = get_logger(service="vk_api", function="auto_disable")
 
 
+# Maximum number of accounts to analyze concurrently
+# VK API has 2 RPS limit for statistics, so we limit parallel accounts
+# to avoid overwhelming the API with too many concurrent requests
+MAX_CONCURRENT_ACCOUNTS = 5
+
+
 async def main_async():
     """Main async function - orchestrates the analysis"""
     try:
@@ -59,11 +65,26 @@ async def main_async():
         logger.info(f"Account list: {list(accounts.keys())}")
         logger.info(f"Whitelist size: {len(config.whitelist)}")
 
+        # Semaphore to limit concurrent account processing
+        # This prevents overwhelming VK API with too many parallel requests
+        semaphore = asyncio.Semaphore(MAX_CONCURRENT_ACCOUNTS)
+
+        async def analyze_with_semaphore(account_name: str, account_cfg):
+            """Wrapper that limits concurrency using semaphore"""
+            async with semaphore:
+                return await analyze_account(
+                    session=session,
+                    account_name=account_name,
+                    access_token=account_cfg.api_token,
+                    config=config,
+                    account_trigger_id=account_cfg.trigger_id
+                )
+
         # Create aiohttp session for all requests
         connector = aiohttp.TCPConnector(limit=20)  # Limit concurrent connections
         async with aiohttp.ClientSession(connector=connector) as session:
 
-            # Create tasks for ALL accounts
+            # Create tasks for ALL accounts (but semaphore limits actual concurrency)
             tasks = []
             for account_name, account_cfg in accounts.items():
                 access_token = account_cfg.api_token
@@ -71,23 +92,17 @@ async def main_async():
                     logger.error(f"No API token configured for account {account_name}")
                     continue
 
-                # Create task for account analysis
+                # Create task with semaphore wrapper
                 task = asyncio.create_task(
-                    analyze_account(
-                        session=session,
-                        account_name=account_name,
-                        access_token=access_token,
-                        config=config,
-                        account_trigger_id=account_cfg.trigger_id
-                    ),
+                    analyze_with_semaphore(account_name, account_cfg),
                     name=f"analyze_{account_name}"
                 )
                 tasks.append(task)
 
-            logger.info(f"Launching {len(tasks)} accounts IN PARALLEL")
+            logger.info(f"Launching {len(tasks)} accounts (max {MAX_CONCURRENT_ACCOUNTS} concurrent)")
             logger.info("=" * 80)
 
-            # Run ALL accounts in parallel and wait for completion
+            # Run accounts with controlled concurrency
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
             # Process results
