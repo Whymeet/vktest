@@ -64,7 +64,8 @@ def _format_record(record: dict) -> str:
     level = record["level"].name
     # Используем {message} плейсхолдер loguru вместо прямой подстановки
     # Это позволяет loguru правильно обработать message без повторного парсинга
-    return timestamp + " | " + f"{level:<8}" + " | " + context + " | {message}\n"
+    # {exception} нужен для вывода traceback при logger.exception()
+    return timestamp + " | " + f"{level:<8}" + " | " + context + " | {message}\n{exception}"
 
 
 def _filter_by_service(service_name: str):

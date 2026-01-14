@@ -257,6 +257,7 @@ async def get_banners_stats_day(
                 )
             except Exception as e:
                 logger.error(f"❌ Ошибка в батче {batch_num}: {e}")
+                logger.exception("Batch error traceback:")
 
             # Пауза между батчами для соблюдения rate limit
             if batch_num < num_batches:
@@ -405,6 +406,7 @@ async def get_banners_stats_batched(
 
         except Exception as e:
             logger.error(f"❌ Ошибка в батче {batch_num}: {e}")
+            logger.exception("Batch error traceback:")
             # Продолжаем со следующим батчем
             continue
 

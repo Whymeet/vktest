@@ -35,6 +35,7 @@ logger = get_logger(service="vk_api", function="auto_disable")
 # Maximum number of accounts to analyze concurrently
 # VK API has 2 RPS limit for statistics, so we limit parallel accounts
 # to avoid overwhelming the API with too many concurrent requests
+# With sleep_between_calls=0.6 and 2 accounts: ~3.3 RPS (safe margin for 2 RPS limit)
 MAX_CONCURRENT_ACCOUNTS = 5
 
 
