@@ -648,6 +648,7 @@ export interface DuplicatedBannerInfo {
 
 export interface ScalingLog {
   id: number;
+  task_id: number | null;  // Reference to the scaling task this log belongs to
   config_id: number | null;
   config_name: string | null;
   account_name: string | null;
@@ -778,6 +779,12 @@ export const getScalingTasks = () =>
 // Get specific scaling task
 export const getScalingTask = (taskId: number) =>
   api.get<ScalingTask>(`/scaling/tasks/${taskId}`);
+
+// Get scaling logs for a specific task
+export const getScalingTaskLogs = (taskId: number, limit = 1000, offset = 0) =>
+  api.get<{ items: ScalingLog[]; total: number }>(
+    `/scaling/tasks/${taskId}/logs?limit=${limit}&offset=${offset}`
+  );
 
 // Cancel scaling task
 export const cancelScalingTask = (taskId: number) =>

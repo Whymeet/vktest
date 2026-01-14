@@ -19,6 +19,7 @@ const Whitelist = lazy(() => import('./pages/Whitelist').then(m => ({ default: m
 const Statistics = lazy(() => import('./pages/Statistics').then(m => ({ default: m.Statistics })));
 const ProfitableAds = lazy(() => import('./pages/ProfitableAds').then(m => ({ default: m.ProfitableAds })));
 const Scaling = lazy(() => import('./pages/Scaling').then(m => ({ default: m.Scaling })));
+const ScalingTaskDetail = lazy(() => import('./pages/ScalingTaskDetail').then(m => ({ default: m.ScalingTaskDetail })));
 const DisableRules = lazy(() => import('./pages/DisableRules').then(m => ({ default: m.DisableRules })));
 const Profile = lazy(() => import('./pages/Profile').then(m => ({ default: m.Profile })));
 const NotFound = lazy(() => import('./pages/NotFound').then(m => ({ default: m.NotFound })));
@@ -56,6 +57,7 @@ function App() {
                 <Route path="statistics" element={<Statistics />} />
                 <Route path="profitable-ads" element={<FeatureRoute feature="leadstech"><ProfitableAds /></FeatureRoute>} />
                 <Route path="scaling" element={<FeatureRoute feature="scaling"><Scaling /></FeatureRoute>} />
+                <Route path="scaling/task/:taskId" element={<FeatureRoute feature="scaling"><ScalingTaskDetail /></FeatureRoute>} />
                 <Route path="disable-rules" element={<FeatureRoute feature="auto_disable"><DisableRules /></FeatureRoute>} />
                 <Route path="settings" element={<Settings />} />
                 <Route path="control" element={<Control />} />

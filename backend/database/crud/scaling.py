@@ -446,17 +446,20 @@ def create_scaling_log(
     error_message: Optional[str] = None,
     total_banners: int = 0,
     duplicated_banners: int = 0,
-    duplicated_banner_ids: Optional[list] = None
+    duplicated_banner_ids: Optional[list] = None,
+    task_id: Optional[int] = None
 ) -> ScalingLog:
     """Create new scaling log entry
 
     Args:
         requested_name: Requested name from config (NULL = used original name)
+        task_id: Reference to the scaling task this log belongs to
     """
     log = ScalingLog(
         user_id=user_id,
         config_id=config_id,
         config_name=config_name,
+        task_id=task_id,
         account_name=account_name,
         original_group_id=original_group_id,
         original_group_name=original_group_name,
@@ -474,6 +477,21 @@ def create_scaling_log(
     db.commit()
     db.refresh(log)
     return log
+
+
+def get_scaling_logs_by_task_id(
+    db: Session,
+    task_id: int,
+    limit: int = 1000,
+    offset: int = 0
+) -> tuple[List[ScalingLog], int]:
+    """Get scaling logs for a specific task"""
+    query = db.query(ScalingLog).filter(ScalingLog.task_id == task_id)
+
+    total = query.count()
+    items = query.order_by(ScalingLog.created_at.desc()).offset(offset).limit(limit).all()
+
+    return items, total
 
 
 def check_group_conditions(stats: dict, conditions: List[ScalingCondition], logger=None) -> bool:

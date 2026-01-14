@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Copy,
@@ -16,6 +17,7 @@ import {
   Target,
   BarChart3,
   AlertTriangle,
+  Eye,
 } from 'lucide-react';
 import {
   getAccounts,
@@ -23,7 +25,7 @@ import {
   createScalingConfig,
   updateScalingConfig,
   deleteScalingConfig,
-  getScalingLogs,
+  getScalingTasks,
   duplicateAdGroup,
   runScalingConfig,
   getDisableRuleMetrics,
@@ -33,7 +35,7 @@ import type {
   Account,
   ScalingConfig,
   ScalingCondition,
-  ScalingLog,
+  ScalingTask,
 } from '../api/client';
 import { Card } from '../components/Card';
 import { Toggle } from '../components/Toggle';
@@ -763,9 +765,10 @@ export function Scaling() {
     refetchOnWindowFocus: false, // Отключаем автоматический refetch при фокусе окна
   });
 
-  const { data: logsData } = useQuery({
-    queryKey: ['scaling-logs'],
-    queryFn: () => getScalingLogs(undefined, 50).then((r: any) => r.data),
+  // Fetch recent scaling tasks for history table
+  const { data: tasksData } = useQuery({
+    queryKey: ['scalingTasks'],
+    queryFn: () => getScalingTasks().then((r) => r.data),
   });
 
   // Load metrics and operators from API (same as DisableRules)
@@ -1096,12 +1099,12 @@ export function Scaling() {
         )}
       </Card>
 
-      {/* Recent Logs */}
+      {/* Recent Task Runs */}
       <Card
-        title="История дублирований"
+        title="История запусков"
         icon={BarChart3}
       >
-        {logsData?.items?.length ? (
+        {(tasksData?.active?.length || tasksData?.recent?.length) ? (
           <>
             {/* Desktop Table */}
             <div className="hidden md:block overflow-x-auto">
@@ -1111,51 +1114,60 @@ export function Scaling() {
                     <th className="px-4 py-3 text-left text-zinc-400">Время</th>
                     <th className="px-4 py-3 text-left text-zinc-400">Конфигурация</th>
                     <th className="px-4 py-3 text-left text-zinc-400">Кабинет</th>
-                    <th className="px-4 py-3 text-left text-zinc-400">Исходная группа</th>
-                    <th className="px-4 py-3 text-left text-zinc-400">Новая группа</th>
-                    <th className="px-4 py-3 text-center text-zinc-400">Объявления</th>
+                    <th className="px-4 py-3 text-center text-zinc-400">Всего</th>
+                    <th className="px-4 py-3 text-center text-zinc-400">Успешно</th>
+                    <th className="px-4 py-3 text-center text-zinc-400">Ошибок</th>
                     <th className="px-4 py-3 text-center text-zinc-400">Статус</th>
+                    <th className="px-4 py-3 text-center text-zinc-400"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {logsData.items.map((log: ScalingLog) => (
-                    <tr key={log.id} className="border-b border-zinc-800 hover:bg-zinc-800/50">
-                      <td className="px-4 py-3 text-zinc-300">
-                        {new Date(log.created_at).toLocaleString('ru')}
+                  {[...(tasksData?.active || []), ...(tasksData?.recent || [])].map((task: ScalingTask) => (
+                    <tr key={task.id} className="border-b border-zinc-800 hover:bg-zinc-800/50">
+                      <td className="px-4 py-3 text-zinc-300 whitespace-nowrap">
+                        {task.created_at ? new Date(task.created_at).toLocaleString('ru') : '—'}
                       </td>
-                      <td className="px-4 py-3 text-zinc-300">{log.config_name || '—'}</td>
-                      <td className="px-4 py-3 text-zinc-300">{log.account_name || '—'}</td>
-                      <td className="px-4 py-3">
-                        <div>
-                          <span className="text-white">{log.original_group_name || 'Без названия'}</span>
-                          {log.original_group_id && (
-                            <span className="block text-xs text-zinc-400 font-mono">ID: {log.original_group_id}</span>
-                          )}
-                        </div>
+                      <td className="px-4 py-3 text-zinc-300">{task.config_name || 'Ручное'}</td>
+                      <td className="px-4 py-3 text-zinc-300 max-w-[200px] truncate" title={task.account_name || ''}>
+                        {task.account_name || '—'}
                       </td>
-                      <td className="px-4 py-3">
-                        {log.new_group_id ? (
-                          <div>
-                            <span className="text-white">{log.new_group_name || 'Без названия'}</span>
-                            <span className="block text-xs text-zinc-400 font-mono">ID: {log.new_group_id}</span>
-                          </div>
-                        ) : (
-                          <span className="text-zinc-500">—</span>
-                        )}
+                      <td className="px-4 py-3 text-center text-zinc-300">
+                        {task.total_operations}
+                      </td>
+                      <td className="px-4 py-3 text-center text-green-400 font-medium">
+                        {task.successful_operations}
+                      </td>
+                      <td className="px-4 py-3 text-center text-red-400 font-medium">
+                        {task.failed_operations}
                       </td>
                       <td className="px-4 py-3 text-center">
-                        <div className="text-zinc-300">
-                          {log.duplicated_banners} / {log.total_banners}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        {log.success ? (
+                        {task.status === 'completed' && task.failed_operations === 0 && (
                           <CheckCircle className="w-5 h-5 text-green-400 inline" />
-                        ) : (
-                          <span className="text-red-400" title={log.error_message || ''}>
-                            <XCircle className="w-5 h-5 inline" />
-                          </span>
                         )}
+                        {task.status === 'completed' && task.failed_operations > 0 && (
+                          <AlertTriangle className="w-5 h-5 text-yellow-400 inline" />
+                        )}
+                        {task.status === 'failed' && (
+                          <XCircle className="w-5 h-5 text-red-400 inline" />
+                        )}
+                        {task.status === 'running' && (
+                          <RefreshCw className="w-5 h-5 text-blue-400 inline animate-spin" />
+                        )}
+                        {task.status === 'pending' && (
+                          <Clock className="w-5 h-5 text-zinc-400 inline" />
+                        )}
+                        {task.status === 'cancelled' && (
+                          <XCircle className="w-5 h-5 text-zinc-500 inline" />
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <Link
+                          to={`/scaling/task/${task.id}`}
+                          className="p-2 text-blue-400 hover:bg-blue-900/20 rounded transition-colors inline-flex"
+                          title="Подробнее"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </Link>
                       </td>
                     </tr>
                   ))}
@@ -1165,47 +1177,49 @@ export function Scaling() {
 
             {/* Mobile Cards */}
             <div className="md:hidden space-y-3">
-              {logsData.items.map((log: ScalingLog) => (
-                <div key={log.id} className="p-3 bg-zinc-800/50 rounded-lg border border-zinc-700">
+              {[...(tasksData?.active || []), ...(tasksData?.recent || [])].map((task: ScalingTask) => (
+                <Link
+                  key={task.id}
+                  to={`/scaling/task/${task.id}`}
+                  className="block p-3 bg-zinc-800/50 rounded-lg border border-zinc-700 hover:border-zinc-600 transition-colors"
+                >
                   <div className="flex items-start justify-between gap-2 mb-2">
                     <div className="flex-1 min-w-0">
                       <p className="text-white text-sm font-medium truncate">
-                        {log.original_group_name || 'Без названия'}
+                        {task.config_name || 'Ручное дублирование'}
                       </p>
                       <p className="text-xs text-zinc-400">
-                        {new Date(log.created_at).toLocaleString('ru')}
+                        {task.created_at ? new Date(task.created_at).toLocaleString('ru') : '—'}
                       </p>
                     </div>
-                    {log.success ? (
+                    {task.status === 'completed' && task.failed_operations === 0 && (
                       <CheckCircle className="w-5 h-5 text-green-400 flex-shrink-0" />
-                    ) : (
+                    )}
+                    {task.status === 'completed' && task.failed_operations > 0 && (
+                      <AlertTriangle className="w-5 h-5 text-yellow-400 flex-shrink-0" />
+                    )}
+                    {task.status === 'failed' && (
                       <XCircle className="w-5 h-5 text-red-400 flex-shrink-0" />
                     )}
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div>
-                      <span className="text-zinc-500">Конфиг:</span>
-                      <span className="text-zinc-300 ml-1">{log.config_name || '—'}</span>
-                    </div>
-                    <div>
-                      <span className="text-zinc-500">Кабинет:</span>
-                      <span className="text-zinc-300 ml-1">{log.account_name || '—'}</span>
-                    </div>
-                    <div>
-                      <span className="text-zinc-500">Объявления:</span>
-                      <span className="text-zinc-300 ml-1">{log.duplicated_banners}/{log.total_banners}</span>
-                    </div>
-                    {log.new_group_id && (
-                      <div>
-                        <span className="text-zinc-500">Новый ID:</span>
-                        <span className="text-zinc-300 ml-1 font-mono">{log.new_group_id}</span>
-                      </div>
+                    {task.status === 'running' && (
+                      <RefreshCw className="w-5 h-5 text-blue-400 flex-shrink-0 animate-spin" />
                     )}
                   </div>
-                  {!log.success && log.error_message && (
-                    <p className="text-xs text-red-400 mt-2 truncate">{log.error_message}</p>
-                  )}
-                </div>
+                  <div className="grid grid-cols-3 gap-2 text-xs">
+                    <div>
+                      <span className="text-zinc-500">Всего:</span>
+                      <span className="text-zinc-300 ml-1">{task.total_operations}</span>
+                    </div>
+                    <div>
+                      <span className="text-zinc-500">Успешно:</span>
+                      <span className="text-green-400 ml-1">{task.successful_operations}</span>
+                    </div>
+                    <div>
+                      <span className="text-zinc-500">Ошибок:</span>
+                      <span className="text-red-400 ml-1">{task.failed_operations}</span>
+                    </div>
+                  </div>
+                </Link>
               ))}
             </div>
           </>
@@ -1214,7 +1228,7 @@ export function Scaling() {
             <Copy className="w-12 h-12 text-zinc-600 mx-auto mb-3" />
             <p className="text-zinc-400">История пуста</p>
             <p className="text-sm text-zinc-500 mt-1">
-              Здесь будет отображаться история дублирований
+              Здесь будет отображаться история запусков масштабирования
             </p>
           </div>
         )}

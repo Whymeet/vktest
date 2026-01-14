@@ -84,7 +84,8 @@ def run_duplication_task(
                         total_banners=result.get("total_banners", 0),
                         duplicated_banners=len(result.get("duplicated_banners", [])),
                         duplicated_banner_ids=banner_ids_data,
-                        requested_name=new_name
+                        requested_name=new_name,
+                        task_id=task_id
                     )
 
                     if result.get("success"):
@@ -114,7 +115,8 @@ def run_duplication_task(
                         original_group_id=group_id,
                         original_group_name=None,
                         success=False,
-                        error_message=error_msg
+                        error_message=error_msg,
+                        task_id=task_id
                     )
                     failed += 1
                     crud.update_scaling_task_progress(

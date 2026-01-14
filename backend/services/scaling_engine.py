@@ -777,7 +777,8 @@ class BannerScalingEngine:
                 duplicated_banner_ids=[
                     {"original_id": b.get("original_id"), "new_id": b.get("new_id"), "name": b.get("name")}
                     for b in result.get("duplicated_banners", [])
-                ]
+                ],
+                task_id=self.task_id
             )
 
             # Update with classification data (new fields)
