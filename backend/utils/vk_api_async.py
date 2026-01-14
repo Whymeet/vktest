@@ -12,8 +12,8 @@ from utils.logging_setup import get_logger
 logger = get_logger(service="vk_api")
 
 # Константы для ретраев
-API_MAX_RETRIES = 3
-API_RETRY_DELAY_SECONDS = 3  # Уменьшено до 3 секунд
+API_MAX_RETRIES = 4  # Увеличено для устойчивости к перегрузкам VK API
+API_RETRY_DELAY_SECONDS = 5
 API_RETRY_STATUS_CODES = {429, 500, 502, 503, 504}
 
 
@@ -32,7 +32,7 @@ async def _request_with_retries(
 ) -> aiohttp.ClientResponse:
     """
     Асинхронная обёртка с ретраями по временным ошибкам:
-    429, 500, 502, 503, 504 + сетевые ошибки.
+    429, 500, 502, 503, 504 + сетевые ошибки + таймауты.
     """
     attempt = 0
 
@@ -40,6 +40,21 @@ async def _request_with_retries(
         attempt += 1
         try:
             resp = await session.request(method, url, **kwargs)
+        except asyncio.TimeoutError:
+            # Таймаут - VK API перегружен, ждём и ретраим
+            if attempt > max_retries:
+                logger.error(
+                    f"❌ {method} {url} — таймаут после {attempt} попыток"
+                )
+                raise
+
+            wait = min(5 + attempt * 3, 15)  # 8, 11, 14 сек
+            logger.warning(
+                f"⚠️ {method} {url} — таймаут. "
+                f"Пауза {wait} сек перед повтором ({attempt}/{max_retries})"
+            )
+            await asyncio.sleep(wait)
+            continue
         except aiohttp.ClientError as e:
             if attempt > max_retries:
                 logger.error(
@@ -131,7 +146,7 @@ async def get_banners_active(
             url,
             headers=_headers(token),
             params=params,
-            timeout=aiohttp.ClientTimeout(total=20),
+            timeout=aiohttp.ClientTimeout(total=60),  # Увеличено для перегруженного VK API
         )
 
         if resp.status != 200:
@@ -203,7 +218,7 @@ async def get_banners_stats_day(
             url,
             headers=_headers(token),
             params=params,
-            timeout=aiohttp.ClientTimeout(total=30),
+            timeout=aiohttp.ClientTimeout(total=60),  # Увеличено для перегруженного VK API
         )
 
         if resp.status != 200:
@@ -332,7 +347,7 @@ async def get_banners_stats_batched(
             url,
             headers=_headers(token),
             params=params,
-            timeout=aiohttp.ClientTimeout(total=30),
+            timeout=aiohttp.ClientTimeout(total=60),  # Увеличено для перегруженного VK API
         )
 
         if resp.status != 200:
@@ -599,7 +614,7 @@ async def toggle_ad_group_status(
             url,
             headers=_headers(token),
             json=data,
-            timeout=aiohttp.ClientTimeout(total=20),
+            timeout=aiohttp.ClientTimeout(total=60),  # Увеличено для перегруженного VK API
         )
     except Exception as e:
         logger.error(
