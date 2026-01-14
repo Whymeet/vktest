@@ -674,3 +674,203 @@ async def trigger_statistics_refresh(
 
     logger.info(f"✅ Триггер обновления статистики завершен (группа {group_id})")
     return {"success": True, "group_id": group_id, "wait_seconds": wait_seconds}
+
+
+async def get_ad_group(
+    session: aiohttp.ClientSession,
+    token: str,
+    base_url: str,
+    group_id: int,
+) -> dict:
+    """
+    Получает информацию о группе объявлений, включая бюджет.
+    
+    Returns:
+        dict с полями: id, name, status, budget (budget_limit_day в копейках / 100 = рубли)
+    """
+    url = f"{base_url}/ad_groups/{group_id}.json"
+    
+    # Запрашиваем нужные поля включая budget_limit_day
+    params = {
+        "fields": "id,name,status,budget_limit,budget_limit_day"
+    }
+    
+    try:
+        resp = await _request_with_retries(
+            session,
+            "GET",
+            url,
+            headers=_headers(token),
+            params=params,
+            timeout=aiohttp.ClientTimeout(total=30),
+        )
+    except Exception as e:
+        logger.error(f"❌ Ошибка получения группы {group_id}: {e}")
+        return {"success": False, "error": str(e)}
+    
+    if resp.status != 200:
+        text = await resp.text()
+        logger.error(f"❌ HTTP {resp.status} при получении группы {group_id}: {text[:200]}")
+        return {"success": False, "error": f"HTTP {resp.status}: {text[:200]}"}
+    
+    data = await resp.json()
+    
+    # VK API возвращает budget_limit_day как decimal в РУБЛЯХ (не копейках!)
+    budget_limit_day = float(data.get("budget_limit_day", 0) or 0)
+    
+    logger.debug(f"📊 Группа {group_id} '{data.get('name')}': budget_limit_day={budget_limit_day}₽")
+    
+    return {
+        "success": True,
+        "id": data.get("id"),
+        "name": data.get("name"),
+        "status": data.get("status"),
+        "budget": budget_limit_day,  # В рублях (VK API возвращает decimal)
+        "budget_limit_day": budget_limit_day,  # В рублях (оригинал)
+        "raw": data
+    }
+
+
+async def update_ad_group_budget(
+    session: aiohttp.ClientSession,
+    token: str,
+    base_url: str,
+    group_id: int,
+    new_budget_rubles: float,
+    dry_run: bool = True,
+) -> dict:
+    """
+    Изменяет дневной бюджет группы объявлений.
+    
+    Args:
+        group_id: ID группы
+        new_budget_rubles: новый бюджет в рублях
+        dry_run: если True, только логирует без реального изменения
+        
+    Returns:
+        dict с результатом операции
+    """
+    if dry_run:
+        logger.info(f"🧪 [DRY RUN] Изменение бюджета группы {group_id} на {new_budget_rubles:.2f}₽")
+        return {
+            "success": True,
+            "dry_run": True,
+            "group_id": group_id,
+            "new_budget": new_budget_rubles
+        }
+    
+    url = f"{base_url}/ad_groups/{group_id}.json"
+    
+    # VK API принимает budget_limit_day как decimal в РУБЛЯХ (не копейках!)
+    # Минимальный бюджет VK Ads - 100 рублей
+    if new_budget_rubles < 100:
+        logger.warning(f"⚠️ Бюджет {new_budget_rubles:.2f}₽ меньше минимума VK (100₽), устанавливаем 100₽")
+        new_budget_rubles = 100.0
+    
+    data = {"budget_limit_day": new_budget_rubles}
+    
+    logger.info(f"💰 Изменение бюджета группы {group_id}: {new_budget_rubles:.2f}₽")
+    
+    try:
+        resp = await _request_with_retries(
+            session,
+            "POST",
+            url,
+            headers=_headers(token),
+            json=data,
+            timeout=aiohttp.ClientTimeout(total=30),
+        )
+    except Exception as e:
+        logger.error(f"❌ Ошибка изменения бюджета группы {group_id}: {e}")
+        return {"success": False, "error": str(e), "group_id": group_id}
+    
+    if resp.status in (200, 204):
+        logger.info(f"✅ Бюджет группы {group_id} изменен на {new_budget_rubles:.2f}₽")
+        return {
+            "success": True,
+            "group_id": group_id,
+            "new_budget": new_budget_rubles,
+            "new_budget_limit_day": new_budget_rubles  # В рублях
+        }
+    
+    text = await resp.text()
+    error_msg = f"HTTP {resp.status}: {text[:200]}"
+    logger.error(f"❌ Ошибка изменения бюджета группы {group_id}: {error_msg}")
+    return {"success": False, "error": error_msg, "group_id": group_id}
+
+
+async def change_ad_group_budget_percent(
+    session: aiohttp.ClientSession,
+    token: str,
+    base_url: str,
+    group_id: int,
+    change_percent: float,
+    change_direction: str,
+    dry_run: bool = True,
+) -> dict:
+    """
+    Изменяет бюджет группы объявлений на указанный процент.
+    
+    Args:
+        group_id: ID группы
+        change_percent: процент изменения (1-20)
+        change_direction: "increase" или "decrease"
+        dry_run: если True, только логирует без реального изменения
+        
+    Returns:
+        dict с результатом операции, включая старый и новый бюджет
+    """
+    # Получаем текущий бюджет
+    group_info = await get_ad_group(session, token, base_url, group_id)
+    
+    if not group_info.get("success"):
+        return {
+            "success": False,
+            "error": f"Не удалось получить информацию о группе: {group_info.get('error')}",
+            "group_id": group_id
+        }
+    
+    old_budget = group_info.get("budget", 0)
+    group_name = group_info.get("name", "Unknown")
+    raw_data = group_info.get("raw", {})
+    
+    if old_budget <= 0:
+        logger.warning(f"⚠️ Группа {group_id} '{group_name}' имеет нулевой бюджет (budget_limit_day={group_info.get('budget_limit_day', 0)})")
+        logger.warning(f"   Это означает 'безлимитный' бюджет - изменение на % невозможно")
+        return {
+            "success": False,
+            "error": "Группа без дневного лимита (безлимитный бюджет) - изменение на % невозможно",
+            "group_id": group_id,
+            "group_name": group_name,
+            "old_budget": old_budget
+        }
+    
+    # Вычисляем новый бюджет
+    multiplier = change_percent / 100
+    if change_direction == "increase":
+        new_budget = old_budget * (1 + multiplier)
+        action = "увеличен"
+    else:  # decrease
+        new_budget = old_budget * (1 - multiplier)
+        action = "уменьшен"
+    
+    # Округляем до 2 знаков
+    new_budget = round(new_budget, 2)
+    
+    logger.info(
+        f"📊 Группа {group_id} ({group_name}): бюджет {old_budget:.2f}₽ → {new_budget:.2f}₽ "
+        f"({action} на {change_percent}%)"
+    )
+    
+    # Изменяем бюджет
+    result = await update_ad_group_budget(
+        session, token, base_url, group_id, new_budget, dry_run
+    )
+    
+    # Добавляем дополнительную информацию
+    result["old_budget"] = old_budget
+    result["group_name"] = group_name
+    result["change_percent"] = change_percent
+    result["change_direction"] = change_direction
+    
+    return result

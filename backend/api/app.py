@@ -45,6 +45,7 @@ from api.routers import (
     scaling_router,
     disable_rules_router,
     auto_disable_router,
+    budget_rules_router,
 )
 
 # Initialize Loguru
@@ -91,6 +92,7 @@ app.include_router(leadstech_router)
 app.include_router(scaling_router)
 app.include_router(disable_rules_router)
 app.include_router(auto_disable_router)
+app.include_router(budget_rules_router)
 
 
 @app.on_event("startup")
