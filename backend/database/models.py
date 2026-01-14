@@ -37,6 +37,7 @@ class User(Base):
     settings = relationship("UserSettings", back_populates="user", cascade="all, delete-orphan")
     whitelist_banners = relationship("WhitelistBanner", back_populates="user", cascade="all, delete-orphan")
     disable_rules = relationship("DisableRule", back_populates="user", cascade="all, delete-orphan")
+    budget_rules = relationship("BudgetRule", back_populates="user", cascade="all, delete-orphan")
     scaling_configs = relationship("ScalingConfig", back_populates="user", cascade="all, delete-orphan")
     process_states = relationship("ProcessState", back_populates="user", cascade="all, delete-orphan")
     leadstech_config = relationship("LeadsTechConfig", back_populates="user", cascade="all, delete-orphan", uselist=False)
@@ -863,3 +864,223 @@ class DisableRuleCondition(Base):
 
     def __repr__(self):
         return f"<DisableRuleCondition(metric='{self.metric}', operator='{self.operator}', value={self.value})>"
+
+
+# ===== Budget Rules Models (автоизменение бюджета групп объявлений) =====
+
+class BudgetRuleAccount(Base):
+    """Many-to-many link between BudgetRule and Account"""
+    __tablename__ = "budget_rule_accounts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    rule_id = Column(Integer, ForeignKey("budget_rules.id", ondelete="CASCADE"), nullable=False)
+    account_id = Column(Integer, ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False)
+    created_at = Column(DateTime, default=get_moscow_time, nullable=False)
+
+    def __repr__(self):
+        return f"<BudgetRuleAccount(rule_id={self.rule_id}, account_id={self.account_id})>"
+
+
+class BudgetRule(Base):
+    """
+    Rule block for auto-changing ad group budgets.
+    Each rule contains multiple conditions that must ALL be met (AND logic).
+    A rule can be applied to specific accounts.
+    
+    When conditions are met for a banner, its ad_group budget is changed by change_percent.
+    """
+    __tablename__ = "budget_rules"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    # Rule identification
+    name = Column(String(255), nullable=False)  # Human-readable name
+    description = Column(Text, nullable=True)  # Optional description
+
+    # Rule status
+    enabled = Column(Boolean, default=True)
+    priority = Column(Integer, default=0)  # Higher priority rules checked first
+    
+    # Scheduling
+    schedule_time = Column(String(5), nullable=True)  # "HH:MM" format, e.g. "07:00"
+    scheduled_enabled = Column(Boolean, default=False)  # Whether scheduled execution is enabled
+
+    # Budget change settings
+    change_percent = Column(Float, nullable=False)  # 1-20%, how much to change budget
+    change_direction = Column(String(20), nullable=False)  # "increase" or "decrease"
+
+    # ROI settings (for LeadsTech integration)
+    roi_sub_field = Column(String(10), nullable=True)  # "sub4" or "sub5", NULL = use default from config
+
+    # Analysis period
+    lookback_days = Column(Integer, default=7)  # Period for statistics analysis
+    
+    # Last execution timestamp
+    last_run_at = Column(DateTime, nullable=True)
+
+    # Timestamps
+    created_at = Column(DateTime, default=get_moscow_time, nullable=False)
+    updated_at = Column(DateTime, default=get_moscow_time, onupdate=get_moscow_time, nullable=False)
+
+    # Relationships
+    user = relationship("User", back_populates="budget_rules")
+    conditions = relationship("BudgetRuleCondition", back_populates="rule", cascade="all, delete-orphan")
+    rule_accounts = relationship("BudgetRuleAccount", backref="rule", cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<BudgetRule(id={self.id}, name='{self.name}', change={self.change_direction} {self.change_percent}%)>"
+
+
+class BudgetRuleCondition(Base):
+    """
+    Single condition within a budget rule.
+    All conditions in a rule must be satisfied for the rule to trigger (AND logic).
+    
+    Available metrics (same as DisableRule):
+    - goals: количество результатов/конверсий (vk_goals)
+    - spent: потраченный бюджет (в рублях)
+    - clicks: количество кликов
+    - shows: количество показов
+    - ctr: CTR (click-through rate, %)
+    - cpc: цена за клик (cost per click)
+    - cr: Conversion Rate (%)
+    - cost_per_goal: цена за результат (spent / goals)
+    - roi: ROI из LeadsTech (%)
+    
+    Available operators:
+    - equals (==)
+    - not_equals (!=)
+    - greater_than (>)
+    - less_than (<)
+    - greater_or_equal (>=)
+    - less_or_equal (<=)
+    """
+    __tablename__ = "budget_rule_conditions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    
+    # Link to rule
+    rule_id = Column(Integer, ForeignKey("budget_rules.id", ondelete="CASCADE"), nullable=False)
+    
+    # Condition definition
+    metric = Column(String(50), nullable=False)
+    operator = Column(String(20), nullable=False)
+    value = Column(Float, nullable=False)
+    
+    # Order for display
+    order = Column(Integer, default=0)
+    
+    # Timestamps
+    created_at = Column(DateTime, default=get_moscow_time, nullable=False)
+    
+    # Relationship
+    rule = relationship("BudgetRule", back_populates="conditions")
+
+    def __repr__(self):
+        return f"<BudgetRuleCondition(metric='{self.metric}', operator='{self.operator}', value={self.value})>"
+
+
+class BudgetChangeLog(Base):
+    """Log of budget change operations"""
+    __tablename__ = "budget_change_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    # Reference to rule
+    rule_id = Column(Integer, ForeignKey("budget_rules.id", ondelete="SET NULL"), nullable=True)
+    rule_name = Column(String(255), nullable=True)
+
+    # Account info
+    account_name = Column(String(255), nullable=True)
+    vk_account_id = Column(Integer, nullable=True, index=True)
+
+    # Ad Group info
+    ad_group_id = Column(BigInteger, nullable=False, index=True)
+    ad_group_name = Column(String(500), nullable=True)
+
+    # Banner that triggered the rule (for logging)
+    banner_id = Column(BigInteger, nullable=True)
+    banner_name = Column(String(500), nullable=True)
+
+    # Budget change info
+    old_budget = Column(Float, nullable=True)  # Budget before change (in rubles)
+    new_budget = Column(Float, nullable=True)  # Budget after change (in rubles)
+    change_percent = Column(Float, nullable=False)  # Percent changed (1-20)
+    change_direction = Column(String(20), nullable=False)  # "increase" or "decrease"
+
+    # Statistics at the time of change
+    stats_snapshot = Column(JSON, nullable=True)  # {spent, shows, clicks, goals, cost_per_goal, roi}
+
+    # Result
+    success = Column(Boolean, default=False)
+    error_message = Column(Text, nullable=True)
+
+    # Dry run flag
+    is_dry_run = Column(Boolean, default=False)
+
+    # Analysis info
+    lookback_days = Column(Integer, nullable=True)
+    analysis_date_from = Column(String(20), nullable=True)
+    analysis_date_to = Column(String(20), nullable=True)
+
+    # Timestamp
+    created_at = Column(DateTime, default=get_moscow_time, nullable=False, index=True)
+
+    # Composite indexes for common query patterns
+    __table_args__ = (
+        # Query logs by user and rule
+        Index('ix_budget_logs_user_rule', 'user_id', 'rule_id'),
+        # Query logs by user sorted by date
+        Index('ix_budget_logs_user_created', 'user_id', 'created_at'),
+        # Query logs by ad_group
+        Index('ix_budget_logs_user_adgroup', 'user_id', 'ad_group_id'),
+    )
+
+    def __repr__(self):
+        return f"<BudgetChangeLog(ad_group={self.ad_group_id}, {self.change_direction} {self.change_percent}%, success={self.success})>"
+
+
+class BudgetRuleTask(Base):
+    """Active budget rule task for real-time tracking"""
+    __tablename__ = "budget_rule_tasks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    # Task type: 'manual' or 'scheduled'
+    task_type = Column(String(20), nullable=False, default='manual')
+
+    # Rule reference
+    rule_id = Column(Integer, ForeignKey("budget_rules.id", ondelete="SET NULL"), nullable=True)
+    rule_name = Column(String(255), nullable=True)
+
+    # Account info
+    account_name = Column(String(255), nullable=True)
+
+    # Task status: 'pending', 'running', 'completed', 'failed', 'cancelled'
+    status = Column(String(20), nullable=False, default='pending')
+
+    # Progress tracking
+    total_accounts = Column(Integer, default=0)
+    completed_accounts = Column(Integer, default=0)
+    total_changes = Column(Integer, default=0)
+    successful_changes = Column(Integer, default=0)
+    failed_changes = Column(Integer, default=0)
+
+    # Current operation info
+    current_account = Column(String(255), nullable=True)
+    current_step = Column(String(255), nullable=True)  # e.g. "loading_banners", "analyzing", "applying_changes"
+
+    # Error info
+    last_error = Column(Text, nullable=True)
+
+    # Timestamps
+    created_at = Column(DateTime, default=get_moscow_time, nullable=False)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+
+    def __repr__(self):
+        return f"<BudgetRuleTask(id={self.id}, rule='{self.rule_name}', status='{self.status}')>"

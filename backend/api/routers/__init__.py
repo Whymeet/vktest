@@ -13,6 +13,7 @@ from api.routers.leadstech import router as leadstech_router
 from api.routers.scaling import router as scaling_router
 from api.routers.disable_rules import router as disable_rules_router
 from api.routers.auto_disable import router as auto_disable_router
+from api.routers.budget_rules import router as budget_rules_router
 
 __all__ = [
     "dashboard_router",
@@ -27,4 +28,5 @@ __all__ = [
     "scaling_router",
     "disable_rules_router",
     "auto_disable_router",
+    "budget_rules_router",
 ]

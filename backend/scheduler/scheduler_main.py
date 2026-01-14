@@ -39,6 +39,7 @@ from scheduler.event_logger import log_scheduler_event, EventType
 from scheduler.analysis import run_analysis
 from scheduler.reenable import run_reenable_analysis
 from scheduler.roi_reenable import run_roi_reenable_analysis
+from scheduler.budget_rules import run_budget_rules_analysis
 
 # Initialize logging
 setup_logging()
@@ -153,6 +154,12 @@ class VKAdsScheduler:
                         "roi_threshold": 50.0,
                         "dry_run": True,
                         "delay_after_analysis_seconds": 30
+                    }
+                # Ensure budget_rules settings exist
+                if "budget_rules" not in self.settings:
+                    self.settings["budget_rules"] = {
+                        "enabled": False,
+                        "dry_run": True
                     }
             else:
                 self.settings = get_default_settings()
@@ -280,6 +287,15 @@ class VKAdsScheduler:
         else:
             self.logger.error("Both analyses failed")
 
+        # Run budget rules analysis (after main analysis, before reenable)
+        if not self.should_stop:
+            budget_settings = self.settings.get("budget_rules", {})
+            if budget_settings.get("enabled", False):
+                self.logger.info("Running budget rules analysis...")
+                self._run_budget_rules()
+            else:
+                self.logger.debug("Budget rules disabled in settings")
+
         # Pass 3: auto-reenable (only if interval passed)
         current_pass = 3
         if should_run_reenable and not self.should_stop:
@@ -313,6 +329,45 @@ class VKAdsScheduler:
             self.last_roi_reenable_time = get_moscow_time()
 
         return success1 or success2
+
+    def _run_budget_rules(self):
+        """Run budget rules analysis with current settings"""
+        user_id = int(self.user_id) if self.user_id else None
+        if not user_id:
+            self.logger.error("user_id not set, budget rules not possible")
+            return
+
+        budget_settings = self.settings.get("budget_rules", {})
+
+        db = SessionLocal()
+        try:
+            analysis_settings = crud.get_user_setting(db, user_id, 'analysis_settings') or {}
+
+            run_budget_rules_analysis(
+                db=db,
+                user_id=user_id,
+                username=self.username,
+                budget_settings=budget_settings,
+                analysis_settings=analysis_settings,
+                should_stop_fn=self._should_stop,
+                run_count=self.run_count,
+                logger_override=self.logger
+            )
+        except Exception as e:
+            self.logger.error(f"Critical budget rules error: {e}")
+            import traceback
+            self.logger.error(traceback.format_exc())
+
+            log_scheduler_event(
+                EventType.ANALYSIS_ERROR,
+                f"Budget rules exception: {e}",
+                username=self.username,
+                user_id=str(user_id),
+                run_count=self.run_count,
+                extra_data={"exception": str(e), "type": "budget_rules"}
+            )
+        finally:
+            db.close()
 
     def _run_reenable(self):
         """Run reenable analysis with current settings"""

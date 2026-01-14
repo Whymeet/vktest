@@ -984,3 +984,201 @@ export const getDisableRuleMetrics = () =>
 // Get rules for specific account
 export const getDisableRulesForAccount = (accountId: number, enabledOnly = true) =>
   api.get<{ items: DisableRule[]; total: number }>(`/disable-rules/for-account/${accountId}?enabled_only=${enabledOnly}`);
+
+
+// ===== Budget Rules API (auto-change ad group budgets) =====
+
+export interface BudgetRuleCondition {
+  id?: number;
+  metric: string;
+  operator: string;
+  value: number;
+  order?: number;
+}
+
+export interface BudgetRule {
+  id: number;
+  name: string;
+  description: string | null;
+  enabled: boolean;
+  priority: number;
+  schedule_time: string | null;  // "HH:MM" format, e.g. "07:00"
+  scheduled_enabled: boolean;
+  change_percent: number;  // 1-20%
+  change_direction: 'increase' | 'decrease';
+  lookback_days: number;
+  roi_sub_field: 'sub4' | 'sub5' | null;
+  last_run_at: string | null;
+  created_at: string;
+  updated_at: string;
+  conditions: BudgetRuleCondition[];
+  account_ids: number[];
+  account_names: string[];
+}
+
+export interface BudgetRuleCreate {
+  name: string;
+  description?: string;
+  enabled?: boolean;
+  priority?: number;
+  schedule_time?: string | null;
+  scheduled_enabled?: boolean;
+  change_percent: number;  // 1-20%
+  change_direction: 'increase' | 'decrease';
+  lookback_days?: number;
+  conditions: BudgetRuleCondition[];
+  account_ids?: number[];
+  roi_sub_field?: 'sub4' | 'sub5' | null;
+}
+
+export interface BudgetRuleUpdate {
+  name?: string;
+  description?: string;
+  enabled?: boolean;
+  priority?: number;
+  schedule_time?: string | null;
+  scheduled_enabled?: boolean;
+  change_percent?: number;  // 1-20%
+  change_direction?: 'increase' | 'decrease';
+  lookback_days?: number;
+  conditions?: BudgetRuleCondition[];
+  account_ids?: number[];
+  roi_sub_field?: 'sub4' | 'sub5' | null;
+}
+
+export interface BudgetRuleMetrics {
+  metrics: Array<{
+    value: string;
+    label: string;
+    description: string;
+  }>;
+  operators: Array<{
+    value: string;
+    label: string;
+    description: string;
+  }>;
+  change_directions: Array<{
+    value: string;
+    label: string;
+    description: string;
+  }>;
+  change_percent_limits: {
+    min: number;
+    max: number;
+    description: string;
+  };
+}
+
+export interface BudgetChangeLog {
+  id: number;
+  rule_id: number | null;
+  rule_name: string | null;
+  account_name: string | null;
+  ad_group_id: number;
+  ad_group_name: string | null;
+  banner_id: number | null;
+  banner_name: string | null;
+  old_budget: number | null;
+  new_budget: number | null;
+  change_percent: number;
+  change_direction: 'increase' | 'decrease';
+  stats_snapshot: Record<string, number> | null;
+  success: boolean;
+  error_message: string | null;
+  is_dry_run: boolean;
+  created_at: string;
+}
+
+export interface BudgetRuleSummary {
+  total_rules: number;
+  enabled_rules: number;
+  changes_24h: number;
+  total_logs: number;
+  recent_logs: Array<{
+    id: number;
+    rule_name: string | null;
+    ad_group_id: number;
+    ad_group_name: string | null;
+    account_name: string | null;
+    change_percent: number;
+    change_direction: string;
+    success: boolean;
+    is_dry_run: boolean;
+    created_at: string;
+  }>;
+}
+
+// Get all budget rules
+export const getBudgetRules = () =>
+  api.get<{ items: BudgetRule[]; total: number }>('/budget-rules');
+
+// Get single budget rule
+export const getBudgetRule = (ruleId: number) =>
+  api.get<BudgetRule>(`/budget-rules/${ruleId}`);
+
+// Create new budget rule
+export const createBudgetRule = (data: BudgetRuleCreate) =>
+  api.post<BudgetRule>('/budget-rules', data);
+
+// Update budget rule
+export const updateBudgetRule = (ruleId: number, data: BudgetRuleUpdate) =>
+  api.put<BudgetRule>(`/budget-rules/${ruleId}`, data);
+
+// Delete budget rule
+export const deleteBudgetRule = (ruleId: number) =>
+  api.delete<{ message: string }>(`/budget-rules/${ruleId}`);
+
+// Get available metrics and operators for budget rules
+export const getBudgetRuleMetrics = () =>
+  api.get<BudgetRuleMetrics>('/budget-rules/metrics');
+
+// Get budget rules for specific account
+export const getBudgetRulesForAccount = (accountId: number, enabledOnly = true) =>
+  api.get<{ items: BudgetRule[]; total: number }>(`/budget-rules/for-account/${accountId}?enabled_only=${enabledOnly}`);
+
+// Get budget change logs
+export const getBudgetChangeLogs = (ruleId?: number, limit = 100, offset = 0) => {
+  const params = new URLSearchParams();
+  if (ruleId) params.append('rule_id', ruleId.toString());
+  params.append('limit', limit.toString());
+  params.append('offset', offset.toString());
+  return api.get<{ items: BudgetChangeLog[]; total: number }>(`/budget-rules/logs?${params.toString()}`);
+};
+
+// Get budget rules summary
+export const getBudgetRulesSummary = () =>
+  api.get<BudgetRuleSummary>('/budget-rules/summary');
+
+// Run budget rule manually (execute now)
+export const runBudgetRule = (ruleId: number, dryRun = false) =>
+  api.post<{ message: string; task_id: number; rule_id: number; accounts_count: number; dry_run: boolean }>(
+    `/budget-rules/run/${ruleId}?dry_run=${dryRun}`
+  );
+
+// Budget rule task tracking
+export interface BudgetRuleTaskData {
+  id: number;
+  task_type: 'manual' | 'scheduled';
+  rule_id: number | null;
+  rule_name: string | null;
+  account_name: string | null;
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+  total_accounts: number;
+  completed_accounts: number;
+  total_changes: number;
+  successful_changes: number;
+  failed_changes: number;
+  current_account: string | null;
+  current_step: string | null;
+  last_error: string | null;
+  progress: number;
+  created_at: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+export const getBudgetRuleTasks = () =>
+  api.get<{ active: BudgetRuleTaskData[]; recent: BudgetRuleTaskData[] }>('/budget-rules/tasks');
+
+export const cancelBudgetRuleTask = (taskId: number) =>
+  api.post<{ message: string }>(`/budget-rules/tasks/${taskId}/cancel`);
