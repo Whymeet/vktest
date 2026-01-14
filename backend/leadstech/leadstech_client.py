@@ -162,6 +162,63 @@ class LeadstechClient:
         self._clear_token_cache()
         return self._get_token()
 
+    def _request_with_retry(
+        self,
+        url: str,
+        headers: Dict[str, str],
+        params: List[tuple],
+        page: int,
+        max_retries: int = 3,
+    ) -> requests.Response:
+        """
+        Make HTTP request with retry logic for transient errors.
+        
+        Retries on:
+        - 503 Service Unavailable
+        - 504 Gateway Timeout
+        - Connection errors
+        - Timeouts
+        
+        Uses exponential backoff: 2s, 4s, 8s between retries.
+        """
+        last_error = None
+        
+        for attempt in range(1, max_retries + 1):
+            try:
+                resp = requests.get(url, headers=headers, params=params, timeout=30)
+                
+                # Check for retryable HTTP errors
+                if resp.status_code in (503, 504):
+                    if attempt < max_retries:
+                        wait_time = 2 ** attempt  # 2, 4, 8 seconds
+                        logger.warning(
+                            f"LeadsTech: HTTP {resp.status_code} on page={page}, "
+                            f"retrying in {wait_time}s ({attempt}/{max_retries})"
+                        )
+                        time.sleep(wait_time)
+                        continue
+                    else:
+                        # Last attempt failed, raise the error
+                        resp.raise_for_status()
+                
+                return resp
+                
+            except (requests.Timeout, requests.ConnectionError) as e:
+                last_error = e
+                if attempt < max_retries:
+                    wait_time = 2 ** attempt
+                    logger.warning(
+                        f"LeadsTech: network error on page={page}: {e}. "
+                        f"Retrying in {wait_time}s ({attempt}/{max_retries})"
+                    )
+                    time.sleep(wait_time)
+                else:
+                    logger.error(f"LeadsTech: request failed after {max_retries} attempts: {e}")
+                    raise
+        
+        # Should not reach here
+        raise RuntimeError(f"LeadsTech request failed after {max_retries} attempts: {last_error}")
+
     def get_stat_by_subid(
         self,
         date_from: date,
@@ -215,11 +272,11 @@ class LeadstechClient:
                 f"{date_from.strftime('%d-%m-%Y')}..{date_to.strftime('%d-%m-%Y')})"
             )
 
-            resp = requests.get(
+            resp = self._request_with_retry(
                 self._by_subid_url,
                 headers=headers,
                 params=params,
-                timeout=30,
+                page=page,
             )
 
             try:
@@ -230,12 +287,12 @@ class LeadstechClient:
                     logger.warning(f"LeadsTech token expired (HTTP {exc.response.status_code}), refreshing...")
                     token = self._refresh_token()
                     headers["X-Auth-Token"] = token
-                    # Retry the same request
-                    resp = requests.get(
+                    # Retry the same request with new token
+                    resp = self._request_with_retry(
                         self._by_subid_url,
                         headers=headers,
                         params=params,
-                        timeout=30,
+                        page=page,
                     )
                     resp.raise_for_status()
                 else:
@@ -325,11 +382,11 @@ class LeadstechClient:
                 f"{date_from.strftime('%d-%m-%Y')}..{date_to.strftime('%d-%m-%Y')})"
             )
 
-            resp = requests.get(
+            resp = self._request_with_retry(
                 self._by_subid_url,
                 headers=headers,
                 params=params,
-                timeout=30,
+                page=page,
             )
 
             try:
@@ -340,12 +397,12 @@ class LeadstechClient:
                     logger.warning(f"LeadsTech token expired (HTTP {exc.response.status_code}), refreshing...")
                     token = self._refresh_token()
                     headers["X-Auth-Token"] = token
-                    # Retry the same request
-                    resp = requests.get(
+                    # Retry the same request with new token
+                    resp = self._request_with_retry(
                         self._by_subid_url,
                         headers=headers,
                         params=params,
-                        timeout=30,
+                        page=page,
                     )
                     resp.raise_for_status()
                 else:
