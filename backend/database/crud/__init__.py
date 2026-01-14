@@ -154,6 +154,7 @@ from database.crud.scaling import (
     set_scaling_conditions,
     # Logs
     get_scaling_logs,
+    get_scaling_logs_by_task_id,
     create_scaling_log,
     # Logic
     check_group_conditions,
@@ -311,6 +312,7 @@ __all__ = [
     "delete_all_scaling_conditions",
     "set_scaling_conditions",
     "get_scaling_logs",
+    "get_scaling_logs_by_task_id",
     "create_scaling_log",
     "check_group_conditions",
     "create_scaling_task",
