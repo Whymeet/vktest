@@ -151,5 +151,5 @@ vpr/
 migrate_data_to_db.py
 DATABASE_MIGRATION.md
 
-.gitignore
+# SSL certificates directory
 certbot/
