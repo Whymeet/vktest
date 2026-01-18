@@ -16,6 +16,7 @@ from api.core.config import (
     LOGS_DIR,
     SCHEDULER_SCRIPT,
     SCALING_SCHEDULER_SCRIPT,
+    BUDGET_RULES_SCHEDULER_SCRIPT,
     MAIN_SCRIPT,
     BOT_SCRIPT,
 )
@@ -38,12 +39,14 @@ async def get_control_status(
     analysis_running, analysis_pid = is_process_running_by_db("analysis", db, current_user.id)
     bot_running, bot_pid = is_process_running_by_db("bot", db, current_user.id)
     scaling_scheduler_running, scaling_scheduler_pid = is_process_running_by_db("scaling_scheduler", db, current_user.id)
+    budget_scheduler_running, budget_scheduler_pid = is_process_running_by_db("budget_scheduler", db, current_user.id)
 
     return {
         "scheduler": {"running": scheduler_running, "pid": scheduler_pid},
         "analysis": {"running": analysis_running, "pid": analysis_pid},
         "bot": {"running": bot_running, "pid": bot_pid},
-        "scaling_scheduler": {"running": scaling_scheduler_running, "pid": scaling_scheduler_pid}
+        "scaling_scheduler": {"running": scaling_scheduler_running, "pid": scaling_scheduler_pid},
+        "budget_scheduler": {"running": budget_scheduler_running, "pid": budget_scheduler_pid}
     }
 
 
@@ -306,6 +309,80 @@ async def stop_scaling_scheduler(
         return {"message": "Scaling scheduler stopped", "pid": pid}
     else:
         raise HTTPException(status_code=500, detail=f"Failed to stop scaling scheduler (PID: {pid})")
+
+
+@router.post("/budget_scheduler/start")
+async def start_budget_scheduler(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Start budget rules scheduler with persistent PID tracking for current user"""
+    is_running, existing_pid = is_process_running_by_db("budget_scheduler", db, current_user.id)
+
+    if is_running:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Budget scheduler already running (PID: {existing_pid})"
+        )
+
+    # Ensure user logs directory exists
+    user_log_dir = LOGS_DIR / f"user_{current_user.id}"
+    user_log_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        # Open log files for stdout/stderr in user's folder
+        budget_scheduler_stdout = open(user_log_dir / "budget_rules_stdout.log", "a", encoding="utf-8")
+        budget_scheduler_stderr = open(user_log_dir / "budget_rules_stderr.log", "a", encoding="utf-8")
+
+        env = os.environ.copy()
+        env["VK_ADS_USER_ID"] = str(current_user.id)
+        env["VK_ADS_USERNAME"] = current_user.username
+
+        process = subprocess.Popen(
+            [sys.executable, str(BUDGET_RULES_SCHEDULER_SCRIPT)],
+            stdout=budget_scheduler_stdout,
+            stderr=budget_scheduler_stderr,
+            cwd=str(PROJECT_ROOT),
+            start_new_session=True,
+            env=env
+        )
+
+        process_name = f"budget_scheduler_{current_user.id}"
+        # Set auto_start=True so scheduler will be restarted after server restart
+        crud.set_process_running(db, process_name, process.pid, str(BUDGET_RULES_SCHEDULER_SCRIPT), user_id=current_user.id, auto_start=True)
+        running_processes[process_name] = process
+
+        print(f"Budget scheduler started with PID: {process.pid} for user {current_user.username}")
+        return {"message": "Budget scheduler started", "pid": process.pid}
+    except Exception as e:
+        print(f"Failed to start budget scheduler: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to start budget scheduler: {str(e)}")
+
+
+@router.post("/budget_scheduler/stop")
+async def stop_budget_scheduler(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Stop budget rules scheduler for current user"""
+    is_running, pid = is_process_running_by_db("budget_scheduler", db, current_user.id)
+
+    if not is_running:
+        raise HTTPException(status_code=400, detail="Budget scheduler not running")
+
+    success = kill_process_by_pid(pid)
+
+    if success:
+        process_name = f"budget_scheduler_{current_user.id}"
+        crud.set_process_stopped(db, process_name)
+
+        if process_name in running_processes:
+            del running_processes[process_name]
+
+        print(f"Budget scheduler stopped (PID: {pid}) for user {current_user.username}")
+        return {"message": "Budget scheduler stopped", "pid": pid}
+    else:
+        raise HTTPException(status_code=500, detail=f"Failed to stop budget scheduler (PID: {pid})")
 
 
 @router.post("/kill-all")

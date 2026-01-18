@@ -28,7 +28,7 @@ sys.stderr = TeeOutput(_backend_log_file, sys.__stderr__)
 from database import init_db
 from utils.logging_setup import setup_logging, get_logger
 from api.core.config import RATE_LIMIT_PER_MINUTE
-from api.services.process_manager import recover_processes_on_startup, autostart_scaling_schedulers, autostart_schedulers
+from api.services.process_manager import recover_processes_on_startup, autostart_scaling_schedulers, autostart_schedulers, autostart_budget_schedulers
 
 # Import routers
 from api.auth_routes import router as auth_router
@@ -120,3 +120,8 @@ async def startup_event():
     print("🔄 Auto-starting schedulers with auto_start=True...")
     autostart_schedulers()
     print("✅ Scheduler auto-start complete")
+
+    # Auto-start budget schedulers that were running before restart
+    print("🔄 Auto-starting budget schedulers with auto_start=True...")
+    autostart_budget_schedulers()
+    print("✅ Budget scheduler auto-start complete")

@@ -15,6 +15,7 @@ if IN_DOCKER:
     DATA_DIR = PROJECT_ROOT / "data"
     SCHEDULER_SCRIPT = PROJECT_ROOT / "scheduler" / "scheduler_main.py"
     SCALING_SCHEDULER_SCRIPT = PROJECT_ROOT / "scheduler" / "scaling_scheduler.py"
+    BUDGET_RULES_SCHEDULER_SCRIPT = PROJECT_ROOT / "scheduler" / "budget_rules_scheduler.py"
     MAIN_SCRIPT = PROJECT_ROOT / "core" / "main.py"
     BOT_SCRIPT = PROJECT_ROOT / "bot" / "telegram_bot.py"
 else:
@@ -24,6 +25,7 @@ else:
     DATA_DIR = PROJECT_ROOT / "data"
     SCHEDULER_SCRIPT = PROJECT_ROOT / "backend" / "scheduler" / "scheduler_main.py"
     SCALING_SCHEDULER_SCRIPT = PROJECT_ROOT / "backend" / "scheduler" / "scaling_scheduler.py"
+    BUDGET_RULES_SCHEDULER_SCRIPT = PROJECT_ROOT / "backend" / "scheduler" / "budget_rules_scheduler.py"
     MAIN_SCRIPT = PROJECT_ROOT / "backend" / "core" / "main.py"
     BOT_SCRIPT = PROJECT_ROOT / "backend" / "bot" / "telegram_bot.py"
 
