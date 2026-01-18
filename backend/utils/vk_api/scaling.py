@@ -12,6 +12,23 @@ from utils.vk_api.campaigns import get_campaign_full
 logger = get_logger(service="vk_api")
 
 
+def apply_name_template(template: str) -> str:
+    """
+    Replace {date} placeholder with current date in DD.MM format.
+
+    Args:
+        template: Name template string, e.g. "Group {date}"
+
+    Returns:
+        Processed string with {date} replaced, e.g. "Group 18.01"
+    """
+    if not template:
+        return template
+    from datetime import datetime
+    date_str = datetime.now().strftime("%d.%m")
+    return template.replace("{date}", date_str)
+
+
 def get_banners_by_ad_group(token: str, base_url: str, ad_group_id: int, include_stopped: bool = True):
     """
     Get all non-deleted banners from a group
@@ -165,7 +182,9 @@ def duplicate_ad_group_full(
     negative_banner_ids: set = None,
     activate_positive: bool = True,
     activate_negative: bool = False,
-    duplicate_negative: bool = True
+    duplicate_negative: bool = True,
+    # Banner name template with {date} support
+    banner_name_template: str = None
 ):
     """
     Full duplication of ad group with all non-deleted banners.
@@ -287,10 +306,10 @@ def duplicate_ad_group_full(
                     print(f"[OK] Got objective: {campaign['objective']}")
 
         # Change name
-        # If new_name is specified and not empty - use it
+        # If new_name is specified and not empty - use it (with {date} template support)
         # If new_name is empty or None - use ORIGINAL group name
         if new_name and new_name.strip():
-            new_group_data['name'] = new_name.strip()
+            new_group_data['name'] = apply_name_template(new_name.strip())
         else:
             # Use original group name
             new_group_data['name'] = original_group.get('name', 'Copy')
@@ -341,11 +360,14 @@ def duplicate_ad_group_full(
             display_name = banner_name if banner_name else f"Banner_{banner_id}"
 
             # Determine banner status and name based on classification
+            # Use banner_name_template if provided (with {date} support), otherwise use display_name
+            banner_display_name = apply_name_template(banner_name_template) if banner_name_template else display_name
+
             if has_classification:
                 if banner_id in positive_ids:
                     # Positive banner
                     target_status = 'active' if activate_positive else 'blocked'
-                    target_name = f"Позитив {display_name}"
+                    target_name = f"Позитив {banner_display_name}"
                     if activate_positive:
                         has_active_banners = True
                 elif banner_id in negative_ids:
@@ -359,7 +381,7 @@ def duplicate_ad_group_full(
                         })
                         continue
                     target_status = 'active' if activate_negative else 'blocked'
-                    target_name = f"Негатив {display_name}"
+                    target_name = f"Негатив {banner_display_name}"
                     if activate_negative:
                         has_active_banners = True
                 else:
@@ -509,7 +531,9 @@ def duplicate_ad_group_to_new_campaign(
     negative_banner_ids: set = None,
     activate_positive: bool = True,
     activate_negative: bool = False,
-    duplicate_negative: bool = True
+    duplicate_negative: bool = True,
+    # Banner name template with {date} support
+    banner_name_template: str = None
 ) -> dict:
     """
     Duplicate ad group and create a NEW campaign with it.
@@ -621,9 +645,9 @@ def duplicate_ad_group_to_new_campaign(
             new_group_data['objective'] = campaign_data.get('objective')
             print(f"[INFO] Using campaign objective: {campaign_data.get('objective')}")
 
-        # Set name
+        # Set name (with {date} template support)
         if new_name and new_name.strip():
-            new_group_data['name'] = new_name.strip()
+            new_group_data['name'] = apply_name_template(new_name.strip())
         else:
             new_group_data['name'] = original_group.get('name', 'Copy')
 
@@ -661,10 +685,13 @@ def duplicate_ad_group_to_new_campaign(
             display_name = banner_name if banner_name else f"Banner_{banner_id}"
 
             # Determine banner status and name based on classification
+            # Use banner_name_template if provided (with {date} support), otherwise use display_name
+            banner_display_name = apply_name_template(banner_name_template) if banner_name_template else display_name
+
             if has_classification:
                 if banner_id in positive_ids:
                     target_status = 'active' if activate_positive else 'blocked'
-                    target_name = f"Позитив {display_name}"
+                    target_name = f"Позитив {banner_display_name}"
                     if activate_positive:
                         has_active_banners = True
                 elif banner_id in negative_ids:
@@ -676,7 +703,7 @@ def duplicate_ad_group_to_new_campaign(
                         })
                         continue
                     target_status = 'active' if activate_negative else 'blocked'
-                    target_name = f"Негатив {display_name}"
+                    target_name = f"Негатив {banner_display_name}"
                     if activate_negative:
                         has_active_banners = True
                 else:

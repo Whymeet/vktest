@@ -199,6 +199,7 @@ function ConfigFormModal({
   const [accountIds, setAccountIds] = useState<number[]>([]);
   const [newBudget, setNewBudget] = useState<string>('');
   const [newName, setNewName] = useState<string>('');
+  const [newBannerNameTemplate, setNewBannerNameTemplate] = useState<string>('');
   const [lookbackDays, setLookbackDays] = useState(7);
   const [duplicatesCount, setDuplicatesCount] = useState(1);
   const [conditions, setConditions] = useState<ScalingCondition[]>([]);
@@ -218,6 +219,7 @@ function ConfigFormModal({
       setAccountIds(config.account_ids || []);
       setNewBudget(config.new_budget?.toString() || '');
       setNewName(config.new_name || '');
+      setNewBannerNameTemplate(config.new_banner_name_template || '');
       setLookbackDays(config.lookback_days);
       setDuplicatesCount(config.duplicates_count || 1);
       setConditions(config.conditions || []);
@@ -235,6 +237,7 @@ function ConfigFormModal({
       setAccountIds([]);
       setNewBudget('');
       setNewName('');
+      setNewBannerNameTemplate('');
       setLookbackDays(7);
       setDuplicatesCount(1);
       setConditions([{ metric: 'goals', operator: 'greater_than', value: 2 }]);
@@ -257,6 +260,7 @@ function ConfigFormModal({
       account_ids: accountIds,
       new_budget: newBudget ? parseFloat(newBudget) : null,
       new_name: newName.trim() || null,
+      new_banner_name_template: newBannerNameTemplate.trim() || null,
       auto_activate: activatePositiveBanners,  // Группа активируется вместе с позитивными объявлениями
       lookback_days: lookbackDays,
       duplicates_count: duplicatesCount,
@@ -399,17 +403,32 @@ function ConfigFormModal({
           </p>
         </div>
 
-        {/* Новое название - опционально */}
-        <div>
-          <label className="block text-xs font-medium text-zinc-400 mb-1">Новое название (опционально)</label>
-          <input
-            type="text"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            className="w-full px-2 py-1.5 bg-zinc-700 border border-zinc-600 rounded text-white text-sm"
-            placeholder="Пусто = как в оригинале"
-          />
+        {/* Шаблоны названий - опционально */}
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="block text-xs font-medium text-zinc-400 mb-1">Название группы</label>
+            <input
+              type="text"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              className="w-full px-2 py-1.5 bg-zinc-700 border border-zinc-600 rounded text-white text-sm"
+              placeholder="Группа {date}"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-zinc-400 mb-1">Название объявления</label>
+            <input
+              type="text"
+              value={newBannerNameTemplate}
+              onChange={(e) => setNewBannerNameTemplate(e.target.value)}
+              className="w-full px-2 py-1.5 bg-zinc-700 border border-zinc-600 rounded text-white text-sm"
+              placeholder="Об {date}"
+            />
+          </div>
         </div>
+        <p className="text-xs text-zinc-500 -mt-2">
+          Используйте {'{date}'} для даты (DD.MM). Пусто = оригинальное название.
+        </p>
 
         <ConditionEditor
           conditions={conditions}

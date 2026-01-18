@@ -87,7 +87,8 @@ class ScalingEngineConfig:
     activate_positive_banners: bool = True
     duplicate_negative_banners: bool = True
     activate_negative_banners: bool = False
-    new_name: Optional[str] = None
+    new_name: Optional[str] = None  # Group name template, supports {date}
+    new_banner_name_template: Optional[str] = None  # Banner name template, supports {date}
     new_budget: Optional[float] = None
     duplicates_count: int = 1
     lookback_days: int = 7
@@ -158,6 +159,7 @@ class BannerScalingEngine:
             duplicate_negative_banners=getattr(self.config, 'duplicate_negative_banners', True),
             activate_negative_banners=getattr(self.config, 'activate_negative_banners', False),
             new_name=getattr(self.config, 'new_name', None),
+            new_banner_name_template=getattr(self.config, 'new_banner_name_template', None),
             new_budget=getattr(self.config, 'new_budget', None),
             duplicates_count=getattr(self.config, 'duplicates_count', 1) or 1,
             lookback_days=getattr(self.config, 'lookback_days', 7) or 7,
@@ -571,7 +573,8 @@ class BannerScalingEngine:
                                     negative_banner_ids=set(group_negative),
                                     activate_positive=self.engine_config.activate_positive_banners,
                                     activate_negative=self.engine_config.activate_negative_banners,
-                                    duplicate_negative=self.engine_config.duplicate_negative_banners
+                                    duplicate_negative=self.engine_config.duplicate_negative_banners,
+                                    banner_name_template=self.engine_config.new_banner_name_template
                                 )
 
                                 if result.get("success"):
@@ -679,7 +682,8 @@ class BannerScalingEngine:
             negative_banner_ids=negative_banner_ids,
             activate_positive=self.engine_config.activate_positive_banners,
             activate_negative=self.engine_config.activate_negative_banners,
-            duplicate_negative=self.engine_config.duplicate_negative_banners
+            duplicate_negative=self.engine_config.duplicate_negative_banners,
+            banner_name_template=self.engine_config.new_banner_name_template
         )
 
         if not result.get("success"):

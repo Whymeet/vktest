@@ -102,6 +102,7 @@ def create_scaling_config(
     account_ids: Optional[List[int]] = None,
     new_budget: Optional[float] = None,
     new_name: Optional[str] = None,
+    new_banner_name_template: Optional[str] = None,
     auto_activate: bool = False,
     lookback_days: int = 7,
     duplicates_count: int = 1,
@@ -137,6 +138,7 @@ def create_scaling_config(
         account_id=account_id,
         new_budget=new_budget,
         new_name=new_name if new_name and new_name.strip() else None,
+        new_banner_name_template=new_banner_name_template if new_banner_name_template and new_banner_name_template.strip() else None,
         auto_activate=auto_activate,
         lookback_days=lookback_days,
         duplicates_count=duplicates_count,
@@ -173,6 +175,7 @@ def update_scaling_config(
     account_ids: Optional[List[int]] = None,
     new_budget: Optional[float] = None,
     new_name: Optional[str] = None,
+    new_banner_name_template: Optional[str] = None,
     auto_activate: Optional[bool] = None,
     lookback_days: Optional[int] = None,
     duplicates_count: Optional[int] = None,
@@ -217,6 +220,9 @@ def update_scaling_config(
     if new_name is not None:
         # Empty string means "use original name" (set to NULL)
         config.new_name = new_name.strip() if new_name.strip() else None
+    if new_banner_name_template is not None:
+        # Empty string means "use original name" (set to NULL)
+        config.new_banner_name_template = new_banner_name_template.strip() if new_banner_name_template.strip() else None
     if auto_activate is not None:
         config.auto_activate = auto_activate
     if lookback_days is not None:

@@ -18,7 +18,8 @@ class ScalingConfigCreate(BaseModel):
     account_id: Optional[int] = None
     account_ids: Optional[List[int]] = None
     new_budget: Optional[float] = None
-    new_name: Optional[str] = None
+    new_name: Optional[str] = None  # Group name template, supports {date}
+    new_banner_name_template: Optional[str] = None  # Banner name template, supports {date}
     auto_activate: bool = False
     lookback_days: int = 7
     duplicates_count: int = Field(default=1, ge=1, le=100)
@@ -42,7 +43,8 @@ class ScalingConfigUpdate(BaseModel):
     account_id: Optional[int] = None
     account_ids: Optional[List[int]] = None
     new_budget: Optional[float] = None
-    new_name: Optional[str] = None
+    new_name: Optional[str] = None  # Group name template, supports {date}
+    new_banner_name_template: Optional[str] = None  # Banner name template, supports {date}
     auto_activate: Optional[bool] = None
     lookback_days: Optional[int] = None
     duplicates_count: Optional[int] = Field(default=None, ge=1, le=100)

@@ -583,7 +583,8 @@ class ScalingConfig(Base):
 
     # Scaling options
     new_budget = Column(Float, nullable=True)  # New budget for duplicated groups (NULL = same as original)
-    new_name = Column(String(500), nullable=True)  # New name for duplicated groups (NULL = same as original)
+    new_name = Column(String(500), nullable=True)  # New name for duplicated groups (NULL = same as original), supports {date}
+    new_banner_name_template = Column(String(500), nullable=True)  # Banner name template, {date} → DD.MM
     auto_activate = Column(Boolean, default=False)  # Activate duplicated groups immediately
     lookback_days = Column(Integer, default=7)  # Period for statistics analysis
     duplicates_count = Column(Integer, default=1)  # Number of duplicates to create per group

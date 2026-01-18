@@ -595,7 +595,8 @@ export interface ScalingConfig {
   account_id: number | null;
   account_ids: number[];  // Multiple accounts selection
   new_budget: number | null;
-  new_name: string | null;  // New name for duplicates (NULL = use original)
+  new_name: string | null;  // Group name template, supports {date} (NULL = use original)
+  new_banner_name_template: string | null;  // Banner name template, supports {date} (NULL = use original)
   auto_activate: boolean;
   lookback_days: number;
   duplicates_count: number;  // Number of duplicates per group (1-100)
@@ -620,7 +621,8 @@ export interface ScalingConfigCreate {
   account_id?: number | null;
   account_ids?: number[];  // Multiple accounts selection
   new_budget?: number | null;
-  new_name?: string | null;  // New name for duplicates (NULL = use original)
+  new_name?: string | null;  // Group name template, supports {date} (NULL = use original)
+  new_banner_name_template?: string | null;  // Banner name template, supports {date} (NULL = use original)
   auto_activate?: boolean;
   lookback_days?: number;
   duplicates_count?: number;  // Number of duplicates per group (1-100)
