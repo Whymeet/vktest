@@ -1,9 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Play, Square, RefreshCw, AlertTriangle, Clock, Settings, Shield } from 'lucide-react';
+import { Play, Square, RefreshCw, AlertTriangle, Clock, Settings, Shield, Wallet } from 'lucide-react';
 import {
   getProcessStatus,
   startScheduler,
   stopScheduler,
+  startBudgetScheduler,
+  stopBudgetScheduler,
   killAllProcesses,
 } from '../api/client';
 import { Card } from '../components/Card';
@@ -111,6 +113,20 @@ export function Control() {
     },
   });
 
+  const startBudgetSchedulerMutation = useMutation({
+    mutationFn: startBudgetScheduler,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['processStatus'] });
+    },
+  });
+
+  const stopBudgetSchedulerMutation = useMutation({
+    mutationFn: stopBudgetScheduler,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['processStatus'] });
+    },
+  });
+
   const killAllMutation = useMutation({
     mutationFn: killAllProcesses,
     onSuccess: () => {
@@ -154,6 +170,19 @@ export function Control() {
         onStop={() => stopSchedulerMutation.mutate()}
         isStarting={startSchedulerMutation.isPending}
         isStopping={stopSchedulerMutation.isPending}
+      />
+
+      {/* Budget Scheduler Card */}
+      <ProcessCard
+        title="Планировщик бюджетов"
+        description="Автоматическое изменение бюджетов групп объявлений по расписанию согласно правилам бюджета."
+        icon={Wallet}
+        running={status?.budget_scheduler?.running || false}
+        pid={status?.budget_scheduler?.pid}
+        onStart={() => startBudgetSchedulerMutation.mutate()}
+        onStop={() => stopBudgetSchedulerMutation.mutate()}
+        isStarting={startBudgetSchedulerMutation.isPending}
+        isStopping={stopBudgetSchedulerMutation.isPending}
       />
 
       {/* Info Cards */}

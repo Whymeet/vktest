@@ -77,6 +77,7 @@ export interface ProcessStatus {
   analysis: ProcessStatusItem;
   bot: ProcessStatusItem;
   scaling_scheduler: ProcessStatusItem;
+  budget_scheduler: ProcessStatusItem;
 }
 
 export interface DashboardData {
@@ -289,6 +290,8 @@ export const startBot = () => api.post('/control/bot/start');
 export const stopBot = () => api.post('/control/bot/stop');
 export const startScalingScheduler = () => api.post('/control/scaling_scheduler/start');
 export const stopScalingScheduler = () => api.post('/control/scaling_scheduler/stop');
+export const startBudgetScheduler = () => api.post('/control/budget_scheduler/start');
+export const stopBudgetScheduler = () => api.post('/control/budget_scheduler/stop');
 export const killAllProcesses = () => api.post('/control/kill-all');
 
 // Health

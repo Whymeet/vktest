@@ -15,6 +15,7 @@ from api.core.config import (
     LOGS_DIR,
     SCHEDULER_SCRIPT,
     SCALING_SCHEDULER_SCRIPT,
+    BUDGET_RULES_SCHEDULER_SCRIPT,
 )
 
 # Global process cache for current API session
@@ -238,5 +239,74 @@ def autostart_schedulers():
                 print(f"    Scheduler auto-started for user {user.username} (PID: {process.pid})")
             except Exception as e:
                 print(f"    Failed to auto-start scheduler for user {user.username}: {e}")
+    finally:
+        db.close()
+
+
+def autostart_budget_schedulers():
+    """Auto-start budget schedulers that were running before server restart (based on auto_start flag)"""
+    db = SessionLocal()
+    try:
+        from database.models import User
+
+        # Get all process states with auto_start=True for budget_schedulers
+        autostart_states = crud.get_autostart_process_states(db, process_type="budget_scheduler_")
+
+        if not autostart_states:
+            print("    No budget schedulers to auto-start")
+            return
+
+        for state in autostart_states:
+            # Extract user_id from process name (e.g., "budget_scheduler_1" -> 1)
+            try:
+                user_id = int(state.name.split("_")[2])
+            except (IndexError, ValueError):
+                print(f"    Invalid budget scheduler name format: {state.name}")
+                continue
+
+            # Get user info
+            user = db.query(User).filter(User.id == user_id).first()
+            if not user:
+                print(f"    User {user_id} not found for budget scheduler {state.name}")
+                continue
+
+            # Check if already running
+            is_running, existing_pid = is_process_running_by_db("budget_scheduler", db, user_id)
+            if is_running:
+                print(f"    Budget scheduler already running for user {user.username} (PID: {existing_pid})")
+                continue
+
+            # Start the budget scheduler
+            try:
+                # Ensure user logs directory exists
+                user_log_dir = LOGS_DIR / f"user_{user.id}"
+                user_log_dir.mkdir(parents=True, exist_ok=True)
+
+                # Open log files for stdout/stderr in user's folder
+                budget_scheduler_stdout = open(user_log_dir / "budget_rules_stdout.log", "a", encoding="utf-8")
+                budget_scheduler_stderr = open(user_log_dir / "budget_rules_stderr.log", "a", encoding="utf-8")
+
+                env = os.environ.copy()
+                env["VK_ADS_USER_ID"] = str(user.id)
+                env["VK_ADS_USERNAME"] = user.username
+
+                process = subprocess.Popen(
+                    [sys.executable, str(BUDGET_RULES_SCHEDULER_SCRIPT)],
+                    stdout=budget_scheduler_stdout,
+                    stderr=budget_scheduler_stderr,
+                    cwd=str(PROJECT_ROOT),
+                    start_new_session=True,
+                    env=env
+                )
+
+                process_name = f"budget_scheduler_{user.id}"
+                # Keep auto_start=True since we're auto-starting
+                crud.set_process_running(db, process_name, process.pid, str(BUDGET_RULES_SCHEDULER_SCRIPT), user_id=user.id, auto_start=True)
+
+                running_processes[process_name] = process
+
+                print(f"    Budget scheduler auto-started for user {user.username} (PID: {process.pid})")
+            except Exception as e:
+                print(f"    Failed to auto-start budget scheduler for user {user.username}: {e}")
     finally:
         db.close()

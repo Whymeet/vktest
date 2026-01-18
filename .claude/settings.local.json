@@ -46,7 +46,14 @@
       "Bash(tasklist:*)",
       "Bash(wmic process:*)",
       "Bash(git log:*)",
-      "Bash(cd:*)"
+      "Bash(cd:*)",
+      "Bash(node --version:*)",
+      "Bash(bash)",
+      "Bash(export NVM_DIR=\"$HOME/.nvm\")",
+      "Bash([ -s \"$NVM_DIR/nvm.sh\" ])",
+      "Bash(. \"$NVM_DIR/nvm.sh\")",
+      "Bash(nvm install:*)",
+      "Bash(docker compose:*)"
     ],
     "deny": [],
     "ask": []
