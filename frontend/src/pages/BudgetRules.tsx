@@ -567,9 +567,7 @@ export function BudgetRules() {
   const [formConditions, setFormConditions] = useState<BudgetRuleCondition[]>([]);
   const [formAccountIds, setFormAccountIds] = useState<number[]>([]);
   const [formRoiSubField, setFormRoiSubField] = useState<'sub4' | 'sub5' | null>(null);
-  // Schedule settings
-  const [formScheduleTime, setFormScheduleTime] = useState<string | null>(null);
-  const [formScheduledEnabled, setFormScheduledEnabled] = useState(false);
+  const [formScheduleTime, setFormScheduleTime] = useState<string>('07:00');
 
   // Check if any condition uses ROI metric
   const hasRoiCondition = formConditions.some(c => c.metric === 'roi');
@@ -670,8 +668,7 @@ export function BudgetRules() {
     setFormConditions([{ metric: 'spent', operator: 'greater_or_equal', value: 100 }]);
     setFormAccountIds([]);
     setFormRoiSubField(null);
-    setFormScheduleTime(null);
-    setFormScheduledEnabled(false);
+    setFormScheduleTime('07:00');
   };
 
   const openCreateModal = () => {
@@ -695,8 +692,7 @@ export function BudgetRules() {
     })));
     setFormAccountIds(rule.account_ids);
     setFormRoiSubField(rule.roi_sub_field);
-    setFormScheduleTime(rule.schedule_time);
-    setFormScheduledEnabled(rule.scheduled_enabled);
+    setFormScheduleTime(rule.schedule_time || '07:00');
     setEditingRule(rule);
     setShowModal(true);
   };
@@ -716,8 +712,7 @@ export function BudgetRules() {
     })));
     setFormAccountIds(rule.account_ids);
     setFormRoiSubField(rule.roi_sub_field);
-    setFormScheduleTime(null);  // Reset schedule for copy
-    setFormScheduledEnabled(false);
+    setFormScheduleTime(rule.schedule_time || '07:00');
     setEditingRule(null);
     setShowModal(true);
   };
@@ -733,8 +728,8 @@ export function BudgetRules() {
       description: formDescription || undefined,
       enabled: formEnabled,
       priority: formPriority,
-      schedule_time: formScheduledEnabled ? formScheduleTime : null,
-      scheduled_enabled: formScheduledEnabled,
+      schedule_time: formScheduleTime,
+      scheduled_enabled: true,
       change_percent: formChangePercent,
       change_direction: formChangeDirection,
       lookback_days: formLookbackDays,
@@ -950,7 +945,7 @@ export function BudgetRules() {
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs sm:text-sm font-medium text-zinc-300 mb-1">
                 Процент (1-20%)
@@ -981,44 +976,38 @@ export function BudgetRules() {
               />
               <p className="text-xs text-zinc-500 mt-1">Меньше = выше</p>
             </div>
-
-            <div>
-              <label className="block text-xs sm:text-sm font-medium text-zinc-300 mb-1">
-                Период (дней)
-              </label>
-              <input
-                type="number"
-                value={formLookbackDays}
-                onChange={(e) => setFormLookbackDays(parseInt(e.target.value) || 7)}
-                className="w-full px-3 py-2 bg-zinc-700 border border-zinc-600 rounded text-white text-sm"
-                min={1}
-                max={30}
-              />
-            </div>
           </div>
 
           {/* Schedule Settings */}
           <div className="p-4 bg-zinc-800/50 rounded-lg border border-zinc-700">
-            <div className="flex items-center justify-between mb-3">
-              <label className="text-sm font-medium text-zinc-300 flex items-center gap-2">
-                <Clock className="w-4 h-4 text-blue-400" />
-                Расписание
-              </label>
-              <Toggle checked={formScheduledEnabled} onChange={setFormScheduledEnabled} />
-            </div>
-            
-            {formScheduledEnabled && (
+            <label className="text-sm font-medium text-zinc-300 flex items-center gap-2 mb-3">
+              <Clock className="w-4 h-4 text-blue-400" />
+              Расписание
+            </label>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs text-zinc-400 mb-1">Период анализа (дней)</label>
+                <input
+                  type="number"
+                  value={formLookbackDays}
+                  onChange={(e) => setFormLookbackDays(parseInt(e.target.value) || 7)}
+                  className="w-full px-3 py-2 bg-zinc-700 border border-zinc-600 rounded text-white text-sm"
+                  min={1}
+                  max={30}
+                />
+              </div>
               <div>
                 <label className="block text-xs text-zinc-400 mb-1">Время запуска (МСК)</label>
                 <input
                   type="time"
-                  value={formScheduleTime || '07:00'}
+                  value={formScheduleTime}
                   onChange={(e) => setFormScheduleTime(e.target.value)}
-                  className="w-32 px-3 py-2 bg-zinc-700 border border-zinc-600 rounded text-white text-sm"
+                  className="w-full px-3 py-2 bg-zinc-700 border border-zinc-600 rounded text-white text-sm"
                 />
-                <p className="text-xs text-zinc-500 mt-1">Правило будет запускаться каждый день в указанное время</p>
               </div>
-            )}
+            </div>
+            <p className="text-xs text-zinc-500 mt-2">Правило будет запускаться каждый день в указанное время</p>
           </div>
 
           <ConditionEditor
