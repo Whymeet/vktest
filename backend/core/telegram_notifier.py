@@ -293,3 +293,121 @@ async def send_api_error_notification(
             config, api_name, error_message, account_name, error_type, debounce
         )
     )
+
+
+def send_admin_api_error_notification_sync(
+    api_name: str,
+    error_message: str,
+    account_name: Optional[str] = None,
+    error_type: str = "server_error",
+    debounce: bool = True
+) -> bool:
+    """
+    Send API error notification to all admin users via Telegram.
+
+    This function gets telegram config from all admin users (is_superuser=True)
+    and sends the error notification to them.
+
+    Args:
+        api_name: Name of the external API (e.g., "VK Ads API", "LeadsTech")
+        error_message: Detailed error message
+        account_name: Affected account (optional)
+        error_type: Type of error for debouncing (network, auth, server, timeout)
+        debounce: If True, skip duplicate notifications within debounce window
+
+    Returns:
+        True if sent successfully to at least one admin
+    """
+    global _ERROR_NOTIFICATION_CACHE
+
+    # Debouncing - don't spam the same error
+    if debounce:
+        cache_key = (api_name, error_type, account_name or "")
+        now = time.time()
+        last_sent = _ERROR_NOTIFICATION_CACHE.get(cache_key, 0)
+
+        if now - last_sent < ERROR_NOTIFICATION_DEBOUNCE_SECONDS:
+            logger.debug(f"Skipping duplicate {api_name} admin error notification (debounced)")
+            return False
+
+        _ERROR_NOTIFICATION_CACHE[cache_key] = now
+
+    try:
+        from database.database import SessionLocal
+        from database import crud
+
+        db = SessionLocal()
+        try:
+            config = crud.get_admin_telegram_config(db)
+        finally:
+            db.close()
+
+        telegram_config = config.get("telegram", {})
+        if not telegram_config.get("enabled", False):
+            logger.debug("Admin telegram notifications disabled or not configured")
+            return False
+
+        # Emoji based on error type
+        emoji_map = {
+            "network_error": "📡",
+            "auth_error": "🔐",
+            "rate_limit": "🚫",
+            "timeout": "⏱️",
+            "server_error": "⚠️",
+        }
+        emoji = emoji_map.get(error_type, "❌")
+
+        # Format message
+        from html import escape
+        from utils.time_utils import get_moscow_time
+
+        message = f"{emoji} <b>Ошибка API: {escape(api_name)}</b>\n\n"
+
+        if account_name:
+            message += f"<b>Аккаунт:</b> {escape(account_name)}\n"
+
+        # Truncate long error messages
+        error_text = error_message[:500] if len(error_message) > 500 else error_message
+        message += f"<b>Ошибка:</b>\n<code>{escape(error_text)}</code>\n"
+
+        # Timestamp
+        timestamp = get_moscow_time().strftime("%d.%m.%Y %H:%M:%S")
+        message += f"\n<i>{timestamp} MSK</i>"
+
+        send_telegram_message(config, message)
+        logger.info(f"Sent {api_name} error notification to admin(s)")
+        return True
+
+    except Exception as e:
+        logger.error(f"Failed to send admin API error notification: {e}")
+        return False
+
+
+async def send_admin_api_error_notification(
+    api_name: str,
+    error_message: str,
+    account_name: Optional[str] = None,
+    error_type: str = "server_error",
+    debounce: bool = True
+) -> bool:
+    """
+    Send API error notification to all admin users via Telegram (async version).
+
+    Args:
+        api_name: Name of the external API (e.g., "VK Ads API", "LeadsTech")
+        error_message: Detailed error message
+        account_name: Affected account (optional)
+        error_type: Type of error for debouncing
+        debounce: If True, skip duplicate notifications within debounce window
+
+    Returns:
+        True if sent successfully
+    """
+    import asyncio
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(
+        None,
+        lambda: send_admin_api_error_notification_sync(
+            api_name, error_message, account_name, error_type, debounce
+        )
+    )

@@ -342,3 +342,61 @@ def delete_user_setting(db: Session, user_id: int, key: str) -> bool:
     db.delete(setting)
     db.commit()
     return True
+
+
+# ===== Admin Notifications =====
+
+def get_admin_telegram_config(db: Session) -> dict:
+    """
+    Get combined telegram config for all admin users.
+
+    Returns a config dict with:
+    - telegram.enabled: True if any admin has telegram enabled
+    - telegram.bot_token: First available bot_token from admins
+    - telegram.chat_id: List of all admin chat_ids
+
+    Returns empty config if no admins have telegram configured.
+    """
+    # Get all superusers
+    admins = db.query(User).filter(
+        User.is_superuser == True,
+        User.is_active == True
+    ).all()
+
+    if not admins:
+        return {"telegram": {"enabled": False}}
+
+    all_chat_ids = []
+    bot_token = None
+
+    for admin in admins:
+        # Get telegram settings for this admin
+        telegram_settings = get_user_setting(db, admin.id, "telegram")
+        if not telegram_settings:
+            continue
+
+        if not telegram_settings.get("enabled", False):
+            continue
+
+        # Get bot_token (use first available)
+        if not bot_token and telegram_settings.get("bot_token"):
+            bot_token = telegram_settings["bot_token"]
+
+        # Collect chat_ids
+        chat_ids = telegram_settings.get("chat_id")
+        if chat_ids:
+            if isinstance(chat_ids, str):
+                all_chat_ids.append(chat_ids)
+            elif isinstance(chat_ids, list):
+                all_chat_ids.extend(chat_ids)
+
+    if not bot_token or not all_chat_ids:
+        return {"telegram": {"enabled": False}}
+
+    return {
+        "telegram": {
+            "enabled": True,
+            "bot_token": bot_token,
+            "chat_id": list(set(all_chat_ids))  # Remove duplicates
+        }
+    }

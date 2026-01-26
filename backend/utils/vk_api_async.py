@@ -44,20 +44,16 @@ def set_vk_api_notify_context(config: Optional[Dict], account_name: Optional[str
 
 def _send_vk_api_error_notification(error_message: str, error_type: str = "server_error"):
     """
-    Send VK API error notification if notify context is set.
+    Send VK API error notification to admin users.
 
-    Uses the context set by set_vk_api_notify_context().
+    Sends notification to all users with is_superuser=True.
+    Uses account_name from context set by set_vk_api_notify_context().
     """
-    config = _notify_config.get()
-    if not config:
-        return
-
     try:
-        from core.telegram_notifier import send_api_error_notification_sync
+        from core.telegram_notifier import send_admin_api_error_notification_sync
         account_name = _notify_account.get()
 
-        send_api_error_notification_sync(
-            config=config,
+        send_admin_api_error_notification_sync(
             api_name="VK Ads API",
             error_message=error_message,
             account_name=account_name,
