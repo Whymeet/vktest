@@ -54,7 +54,8 @@
       "Bash(. \"$NVM_DIR/nvm.sh\")",
       "Bash(nvm install:*)",
       "Bash(docker compose:*)",
-      "Bash(alembic revision:*)"
+      "Bash(alembic revision:*)",
+      "Bash(python3:*)"
     ],
     "deny": [],
     "ask": []

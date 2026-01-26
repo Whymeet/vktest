@@ -266,9 +266,23 @@ async def process_budget_rules_for_account(
     logger.info("=" * 100)
     logger.info(f"BUDGET RULES: Processing account {account_name}")
     logger.info("=" * 100)
-    
+
+    # Set VK API notification context for error alerts
+    def _get_notify_config() -> Optional[Dict]:
+        db = SessionLocal()
+        try:
+            all_settings = crud.get_all_user_settings(db, user_id)
+            telegram_settings = all_settings.get('telegram', {})
+            return {"telegram": telegram_settings}
+        finally:
+            db.close()
+
+    from utils.vk_api_async import set_vk_api_notify_context
+    notify_config = _get_notify_config()
+    set_vk_api_notify_context(notify_config, account_name)
+
     whitelist = whitelist or set()
-    
+
     # Load budget rules for this account
     def _get_rules_sync() -> Tuple[List[BudgetRule], int]:
         db = SessionLocal()
@@ -317,6 +331,7 @@ async def process_budget_rules_for_account(
     
     if not rules:
         logger.info(f"[{account_name}] No enabled budget rules for this account")
+        set_vk_api_notify_context(None)  # Clear context before early return
         return {
             "account_name": account_name,
             "changes": [],
@@ -347,6 +362,7 @@ async def process_budget_rules_for_account(
     logger.info(f"[{account_name}] Active banners: {len(banners)}")
     
     if not banners:
+        set_vk_api_notify_context(None)  # Clear context before early return
         return {
             "account_name": account_name,
             "changes": [],
@@ -516,6 +532,9 @@ async def process_budget_rules_for_account(
     logger.info(f"   Dry run: {dry_run}")
     logger.info("=" * 80)
     
+    # Clear VK API notification context
+    set_vk_api_notify_context(None)
+
     return {
         "account_name": account_name,
         "changes": changes,

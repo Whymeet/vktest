@@ -7,6 +7,8 @@
 """
 import asyncio
 import aiohttp
+from contextvars import ContextVar
+from typing import Dict, Optional
 from utils.logging_setup import get_logger
 
 logger = get_logger(service="vk_api")
@@ -15,6 +17,51 @@ logger = get_logger(service="vk_api")
 API_MAX_RETRIES = 4  # Увеличено для устойчивости к перегрузкам VK API
 API_RETRY_DELAY_SECONDS = 5
 API_RETRY_STATUS_CODES = {429, 500, 502, 503, 504}
+
+# Context variable for notification config (set by caller, used by error handlers)
+_notify_config: ContextVar[Optional[Dict]] = ContextVar('vk_api_notify_config', default=None)
+_notify_account: ContextVar[Optional[str]] = ContextVar('vk_api_notify_account', default=None)
+
+
+def set_vk_api_notify_context(config: Optional[Dict], account_name: Optional[str] = None):
+    """
+    Set the notification config context for VK API error notifications.
+
+    Call this before making VK API requests to enable Telegram notifications on errors.
+
+    Args:
+        config: Config dict with 'telegram' key containing telegram settings
+        account_name: Account name for the notification (optional)
+
+    Example:
+        set_vk_api_notify_context(config, account_name="MyAccount")
+        await get_banners_active(...)
+        set_vk_api_notify_context(None)  # Clear context
+    """
+    _notify_config.set(config)
+    _notify_account.set(account_name)
+
+
+def _send_vk_api_error_notification(error_message: str, error_type: str = "server_error"):
+    """
+    Send VK API error notification to admin users.
+
+    Sends notification to all users with is_superuser=True.
+    Uses account_name from context set by set_vk_api_notify_context().
+    """
+    try:
+        from core.telegram_notifier import send_admin_api_error_notification_sync
+        account_name = _notify_account.get()
+
+        send_admin_api_error_notification_sync(
+            api_name="VK Ads API",
+            error_message=error_message,
+            account_name=account_name,
+            error_type=error_type,
+            debounce=True
+        )
+    except Exception as e:
+        logger.debug(f"Failed to send VK API error notification: {e}")
 
 
 def _headers(token: str) -> dict:
@@ -46,6 +93,11 @@ async def _request_with_retries(
                 logger.error(
                     f"❌ {method} {url} — таймаут после {attempt} попыток"
                 )
+                # Send Telegram notification
+                _send_vk_api_error_notification(
+                    f"Таймаут после {attempt} попыток: {method} {url}",
+                    error_type="timeout"
+                )
                 raise
 
             wait = min(5 + attempt * 3, 15)  # 8, 11, 14 сек
@@ -59,6 +111,11 @@ async def _request_with_retries(
             if attempt > max_retries:
                 logger.error(
                     f"❌ {method} {url} — сетевая ошибка после {attempt} попыток: {e}"
+                )
+                # Send Telegram notification
+                _send_vk_api_error_notification(
+                    f"Сетевая ошибка после {attempt} попыток: {str(e)}",
+                    error_type="network_error"
                 )
                 raise
 
@@ -78,6 +135,11 @@ async def _request_with_retries(
                 logger.error(
                     f"❌ {method} {url} — HTTP {resp.status} после {attempt} попыток.\n"
                     f"   Тело ответа: {response_text[:200]}"
+                )
+                # Send Telegram notification
+                _send_vk_api_error_notification(
+                    f"HTTP {resp.status} после {attempt} попыток: {response_text[:200]}",
+                    error_type="server_error"
                 )
                 raise RuntimeError(
                     f"HTTP {resp.status} после {attempt} попыток: {response_text[:200]}"

@@ -38,6 +38,8 @@ from database.crud.users import (
     set_user_setting,
     get_all_user_settings,
     delete_user_setting,
+    # Admin Notifications
+    get_admin_telegram_config,
 )
 
 # Accounts
@@ -267,6 +269,7 @@ __all__ = [
     "set_user_setting",
     "get_all_user_settings",
     "delete_user_setting",
+    "get_admin_telegram_config",
     # Accounts
     "get_accounts",
     "get_account_by_id",
