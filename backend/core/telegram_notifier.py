@@ -2,12 +2,18 @@
 Core Telegram notifier - Send analysis notifications to Telegram
 """
 import asyncio
+import time
 from typing import Dict, List, Optional
 
 from bot.telegram_notify import send_telegram_message, format_telegram_account_statistics
 from utils.logging_setup import get_logger
 
 logger = get_logger(service="vk_api", function="telegram")
+
+# Debouncing cache for API error notifications
+# Key: (api_name, error_type) -> last_sent_timestamp
+_ERROR_NOTIFICATION_CACHE: Dict[tuple, float] = {}
+ERROR_NOTIFICATION_DEBOUNCE_SECONDS = 300  # 5 minutes between same errors
 
 
 async def send_analysis_notifications(
@@ -175,3 +181,115 @@ Avg cost per goal: {avg_cost:.2f}₽
     except Exception as e:
         logger.error(f"Failed to send summary to Telegram: {e}")
         return False
+
+
+def send_api_error_notification_sync(
+    config: Dict,
+    api_name: str,
+    error_message: str,
+    account_name: Optional[str] = None,
+    error_type: str = "server_error",
+    debounce: bool = True
+) -> bool:
+    """
+    Send API error notification to Telegram (synchronous version).
+
+    Used for critical errors from external APIs (VK, LeadsTech) that should
+    notify the user immediately.
+
+    Args:
+        config: Configuration dict with telegram settings
+        api_name: Name of the external API (e.g., "VK Ads API", "LeadsTech")
+        error_message: Detailed error message
+        account_name: Affected account (optional)
+        error_type: Type of error for debouncing (network, auth, server, timeout)
+        debounce: If True, skip duplicate notifications within debounce window
+
+    Returns:
+        True if sent successfully
+    """
+    global _ERROR_NOTIFICATION_CACHE
+
+    telegram_config = config.get("telegram", {})
+    if not telegram_config.get("enabled", False):
+        return False
+
+    # Debouncing - don't spam the same error
+    if debounce:
+        cache_key = (api_name, error_type, account_name or "")
+        now = time.time()
+        last_sent = _ERROR_NOTIFICATION_CACHE.get(cache_key, 0)
+
+        if now - last_sent < ERROR_NOTIFICATION_DEBOUNCE_SECONDS:
+            logger.debug(f"Skipping duplicate {api_name} error notification (debounced)")
+            return False
+
+        _ERROR_NOTIFICATION_CACHE[cache_key] = now
+
+    # Emoji based on error type
+    emoji_map = {
+        "network_error": "📡",
+        "auth_error": "🔐",
+        "rate_limit": "🚫",
+        "timeout": "⏱️",
+        "server_error": "⚠️",
+    }
+    emoji = emoji_map.get(error_type, "❌")
+
+    # Format message
+    from html import escape
+    from utils.time_utils import get_moscow_time
+
+    message = f"{emoji} <b>Ошибка API: {escape(api_name)}</b>\n\n"
+
+    if account_name:
+        message += f"<b>Аккаунт:</b> {escape(account_name)}\n"
+
+    # Truncate long error messages
+    error_text = error_message[:500] if len(error_message) > 500 else error_message
+    message += f"<b>Ошибка:</b>\n<code>{escape(error_text)}</code>\n"
+
+    # Timestamp
+    timestamp = get_moscow_time().strftime("%d.%m.%Y %H:%M:%S")
+    message += f"\n<i>{timestamp} MSK</i>"
+
+    try:
+        send_telegram_message(config, message)
+        logger.info(f"Sent {api_name} error notification to Telegram")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to send API error notification: {e}")
+        return False
+
+
+async def send_api_error_notification(
+    config: Dict,
+    api_name: str,
+    error_message: str,
+    account_name: Optional[str] = None,
+    error_type: str = "server_error",
+    debounce: bool = True
+) -> bool:
+    """
+    Send API error notification to Telegram (async version).
+
+    Args:
+        config: Configuration dict with telegram settings
+        api_name: Name of the external API (e.g., "VK Ads API", "LeadsTech")
+        error_message: Detailed error message
+        account_name: Affected account (optional)
+        error_type: Type of error for debouncing
+        debounce: If True, skip duplicate notifications within debounce window
+
+    Returns:
+        True if sent successfully
+    """
+    # Run synchronous version in executor to not block
+    import asyncio
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(
+        None,
+        lambda: send_api_error_notification_sync(
+            config, api_name, error_message, account_name, error_type, debounce
+        )
+    )

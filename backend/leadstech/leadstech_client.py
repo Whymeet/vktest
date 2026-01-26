@@ -24,6 +24,48 @@ logger = get_logger(service="leadstech", function="client")
 TOKEN_TTL_HOURS = 23
 
 
+def _send_leadstech_error_notification(
+    db: "Session",
+    user_id: int,
+    error_message: str,
+    error_type: str = "server_error"
+) -> bool:
+    """
+    Send LeadsTech error notification to Telegram.
+
+    Args:
+        db: Database session
+        user_id: User ID to get telegram config
+        error_message: Error message to send
+        error_type: Type of error for debouncing
+
+    Returns:
+        True if notification sent
+    """
+    try:
+        from database import crud
+        from core.telegram_notifier import send_api_error_notification_sync
+
+        # Load user telegram settings
+        all_settings = crud.get_all_user_settings(db, user_id)
+        telegram_settings = all_settings.get('telegram', {})
+
+        config = {
+            "telegram": telegram_settings
+        }
+
+        return send_api_error_notification_sync(
+            config=config,
+            api_name="LeadsTech",
+            error_message=error_message,
+            error_type=error_type,
+            debounce=True
+        )
+    except Exception as e:
+        logger.debug(f"Failed to send LeadsTech error notification: {e}")
+        return False
+
+
 @dataclass
 class LeadstechClientConfig:
     """Configuration for LeadsTech API client."""
@@ -103,6 +145,13 @@ class LeadstechClient:
                     time.sleep(wait_time)
                 else:
                     logger.error(f"LeadsTech login failed after {max_retries} attempts: {e}")
+                    # Send Telegram notification
+                    if self._db and self._user_id:
+                        _send_leadstech_error_notification(
+                            self._db, self._user_id,
+                            f"Ошибка авторизации: {str(e)}",
+                            error_type="network_error"
+                        )
                     raise
 
             except requests.HTTPError as e:
@@ -114,6 +163,14 @@ class LeadstechClient:
                     time.sleep(wait_time)
                 else:
                     logger.error(f"LeadsTech login HTTP error: {e}")
+                    # Send Telegram notification
+                    if self._db and self._user_id:
+                        status_code = e.response.status_code if e.response else "unknown"
+                        _send_leadstech_error_notification(
+                            self._db, self._user_id,
+                            f"HTTP ошибка авторизации: {status_code}",
+                            error_type="server_error"
+                        )
                     raise
 
         # Should not reach here, but just in case
@@ -298,10 +355,29 @@ class LeadstechClient:
                 else:
                     error_msg = f"LeadsTech: error requesting by-subid page={page}: {exc}, body={resp.text}"
                     logger.error(error_msg)
+                    # Send Telegram notification
+                    if self._db and self._user_id:
+                        _send_leadstech_error_notification(
+                            self._db, self._user_id,
+                            f"HTTP {exc.response.status_code if exc.response else 'unknown'}: {resp.text[:300]}",
+                            error_type="server_error"
+                        )
                     raise
 
             payload = resp.json()
-            rows = self._extract_rows(payload)
+            try:
+                rows = self._extract_rows(payload)
+            except ValueError as e:
+                error_msg = str(e)
+                logger.error(f"LeadsTech: error parsing response: {error_msg}")
+                # Send Telegram notification for parse errors
+                if self._db and self._user_id:
+                    _send_leadstech_error_notification(
+                        self._db, self._user_id,
+                        error_msg,
+                        error_type="server_error"
+                    )
+                raise
 
             logger.info(f"LeadsTech: page={page} - {len(rows)} rows")
 
@@ -408,10 +484,29 @@ class LeadstechClient:
                 else:
                     error_msg = f"LeadsTech: error requesting by-subid page={page}: {exc}, body={resp.text}"
                     logger.error(error_msg)
+                    # Send Telegram notification
+                    if self._db and self._user_id:
+                        _send_leadstech_error_notification(
+                            self._db, self._user_id,
+                            f"HTTP {exc.response.status_code if exc.response else 'unknown'}: {resp.text[:300]}",
+                            error_type="server_error"
+                        )
                     raise
 
             payload = resp.json()
-            rows = self._extract_rows(payload)
+            try:
+                rows = self._extract_rows(payload)
+            except ValueError as e:
+                error_msg = str(e)
+                logger.error(f"LeadsTech: error parsing response: {error_msg}")
+                # Send Telegram notification for parse errors
+                if self._db and self._user_id:
+                    _send_leadstech_error_notification(
+                        self._db, self._user_id,
+                        error_msg,
+                        error_type="server_error"
+                    )
+                raise
 
             logger.info(f"LeadsTech: page={page} - {len(rows)} rows")
 

@@ -429,6 +429,12 @@ async def analyze_account(
     logger.info("=" * 100)
 
     try:
+        # Set VK API notification context for error alerts
+        from utils.vk_api_async import set_vk_api_notify_context
+        from core.config_loader import config_to_legacy_dict
+        notify_config = config_to_legacy_dict(config)
+        set_vk_api_notify_context(notify_config, account_name)
+
         # Get effective lookback days (including extra from env)
         from core.config_loader import get_extra_lookback_days
         extra_days = get_extra_lookback_days()
@@ -711,3 +717,7 @@ async def analyze_account(
         logger.error(f"[{account_name}] ANALYSIS ERROR: {e}")
         logger.exception("Error details:")
         return None
+    finally:
+        # Clear VK API notification context
+        from utils.vk_api_async import set_vk_api_notify_context
+        set_vk_api_notify_context(None)
