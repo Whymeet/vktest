@@ -4,7 +4,6 @@ Database connection and session management
 import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy.pool import NullPool
 from typing import Generator
 
 from .models import Base
@@ -15,11 +14,16 @@ DATABASE_URL = os.getenv(
     "postgresql://vkads:vkads_password@postgres:5432/vkads"
 )
 
-# Create engine
-# Use NullPool for development to avoid connection issues
+# Create engine with connection pool and auto-reconnect
+# pool_pre_ping - проверяет соединение перед использованием (автоматический reconnect)
+# pool_recycle - пересоздаёт соединения каждые 30 минут (избегает timeout PostgreSQL)
 engine = create_engine(
     DATABASE_URL,
-    poolclass=NullPool,
+    pool_pre_ping=True,  # Проверять соединение перед использованием
+    pool_size=5,  # Базовый размер пула
+    max_overflow=10,  # Дополнительные соединения при нагрузке
+    pool_recycle=1800,  # Пересоздавать соединения каждые 30 минут
+    pool_timeout=30,  # Таймаут ожидания соединения из пула
     echo=False,  # Set to True for SQL query logging
 )
 

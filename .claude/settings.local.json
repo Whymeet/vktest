@@ -55,7 +55,13 @@
       "Bash(nvm install:*)",
       "Bash(docker compose:*)",
       "Bash(alembic revision:*)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "WebSearch",
+      "WebFetch(domain:ads.vk.com)",
+      "WebFetch(domain:target.vk.ru)",
+      "WebFetch(domain:github.com)",
+      "Bash(git add:*)",
+      "Bash(git rebase:*)"
     ],
     "deny": [],
     "ask": []
